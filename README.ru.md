@@ -1,6 +1,6 @@
 # xbsl-lint
 
-[English](README.md) · **Русский**
+[English](https://github.com/keyfire/xbsl-lint/blob/main/README.md) · **Русский**
 
 ![CI](https://github.com/keyfire/xbsl-lint/actions/workflows/ci.yml/badge.svg)
 
@@ -8,7 +8,7 @@
 `Имя.xbsl` (модуль с кодом) до серверной компиляции при деплое.
 
 > Проект не аффилирован с фирмой «1С». «1С:Элемент», «1С:Фреш» и другие – товарные знаки их
-> правообладателей. Данные о языке генерируются из вашего собственного дистрибутива. См. [NOTICE](NOTICE).
+> правообладателей. Данные о языке генерируются из вашего собственного дистрибутива. См. [NOTICE](https://github.com/keyfire/xbsl-lint/blob/main/NOTICE).
 
 ## Зачем
 
@@ -35,9 +35,12 @@ python tools/extract_metamodel.py --dist "<каталог дистрибутив
 ## Шаг 2: установка и запуск
 
 ```sh
-pip install -e .
+pip install xbsllint              # или из клона репозитория: pip install -e .
 xbsllint путь/к/исходникам        # или: python -m xbsllint путь/к/исходникам
 ```
+
+Экстракторы из шага 1 лежат в репозитории, а не в пакете PyPI – чтобы сгенерировать данные,
+нужен клон репозитория.
 
 Флаги: `--list-rules`, `--select`/`--ignore` (по id правила, группе – части id до `/` – или букве
 тира), `--element-version`.
@@ -123,5 +126,5 @@ pytest
 
 ## Лицензия
 
-MIT – см. [LICENSE](LICENSE). Товарные знаки и происхождение данных – [NOTICE](NOTICE).
-Как добавить правило – [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md).
+MIT – см. [LICENSE](https://github.com/keyfire/xbsl-lint/blob/main/LICENSE). Товарные знаки и происхождение данных – [NOTICE](https://github.com/keyfire/xbsl-lint/blob/main/NOTICE).
+Как добавить правило – [CONTRIBUTING.ru.md](https://github.com/keyfire/xbsl-lint/blob/main/CONTRIBUTING.ru.md).

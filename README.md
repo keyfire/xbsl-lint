@@ -1,6 +1,6 @@
 # xbsl-lint
 
-**English** · [Русский](README.ru.md)
+**English** · [Русский](https://github.com/keyfire/xbsl-lint/blob/main/README.ru.md)
 
 ![CI](https://github.com/keyfire/xbsl-lint/actions/workflows/ci.yml/badge.svg)
 
@@ -8,7 +8,7 @@ A linter for 1C:Element sources — it checks `Name.yaml` (element description) 
 (code module) pairs before the server-side compilation that happens on deploy.
 
 > Not affiliated with 1C. "1C:Element", "1C:Fresh" and related names are trademarks of their
-> respective owners. Language data is generated from your own distribution. See [NOTICE](NOTICE).
+> respective owners. Language data is generated from your own distribution. See [NOTICE](https://github.com/keyfire/xbsl-lint/blob/main/NOTICE).
 
 ## Why
 
@@ -36,9 +36,12 @@ the tests will tell you to generate it.
 ## Step 2: install and run
 
 ```sh
-pip install -e .
+pip install xbsllint            # or, from a clone: pip install -e .
 xbsllint path/to/sources        # or: python -m xbsllint path/to/sources
 ```
+
+The extractors from step 1 ship with the repository, not with the PyPI package — clone the
+repository to generate the data.
 
 Flags: `--list-rules`, `--select`/`--ignore` (by rule id, rule group — the part of the id before
 `/` — or tier letter), `--element-version`.
@@ -125,5 +128,5 @@ Data-dependent tests are skipped automatically when the data has not been genera
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Trademarks and data provenance — [NOTICE](NOTICE).
-How to add a rule — [CONTRIBUTING.md](CONTRIBUTING.md).
+MIT — see [LICENSE](https://github.com/keyfire/xbsl-lint/blob/main/LICENSE). Trademarks and data provenance — [NOTICE](https://github.com/keyfire/xbsl-lint/blob/main/NOTICE).
+How to add a rule — [CONTRIBUTING.md](https://github.com/keyfire/xbsl-lint/blob/main/CONTRIBUTING.md).
