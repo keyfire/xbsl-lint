@@ -37,3 +37,19 @@ Tiers: A (structure/YAML), B (text/conventions), C (parser/code), D (stdlib/meta
 has an id, a tier, a severity, and an "enabled by default" flag. Rules that fire massively on legacy
 code (e.g. an em dash in comments) are made `info` and disabled by default — enabled via `--select`.
 Add a new rule only after running it on a real project's sources with zero false positives.
+
+`--select`/`--ignore` accept a rule id, a rule group (the part of the id before `/`), or a tier letter.
+
+The `style/` group implements the platform's code style conventions. Everything is token-based, with
+no full AST — an ambiguous construct is skipped rather than guessed. Shared helpers (`Запрос{...}`
+blocks, type expressions, declarations, signatures) live in `xbsllint/rules/_syntax.py`; the rules
+themselves are split by the sections of the platform document: `style_layout` (layout and wrapping),
+`style_naming` (naming), `style_types` (types and signatures), `style_strings` (collections and
+strings), `style_conditions` (checks).
+
+Where tokens cannot tell a violation from a forced form, narrow the rule instead of guessing, and say
+so in the docstring:
+- a nullable `Булево?` must be compared against `Истина` — so `style/boolean-compare` stays `info`;
+- structure field names are dictated by the serialization contract (JSON keys) — `style/camel-case`
+  skips them;
+- string literals (HTML/CSS/SVG) are excluded from `style/line-length`.

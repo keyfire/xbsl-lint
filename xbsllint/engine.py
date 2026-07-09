@@ -127,9 +127,12 @@ def rule(
 
 
 def _is_selected(info: RuleInfo, select: set[str] | None, ignore: set[str] | None) -> bool:
-    # select/ignore сопоставляются по id правила или по букве тира ('A'..'D')
+    # select/ignore сопоставляются по id правила, по группе (часть id до '/')
+    # или по букве тира ('A'..'D')
+    group = info.id.split("/", 1)[0]
+
     def matches(keys: set[str]) -> bool:
-        return info.id in keys or info.tier in keys
+        return info.id in keys or group in keys or info.tier in keys
 
     if ignore and matches(ignore):
         return False

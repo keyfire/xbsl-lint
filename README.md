@@ -40,18 +40,40 @@ pip install -e .
 xbsllint path/to/sources        # or: python -m xbsllint path/to/sources
 ```
 
-Flags: `--list-rules`, `--select`/`--ignore` (by rule id or tier letter), `--element-version`.
+Flags: `--list-rules`, `--select`/`--ignore` (by rule id, rule group — the part of the id before
+`/` — or tier letter), `--element-version`.
 
 ## Rule tiers
 
 - **A. Structure and YAML** — `.xbsl`/`.yaml` pairing, schema validity, `Ид` as a UUID,
   `Ид` uniqueness, `Имя` matching the file name.
 - **B. Text and conventions** — typography (en dash, straight quotes),
-  encoding/BOM/newlines/trailing whitespace.
-- **C. Code structure** — balance of blocks and `;`, brackets, unused local and loop variables.
+  encoding/BOM/newlines/trailing whitespace, indentation and line length.
+- **C. Code structure** — balance of blocks and `;`, brackets, unused local and loop variables,
+  plus the platform's code style conventions (the `style/` group, see below).
 - **D. Semantics** — against platform data: type existence (in `новый`, `как` casts, annotations,
   method signatures), form handlers (a yaml handler exists as a method in the paired module), and
   top-level object properties against the configuration metamodel.
+
+## Code style conventions (the `style/` rules)
+
+Twenty-one rules that follow the platform documentation ("Code style conventions" and "Language
+idioms"): layout and expression wrapping, naming, type descriptions and signatures, collection
+literals, string interpolation, and checks of boolean values and `Неопределено`.
+
+Rules that clean code already satisfies are enabled by default (`warning`) — they guard against
+regressions. Rules that typically fire on accumulated legacy debt are `info` and disabled; enable
+them to measure the debt and pay it down:
+
+```sh
+xbsllint path/to/sources --select style     # all conventions, including the disabled ones
+xbsllint path/to/sources --ignore style     # none of them
+```
+
+`Запрос{ ... }` blocks (the query DSL) and string literals (HTML/CSS/SVG in web views) are
+excluded from these checks. Not covered, and left to the author and review: indentation being a
+multiple of four, collection idioms, `Строки.Соединить()` for bulk concatenation, the `?.` / `??`
+idioms, and `выбор` instead of an `иначе если` chain.
 
 ## MCP server
 

@@ -13,6 +13,7 @@ _DATA_DEPENDENT = {
     "test_lexer",
     "test_language",
     "test_rules",
+    "test_style_rules",
     "test_mcp",
     "test_dataset",
     "test_corpus",

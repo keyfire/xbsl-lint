@@ -39,13 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("paths", nargs="*", default=["."], help="файлы или каталоги для проверки")
     parser.add_argument(
         "--select",
-        metavar="ID/ТИР",
-        help="проверять только эти правила (через запятую: id или буква тира A/B/C/D)",
+        metavar="ID/ГРУППА/ТИР",
+        help="проверять только эти правила (через запятую: id, группа – часть id до '/' "
+             "(напр. style) – или буква тира A/B/C/D)",
     )
     parser.add_argument(
         "--ignore",
-        metavar="ID/ТИР",
-        help="исключить эти правила (через запятую: id или буква тира)",
+        metavar="ID/ГРУППА/ТИР",
+        help="исключить эти правила (через запятую: id, группа или буква тира)",
     )
     parser.add_argument(
         "--list-rules", action="store_true", help="вывести список правил и выйти"
