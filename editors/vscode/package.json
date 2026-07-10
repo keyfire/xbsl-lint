@@ -1,0 +1,156 @@
+{
+  "name": "xbsl",
+  "displayName": "XBSL (1C:Element)",
+  "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
+  "version": "0.1.0",
+  "publisher": "keyfire",
+  "license": "MIT",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "keywords": [
+    "1c",
+    "1c-element",
+    "xbsl",
+    "linter"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keyfire/xbsl-lint.git",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://github.com/keyfire/xbsl-lint/tree/main/editors/vscode",
+  "bugs": {
+    "url": "https://github.com/keyfire/xbsl-lint/issues"
+  },
+  "galleryBanner": {
+    "color": "#0b0b16",
+    "theme": "dark"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:xbsl"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "xbsl",
+        "aliases": [
+          "XBSL",
+          "xbsl"
+        ],
+        "extensions": [
+          ".xbsl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "xbsl",
+        "scopeName": "source.xbsl",
+        "path": "./syntaxes/xbsl.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "xbsl.lintProject",
+        "title": "XBSL: проверить весь проект",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.restartLinter",
+        "title": "XBSL: перезапустить линтер",
+        "category": "XBSL"
+      }
+    ],
+    "configuration": {
+      "title": "XBSL",
+      "properties": {
+        "xbsl.linter.run": {
+          "type": "string",
+          "enum": ["onType", "onSave", "off"],
+          "enumDescriptions": [
+            "Проверять по мере набора (с задержкой) и при сохранении",
+            "Проверять только при сохранении и открытии",
+            "Не проверять автоматически (только команда \"XBSL: проверить весь проект\")"
+          ],
+          "default": "onType",
+          "scope": "resource",
+          "description": "Когда запускать линтер xbsllint для .xbsl."
+        },
+        "xbsl.linter.command": {
+          "type": "string",
+          "default": "xbsllint",
+          "scope": "resource",
+          "description": "Исполняемый файл линтера (в PATH или абсолютный путь). Игнорируется, если задан xbsl.linter.pythonPath."
+        },
+        "xbsl.linter.pythonPath": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Путь к интерпретатору Python. Если задан, линтер вызывается как \"<python> -m xbsllint\" (пакет xbsllint должен быть установлен в этот интерпретатор)."
+        },
+        "xbsl.linter.dataDir": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Корень данных Элемента (каталог с index.json). Если пусто – линтер резолвит их сам (env XBSLLINT_DATA_DIR / внешний пакет данных / бандл)."
+        },
+        "xbsl.linter.lang": {
+          "type": "string",
+          "enum": ["", "ru", "en"],
+          "enumDescriptions": [
+            "Как определит линтер (env / локаль системы / ru)",
+            "Русский",
+            "Английский"
+          ],
+          "default": "",
+          "scope": "resource",
+          "description": "Язык текста замечаний."
+        },
+        "xbsl.linter.select": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Проверять только эти правила (через запятую: id, группа или буква тира A/B/C/D). Пусто – набор по умолчанию."
+        },
+        "xbsl.linter.ignore": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Исключить эти правила (через запятую: id, группа или буква тира)."
+        },
+        "xbsl.linter.debounce": {
+          "type": "number",
+          "default": 300,
+          "minimum": 0,
+          "scope": "resource",
+          "description": "Задержка в миллисекундах перед проверкой по мере набора (режим onType)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "check": "tsc --noEmit",
+    "package": "vsce package --no-dependencies -o xbsl-vscode.vsix",
+    "publish:vsce": "vsce publish --no-dependencies",
+    "publish:ovsx": "ovsx publish xbsl-vscode.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^3",
+    "esbuild": "^0.23",
+    "ovsx": "^0.9",
+    "typescript": "^5"
+  }
+}
