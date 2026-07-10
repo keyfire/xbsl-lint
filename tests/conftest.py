@@ -18,6 +18,7 @@ _DATA_DEPENDENT = {
     "test_lexer",
     "test_language",
     "test_rules",
+    "test_rule_environment",
     "test_style_rules",
     "test_mcp",
     "test_cli",
