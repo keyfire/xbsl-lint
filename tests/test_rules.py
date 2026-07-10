@@ -53,6 +53,74 @@ def test_else_if_same_line_balances():
     assert _lint("М.xbsl", content, select={"C"}) == []
 
 
+def test_ternary_compound_condition_flagged():
+    content = (
+        "метод Ф(А: Булево, Б: Строка): Строка\n"
+        '    возврат (А и Б это Строка ? Б как Строка : "")\n'
+        ";\n"
+    )
+    d = _lint("М.xbsl", content, select={"code/ternary-and-or"})
+    assert len(d) == 1 and "скобки" in d[0].message
+
+
+def test_ternary_compound_condition_or_flagged_without_parens():
+    content = (
+        "метод Ф(А: Булево, Б: Булево): Число\n"
+        "    возврат А или Б ? 1 : 0\n"
+        ";\n"
+    )
+    d = _lint("М.xbsl", content, select={"code/ternary-and-or"})
+    assert len(d) == 1 and "или" in d[0].message
+
+
+def test_ternary_parenthesized_condition_ok():
+    content = (
+        "метод Ф(А: Булево, Б: Строка): Строка\n"
+        '    возврат ((А и Б это Строка) ? Б как Строка : "")\n'
+        ";\n"
+    )
+    assert _lint("М.xbsl", content, select={"code/ternary-and-or"}) == []
+
+
+def test_ternary_simple_condition_ok():
+    content = (
+        "метод Ф(Б: Строка): Строка\n"
+        '    возврат (Б != "" ? Б : "нет")\n'
+        ";\n"
+    )
+    assert _lint("М.xbsl", content, select={"code/ternary-and-or"}) == []
+
+
+def test_ternary_and_in_other_arg_ok():
+    # 'и' в другом аргументе (до запятой) не относится к тернарному условию
+    content = (
+        "метод Ф(А: Булево, Б: Булево, В: Строка): Строка\n"
+        '    возврат Свести(А и Б, В != "" ? В : "нет")\n'
+        ";\n"
+    )
+    assert _lint("М.xbsl", content, select={"code/ternary-and-or"}) == []
+
+
+def test_ternary_and_after_question_ok():
+    # 'и' в ветке результата (после '?') – корректный код
+    content = (
+        "метод Ф(А: Булево, Б: Булево): Булево\n"
+        "    возврат (А ? А и Б : Ложь)\n"
+        ";\n"
+    )
+    assert _lint("М.xbsl", content, select={"code/ternary-and-or"}) == []
+
+
+def test_nullable_type_annotations_not_ternary():
+    content = (
+        "метод Ф(П: Строка?, Д: Число?): Строка?\n"
+        "    пер Х: Строка? = Неопределено\n"
+        "    возврат Х\n"
+        ";\n"
+    )
+    assert _lint("М.xbsl", content, select={"code/ternary-and-or"}) == []
+
+
 def test_capitalized_keyword_used_as_identifier_balances():
     # 'Выбор' как имя переменной не должно считаться блоком выбор/case
     content = "метод Ф(): Число\n    знч Выбор = 1\n    возврат Выбор\n;\n"
