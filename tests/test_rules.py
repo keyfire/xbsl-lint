@@ -379,6 +379,87 @@ def test_cast_then_call_chain_not_merged(tmp_path):
     assert not _has(d, "code/unknown-object-type")
 
 
+# --- Тир D (типы в yaml) --------------------------------------------------------------
+
+def _товары_yaml(tmp_path, form_yaml):
+    (tmp_path / "Товары.yaml").write_text(_ТОВАРЫ_YAML, encoding="utf-8")
+    (tmp_path / "Товары.xbsl").write_text("структура Сводка\n    пер Всего: Число\n;\n", encoding="utf-8")
+    (tmp_path / "Ф.yaml").write_text(form_yaml, encoding="utf-8")
+    return engine.run(discover([str(tmp_path)]), select={"yaml/unknown-type"})
+
+
+def test_yaml_type_known_not_flagged(tmp_path):
+    d = _товары_yaml(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nНаследует:\n    Тип: ФормаОбъекта<Товары.Объект>\n"
+        "Содержимое:\n    -\n        Тип: ПолеВвода<Товары.Ссылка?>\n    -\n        Тип: Группа\n",
+    )
+    assert not _has(d, "yaml/unknown-type")
+
+
+def test_yaml_type_unknown_root_flagged(tmp_path):
+    d = _товары_yaml(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n    -\n        Тип: Групппа\n",
+    )
+    assert any(x.rule_id == "yaml/unknown-type" and "Групппа" in x.message for x in d)
+
+
+def test_yaml_type_member_typo_flagged(tmp_path):
+    d = _товары_yaml(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n    -\n        Тип: ПолеВвода<Товары.Сылка?>\n",
+    )
+    assert any("Товары.Сылка" in x.message for x in d)
+    line = next(x for x in d if "Товары.Сылка" in x.message)
+    assert line.line == 5  # позиция строки со значением
+
+
+def test_yaml_type_union_and_nullable(tmp_path):
+    d = _товары_yaml(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n    -\n        Тип: ПолеВвода<Булево|Число|Строка|ДатаВремя|?>\n",
+    )
+    assert not _has(d, "yaml/unknown-type")
+
+
+def test_yaml_type_attribute_and_tc(tmp_path):
+    # реквизит с опечаткой в типе флагается, табличная часть и структура модуля - нет
+    yaml_text = (
+        "ВидЭлемента: Справочник\nИмя: Склады\nРеквизиты:\n"
+        "    -\n        Имя: Основной\n        Тип: Товары.Ссылка?\n"
+        "    -\n        Имя: Сломанный\n        Тип: Товары.Сылка?\n"
+        "    -\n        Имя: Сострукт\n        Тип: Массив<Товары.Сводка>\n"
+    )
+    d = _товары_yaml(tmp_path, yaml_text)
+    msgs = [x for x in d if x.rule_id == "yaml/unknown-type"]
+    assert len(msgs) == 1 and "Товары.Сылка" in msgs[0].message
+
+
+def test_yaml_type_automatic_list_form(tmp_path):
+    d = _товары_yaml(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n    -\n"
+        "        Тип: СтандартнаяКолонкаТаблицы<СтрокаДинамическогоСписка<Товары.АвтоматическаяФормаСписка.ДанныеСтрокиСписка>>\n",
+    )
+    assert not _has(d, "yaml/unknown-type")
+
+
+def test_yaml_type_block_scalar_not_scanned(tmp_path):
+    # строка 'Тип: Ерунда' внутри литерального блока - текст, а не тип
+    d = _товары_yaml(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nОписание: |\n    Тип: Ерунда\n",
+    )
+    assert not _has(d, "yaml/unknown-type")
+
+
+def test_yaml_type_non_element_file_skipped(tmp_path):
+    (tmp_path / "конфиг.yaml").write_text("Тип: Ерунда\n", encoding="utf-8")
+    d = engine.run(discover([str(tmp_path)]), select={"yaml/unknown-type"})
+    assert not _has(d, "yaml/unknown-type")
+
+
 # --- Тир D (обработчики форм) --------------------------------------------------------
 
 def test_handler_missing_flagged(tmp_path):

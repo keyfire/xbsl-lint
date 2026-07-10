@@ -24,4 +24,4 @@ from . import (  # noqa: F401
 )
 
 # Tier D – semantics over stdlib, forms and the metamodel:
-from . import handlers, semantics, yaml_properties  # noqa: F401
+from . import handlers, semantics, yaml_properties, yaml_types  # noqa: F401

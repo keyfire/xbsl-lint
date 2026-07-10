@@ -125,6 +125,7 @@ _MEMBER_TYPE_TAILS = frozenset({
     "ДанныеРасчетаРазрешений",
     "ПараметрыЗаписи", "ПараметрыУдаления", "ПараметрыЗаполнения",
     "Параметры",
+    "АвтоматическаяФормаСписка", "АвтоматическаяФормаОбъекта", "АвтоматическаяФормаЗаписи",
 })
 
 # Object kinds whose generated type family is described by _MEMBER_TYPE_TAILS plus the
