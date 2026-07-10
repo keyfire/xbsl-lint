@@ -35,6 +35,7 @@ from . import (  # noqa: F401
     reserved_names,
     semantics,
     size_stretch,
+    yaml_imports,
     yaml_properties,
     yaml_types,
 )
