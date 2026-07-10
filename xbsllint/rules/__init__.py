@@ -1,20 +1,20 @@
-"""Пакет правил линтера.
+"""The linter's rule package.
 
-Каждый модуль правил при импорте регистрирует свои проверки через декораторы
-xbsllint.engine.register_file_rule / register_project_rule. Здесь перечисляются
-модули, которые нужно импортировать (и тем самым активировать).
+On import, each rule module registers its checks via the
+xbsllint.engine.register_file_rule / register_project_rule decorators. Listed here are the
+modules that need to be imported (and thereby activated).
 """
 
-# Тир A – структура и YAML:
+# Tier A – structure and YAML:
 from . import structure, yaml_schema  # noqa: F401
 
-# Тир B – текст и конвенции:
+# Tier B – text and conventions:
 from . import typography, whitespace  # noqa: F401
 
-# Тир C – структура кода и локальные переменные:
+# Tier C – code structure and local variables:
 from . import code_structure, locals_usage  # noqa: F401
 
-# Тиры B/C – соглашения по написанию кода платформы:
+# Tiers B/C – platform code-writing conventions:
 from . import (  # noqa: F401
     style_conditions,
     style_layout,
@@ -23,5 +23,5 @@ from . import (  # noqa: F401
     style_types,
 )
 
-# Тир D – семантика по stdlib, формам и метамодели:
+# Tier D – semantics over stdlib, forms and the metamodel:
 from . import handlers, semantics, yaml_properties  # noqa: F401

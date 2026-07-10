@@ -1,14 +1,14 @@
-"""Тир D: свойства верхнего уровня yaml-объекта по метамодели Элемента.
+"""Tier D: the top-level properties of a yaml object against the Element metamodel.
 
-Метамодель конфигурации (xbsllint/data/.../metamodel.json, генерит tools/extract_metamodel.py)
-описывает для каждого класса допустимые свойства (@PropertyInfo из .xcore) и наследование.
-Правило проверяет ключи ВЕРХНЕГО уровня yaml-объекта: если ключ не входит в множество свойств
-корневого класса (с учётом наследования) плюс универсальные ключи оболочки (common) – это
-недопустимое свойство (опечатка/перенос из другого вида).
+The configuration metamodel (xbsllint/data/.../metamodel.json, produced by
+tools/extract_metamodel.py) describes, for every class, the allowed properties (@PropertyInfo
+from .xcore) and the inheritance. The rule checks the TOP-LEVEL keys of a yaml object: a key that
+is not in the set of properties of the root class (following inheritance) plus the universal
+wrapper keys (common) is an invalid property (a typo or a copy-over from another vid).
 
-Только выверенные виды: если `ВидЭлемента` нет в vid2class метамодели, объект не проверяется –
-это исключает ложные на непроверенных видах. Проверяется лишь верхний уровень (не вложенные
-компоненты) – их валидация требует резолвинга типа узла по дискриминаторам (отдельный этап).
+Only vetted vids: if `ВидЭлемента` is not in the metamodel vid2class, the object is not checked –
+this rules out false positives on the unvetted vids. Only the top level is checked (not the nested
+components) – validating those needs resolving the node type by discriminators (a separate stage).
 """
 
 from __future__ import annotations
@@ -17,13 +17,25 @@ import re
 from collections.abc import Iterable
 from functools import lru_cache
 
-from xbsllint import dataset
+from xbsllint import dataset, i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import linemap
 from xbsllint.rules.yaml_schema import _HAVE_YAML, _is_object, _parsed
 
-# Ключ верхнего уровня yaml: имя в начале строки (без отступа) до двоеточия.
+MESSAGES = {
+    "yaml/unknown-property.title": {
+        "ru": "Неизвестное свойство объекта",
+        "en": "Unknown object property",
+    },
+    "yaml/unknown-property.unknown": {
+        "ru": "Свойство '{prop}' недопустимо для вида '{vid}'.",
+        "en": "Property '{prop}' is not allowed for vid '{vid}'.",
+    },
+}
+i18n.register(MESSAGES)
+
+# A top-level yaml key: a name at the start of the line (no indent) up to the colon.
 _TOPKEY_RE = re.compile(r"(?m)^([^\s#:][^:\n]*):")
 
 
@@ -37,7 +49,7 @@ def _metamodel():
 
 @lru_cache(maxsize=None)
 def _allowed_for_class(name: str) -> frozenset[str]:
-    """Свойства класса с учётом наследования (транзитивно по ext)."""
+    """The properties of a class following inheritance (transitively over ext)."""
     mm = _metamodel()
     if not mm:
         return frozenset()
@@ -58,30 +70,30 @@ def _allowed_for_class(name: str) -> frozenset[str]:
     return frozenset(out)
 
 
-@rule("yaml/unknown-property", "Неизвестное свойство объекта", "D", severity=Severity.WARNING)
+@rule("yaml/unknown-property", "yaml/unknown-property.title", "D", severity=Severity.WARNING)
 def unknown_property(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "yaml" or not _HAVE_YAML:
         return []
     mm = _metamodel()
     if not mm:
-        return []  # метамодель не сгенерирована – проверку не выполняем
+        return []  # the metamodel is not generated – skip the check
     data, err = _parsed(source)
     if err is not None or not _is_object(data):
         return []
     vid = data.get("ВидЭлемента")
     cls = mm["vid2class"].get(vid)
     if not cls:
-        return []  # вид не выверен – не проверяем
+        return []  # the vid is not vetted – skip it
     allowed = set(_allowed_for_class(cls)) | set(mm["common"])
 
     diags: list[Diagnostic] = []
     lm = linemap(source)
     for m in _TOPKEY_RE.finditer(source.text):
         key = m.group(1).strip()
-        if key in data and key not in allowed:  # только реальные ключи верхнего уровня
+        if key in data and key not in allowed:  # only the real top-level keys
             line, col = lm.linecol(m.start(1))
             diags.append(Diagnostic(
                 source.rel, line, col, "yaml/unknown-property", Severity.WARNING,
-                f"Свойство '{key}' недопустимо для вида '{vid}'.",
+                i18n.t("yaml/unknown-property.unknown", prop=key, vid=vid),
             ))
     return diags

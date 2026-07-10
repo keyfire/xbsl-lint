@@ -1,4 +1,4 @@
-"""Модель диагностик линтера."""
+"""The linter's diagnostic model."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ class Severity(enum.Enum):
 
 @dataclass(frozen=True)
 class Diagnostic:
-    """Одно замечание линтера, привязанное к позиции в файле.
+    """A single linter diagnostic, anchored to a position in a file.
 
-    Строка и колонка – 1-индексированные (как в редакторах и в выводе компиляторов).
+    Line and column are 1-based (as in editors and compiler output).
     """
 
     path: str
@@ -27,9 +27,9 @@ class Diagnostic:
     message: str
 
     def format(self) -> str:
-        # Формат, дружелюбный к переходу по клику: path:line:col
+        # A click-to-jump friendly format: path:line:col
         return f"{self.path}:{self.line}:{self.col}: {self.severity.value}: [{self.rule_id}] {self.message}"
 
-    # Сортировка замечаний по месту возникновения
+    # Sort diagnostics by where they occur
     def sort_key(self) -> tuple:
         return (self.path, self.line, self.col, self.rule_id)

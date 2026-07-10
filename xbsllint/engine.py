@@ -1,11 +1,10 @@
-"""Ядро линтера: загрузка исходников, реестр правил и их запуск.
+"""The linter core: source loading, the rule registry and the run.
 
-Правила регистрируются декоратором @rule(...) с метаданными (id, тир, severity, scope).
-Область (scope):
-- 'file'    – пофайловое правило: (SourceFile) -> Iterable[Diagnostic];
-- 'project' – кросс-файловое (напр. уникальность Ид): (list[SourceFile]) -> Iterable[Diagnostic].
+Rules register themselves with the @rule(...) decorator (id, tier, severity, scope). Scope:
+- 'file'    – per-file rule: (SourceFile) -> Iterable[Diagnostic];
+- 'project' – cross-file rule (e.g. Ид uniqueness): (list[SourceFile]) -> Iterable[Diagnostic].
 
-Тиры: 'A' структура/YAML, 'B' текст/конвенции, 'C' парсер/структура кода, 'D' семантика.
+Tiers: 'A' structure/YAML, 'B' text/conventions, 'C' parser/code structure, 'D' semantics.
 """
 
 from __future__ import annotations
@@ -14,6 +13,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from xbsllint import i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 
 UTF8_BOM = b"\xef\xbb\xbf"
@@ -26,9 +26,9 @@ class SourceFile:
     data: bytes
     text: str
     had_bom: bool
-    newline: str  # '\n', '\r\n', '\r', 'mixed' или '' если переводов строк нет
+    newline: str  # '\n', '\r\n', '\r', 'mixed', or '' when there are no line breaks
     decode_error: str | None = None
-    # Кэш тяжёлых представлений (токены, AST, YAML) – заполняется по требованию
+    # Cache of the expensive representations (tokens, AST, YAML) – filled on demand
     cache: dict = field(default_factory=dict)
 
     @property
@@ -49,7 +49,7 @@ def _detect_newline(data: bytes) -> str:
 
 
 def make_source(path: Path, data: bytes) -> SourceFile:
-    """Собрать SourceFile из пути и байтов (общий код для диска и памяти)."""
+    """Build a SourceFile from a path and bytes (shared by the disk and memory paths)."""
     kind = "xbsl" if path.suffix == ".xbsl" else "yaml"
     had_bom = data.startswith(UTF8_BOM)
     decode_error: str | None = None
@@ -74,11 +74,11 @@ def load(path: Path) -> SourceFile:
 
 
 def load_text(name: str, content: str) -> SourceFile:
-    """Собрать SourceFile из содержимого в памяти (для MCP lint_source)."""
+    """Build a SourceFile from in-memory content (for the MCP lint_source tool)."""
     return make_source(Path(name), content.encode("utf-8"))
 
 
-# --- Реестр правил -------------------------------------------------------------------
+# --- Rule registry -------------------------------------------------------------------
 
 FileRuleFn = Callable[[SourceFile], Iterable[Diagnostic]]
 ProjectRuleFn = Callable[[list[SourceFile]], Iterable[Diagnostic]]
@@ -87,12 +87,17 @@ ProjectRuleFn = Callable[[list[SourceFile]], Iterable[Diagnostic]]
 @dataclass(frozen=True)
 class RuleInfo:
     id: str
-    title: str
+    title_key: str
     tier: str  # 'A' | 'B' | 'C' | 'D'
     scope: str  # 'file' | 'project'
     severity: Severity
     func: Callable
     enabled_by_default: bool = True
+
+    @property
+    def title(self) -> str:
+        """Translated at read time: the output language may be set after registration."""
+        return i18n.t(self.title_key)
 
     def as_dict(self) -> dict:
         return {
@@ -117,7 +122,11 @@ def rule(
     severity: Severity = Severity.WARNING,
     enabled_by_default: bool = True,
 ) -> Callable[[Callable], Callable]:
-    """Декоратор регистрации правила с метаданными."""
+    """Register a rule with its metadata.
+
+    `title` is a catalog key (`<rule id>.title`); a literal string still works and is used
+    verbatim, which keeps plugins written against 0.3 running.
+    """
 
     def deco(fn: Callable) -> Callable:
         RULES.append(RuleInfo(rule_id, title, tier, scope, severity, fn, enabled_by_default))
@@ -127,8 +136,8 @@ def rule(
 
 
 def _is_selected(info: RuleInfo, select: set[str] | None, ignore: set[str] | None) -> bool:
-    # select/ignore сопоставляются по id правила, по группе (часть id до '/')
-    # или по букве тира ('A'..'D')
+    # select/ignore match a rule id, a rule group (the part of the id before '/')
+    # or a tier letter ('A'..'D')
     group = info.id.split("/", 1)[0]
 
     def matches(keys: set[str]) -> bool:
@@ -137,7 +146,7 @@ def _is_selected(info: RuleInfo, select: set[str] | None, ignore: set[str] | Non
     if ignore and matches(ignore):
         return False
     if select:
-        # Явный выбор включает правило, даже если оно выключено по умолчанию
+        # An explicit selection enables a rule even when it is off by default
         return matches(select)
     return info.enabled_by_default
 
@@ -176,9 +185,9 @@ def run(
     return run_sources(sources, select=select, ignore=ignore)
 
 
-# Импорт пакета правил регистрирует их (декораторы выполняются при импорте модулей).
+# Importing the rules package registers them (the decorators run on module import).
 from xbsllint import rules as _rules  # noqa: E402,F401
 from xbsllint import plugins as _plugins  # noqa: E402
 
-# Правила внешних пакетов – после встроенных, чтобы порядок реестра был предсказуем.
+# Rules of external packages come after the built-in ones, to keep the registry order stable.
 _plugins.load_rules()

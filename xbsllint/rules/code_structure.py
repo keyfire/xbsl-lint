@@ -1,20 +1,66 @@
-"""Тир C: структурный баланс кода по токенам (без полного AST).
+"""Tier C: structural balance of code by tokens (without a full AST).
 
-Модель выверена на реальном корпусе (openers == ';' во всех модулях):
-- открыватель блока – ключевое слово в НИЖНЕМ регистре из набора OPENERS; заглавные формы
-  (Метод, Исключение, Выбор) – это PascalCase-идентификаторы, а не ключевые слова;
-- `иначе если` на одной строке – else-if (продолжение того же if, не новый блок);
-  вложенный `если` в ветке `иначе` (на другой строке) – новый блок;
-- `;` закрывает текущий блок; скобки () [] {} балансируются отдельным стеком.
+The model is calibrated on a real corpus (openers == ';' in every module):
+- a block opener is a lowercase keyword from OPENERS; the capitalized forms
+  (Метод, Исключение, Выбор) are PascalCase identifiers, not keywords;
+- `иначе если` on one line is an else-if (a continuation of the same if, not a new block);
+  a nested `если` in an `иначе` branch (on another line) is a new block;
+- `;` closes the current block; brackets () [] {} are balanced by a separate stack.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 
+from xbsllint import i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import tokens
+
+MESSAGES = {
+    # Braces are doubled: every template goes through str.format (see xbsllint/i18n.py).
+    "code/brackets.title": {
+        "ru": "Дисбаланс скобок () [] {{}}",
+        "en": "Unbalanced brackets () [] {{}}",
+    },
+    "code/brackets.mismatched": {
+        "ru": "Непарная скобка: ожидалась '{exp}', встречена '{found}'.",
+        "en": "Mismatched bracket: expected '{exp}', found '{found}'.",
+    },
+    "code/brackets.unmatched-close": {
+        "ru": "Непарная закрывающая скобка '{ch}'.",
+        "en": "Unmatched closing bracket '{ch}'.",
+    },
+    "code/brackets.unclosed": {
+        "ru": "Не закрыта скобка '{ch}'.",
+        "en": "Unclosed bracket '{ch}'.",
+    },
+    "code/blocks.title": {
+        "ru": "Дисбаланс блоков и ';'",
+        "en": "Unbalanced blocks and ';'",
+    },
+    "code/blocks.extra": {
+        "ru": "Лишний ';' – нет открытого блока для закрытия.",
+        "en": "Extra ';' – no open block to close.",
+    },
+    "code/blocks.unclosed": {
+        "ru": "Не закрыт блок '{word}' – ожидается ';'.",
+        "en": "Unclosed block '{word}' – ';' expected.",
+    },
+    "code/ternary-and-or.title": {
+        "ru": "Составное условие тернарного оператора без скобок",
+        "en": "Compound ternary condition without parentheses",
+    },
+    "code/ternary-and-or.compound": {
+        "ru": "Условие тернарного оператора с '{word}' без скобок: "
+              "'А {word} Б ? X : Y' парсится как 'А {word} (Б ? X : Y)'. "
+              "Взять условие в скобки: '((А {word} Б) ? X : Y)'.",
+        "en": "Ternary operator condition with '{word}' without parentheses: "
+              "'A {word} B ? X : Y' parses as 'A {word} (B ? X : Y)'. "
+              "Wrap the condition in parentheses: '((A {word} B) ? X : Y)'.",
+    },
+}
+i18n.register(MESSAGES)
 
 _OPENERS = {
     "METHOD", "STRUCTURE", "ENUMERATION", "EXCEPTION", "CONSTRUCTOR",
@@ -63,7 +109,7 @@ def _compute(source: SourceFile) -> list[Diagnostic]:
                 else:
                     diags.append(Diagnostic(
                         source.rel, t.line, t.col, "code/blocks", Severity.ERROR,
-                        "Лишний ';' – нет открытого блока для закрытия.",
+                        i18n.t("code/blocks.extra"),
                     ))
             elif v in _OPEN_CH:
                 brackets.append((v, t.line, t.col))
@@ -74,13 +120,13 @@ def _compute(source: SourceFile) -> list[Diagnostic]:
                     exp = {"(": ")", "[": "]", "{": "}"}[brackets[-1][0]]
                     diags.append(Diagnostic(
                         source.rel, t.line, t.col, "code/brackets", Severity.ERROR,
-                        f"Непарная скобка: ожидалась '{exp}', встречена '{v}'.",
+                        i18n.t("code/brackets.mismatched", exp=exp, found=v),
                     ))
                     brackets.pop()
                 else:
                     diags.append(Diagnostic(
                         source.rel, t.line, t.col, "code/brackets", Severity.ERROR,
-                        f"Непарная закрывающая скобка '{v}'.",
+                        i18n.t("code/brackets.unmatched-close", ch=v),
                     ))
 
         prev_sig = (t.kind, t.canonical if t.kind == "KEYWORD" else t.value, t.line)
@@ -88,26 +134,26 @@ def _compute(source: SourceFile) -> list[Diagnostic]:
     for ch, line, col in brackets:
         diags.append(Diagnostic(
             source.rel, line, col, "code/brackets", Severity.ERROR,
-            f"Не закрыта скобка '{ch}'.",
+            i18n.t("code/brackets.unclosed", ch=ch),
         ))
     for canon, line, col in blocks:
         diags.append(Diagnostic(
             source.rel, line, col, "code/blocks", Severity.ERROR,
-            f"Не закрыт блок '{_BLOCK_WORD.get(canon, canon)}' – ожидается ';'.",
+            i18n.t("code/blocks.unclosed", word=_BLOCK_WORD.get(canon, canon)),
         ))
 
     source.cache["struct_diags"] = diags
     return diags
 
 
-@rule("code/brackets", "Дисбаланс скобок () [] {}", "C", severity=Severity.ERROR)
+@rule("code/brackets", "code/brackets.title", "C", severity=Severity.ERROR)
 def brackets_balance(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return []
     return [d for d in _compute(source) if d.rule_id == "code/brackets"]
 
 
-@rule("code/blocks", "Дисбаланс блоков и ';'", "C", severity=Severity.ERROR)
+@rule("code/blocks", "code/blocks.title", "C", severity=Severity.ERROR)
 def blocks_balance(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return []
@@ -115,24 +161,24 @@ def blocks_balance(source: SourceFile) -> Iterable[Diagnostic]:
 
 
 def _new_frame(line: int | None) -> dict:
-    # and_or – позиция последнего 'и'/'или' на этом уровне глубины (до '?'),
-    # pending – позиция '?', встреченного после and_or (ждём ':' для подтверждения тернарного)
+    # and_or – position of the last 'и'/'или' at this depth level (before '?'),
+    # pending – position of the '?' seen after and_or (waiting for ':' to confirm a ternary)
     return {"and_or": None, "pending": None, "line": line}
 
 
 @rule(
     "code/ternary-and-or",
-    "Составное условие тернарного оператора без скобок",
+    "code/ternary-and-or.title",
     "C",
     severity=Severity.ERROR,
 )
 def ternary_compound_condition(source: SourceFile) -> Iterable[Diagnostic]:
-    """Тернарный '?:' связывает сильнее 'и'/'или': 'А и Б ? X : Y' == 'А и (Б ? X : Y)'.
+    """The ternary '?:' binds tighter than 'и'/'или': 'A и B ? X : Y' == 'A и (B ? X : Y)'.
 
-    Компилятор Элемента падает с "Incompatible types of logical operator operands" /
-    "Булево cannot be assigned to ...". Ловим по токенам: на одном уровне скобочной
-    глубины встречаются 'и'/'или', затем '?', затем ':' – условие не взято в скобки.
-    Правильно: '((А и Б) ? X : Y)' – там 'и' лежит глубже и последовательность не совпадает.
+    The Element compiler fails with "Incompatible types of logical operator operands" /
+    "Булево cannot be assigned to ...". We catch it by tokens: at the same bracket depth
+    level 'и'/'или' appear, then '?', then ':' – the condition is not parenthesized.
+    Correct: '((A и B) ? X : Y)' – there 'и' sits deeper and the sequence does not match.
     """
     if source.kind != "xbsl":
         return []
@@ -145,7 +191,7 @@ def ternary_compound_condition(source: SourceFile) -> Iterable[Diagnostic]:
         if t.kind == "EOF":
             break
         top = frames[-1]
-        # Вне скобок выражение живёт в одной строке – новая строка сбрасывает состояние.
+        # Outside brackets an expression lives on one line – a new line resets the state.
         if len(frames) == 1 and top["line"] != t.line:
             frames[0] = top = _new_frame(t.line)
 
@@ -168,9 +214,7 @@ def ternary_compound_condition(source: SourceFile) -> Iterable[Diagnostic]:
                     _, _, word = top["and_or"]
                     diags.append(Diagnostic(
                         source.rel, line, col, "code/ternary-and-or", Severity.ERROR,
-                        f"Условие тернарного оператора с '{word}' без скобок: "
-                        f"'А {word} Б ? X : Y' парсится как 'А {word} (Б ? X : Y)'. "
-                        f"Взять условие в скобки: '((А {word} Б) ? X : Y)'.",
+                        i18n.t("code/ternary-and-or.compound", word=word),
                     ))
                 frames[-1] = _new_frame(top["line"])
             elif v in (",", ";", "="):

@@ -1,12 +1,12 @@
-"""Оформление кода (CODE_STYLE, разделы 1 и 6).
+"""Code layout (CODE_STYLE, sections 1 and 6).
 
-- 1.1 отступ – 4 пробела, табуляция запрещена;
-- 1.2 максимальная длина строки – 120 символов (кроме строковых литералов);
-- 1.3 составные инструкции закрываются `;` на отдельной строке;
-- 6.1 операции переносятся в начало строки (исключение – `+` при конкатенации);
-- 6.2 запятые при переносе параметров остаются в конце строк.
+- 1.1 the indent is 4 spaces, tabs are forbidden;
+- 1.2 the maximum line length is 120 characters (string literals aside);
+- 1.3 compound statements are closed by `;` on its own line;
+- 6.1 operators move to the start of a line (except `+` in a concatenation);
+- 6.2 commas stay at the end of the lines when parameters are wrapped.
 
-Блоки `Запрос{ ... }` – отдельный DSL, кодовые правила их не касаются.
+`Запрос{ ... }` blocks are a separate DSL, the code rules do not touch them.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from xbsllint import i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.rules._syntax import (
@@ -25,19 +26,67 @@ from xbsllint.rules._syntax import (
     spans_of,
 )
 
+MESSAGES = {
+    "style/tab-indent.title": {
+        "ru": "Табуляция в отступе",
+        "en": "Tab in the indentation",
+    },
+    "style/tab-indent.found": {
+        "ru": "Табуляция в отступе – отступ задаётся четырьмя пробелами.",
+        "en": "Tab in the indentation – the indent is four spaces.",
+    },
+    "style/line-length.title": {
+        "ru": "Строка длиннее 120 символов",
+        "en": "Line longer than 120 characters",
+    },
+    "style/line-length.over": {
+        "ru": "Длина строки {length} > {limit} символов – перенести выражение.",
+        "en": "Line length {length} > {limit} characters – wrap the expression.",
+    },
+    "style/semicolon-line.title": {
+        "ru": "';' не на отдельной строке",
+        "en": "';' not on its own line",
+    },
+    "style/semicolon-line.own-line": {
+        "ru": "';' закрывает составную инструкцию и пишется на отдельной строке "
+              "с отступом самой инструкции.",
+        "en": "';' closes a compound statement and goes on its own line, "
+              "indented like the statement itself.",
+    },
+    "style/wrap-operator.title": {
+        "ru": "Операция в конце перенесённой строки",
+        "en": "Operator at the end of a wrapped line",
+    },
+    "style/wrap-operator.trailing": {
+        "ru": "Операция '{op}' в конце перенесённой строки – "
+              "переносить операцию в начало следующей строки.",
+        "en": "Operator '{op}' at the end of a wrapped line – "
+              "move the operator to the start of the next line.",
+    },
+    "style/wrap-comma.title": {
+        "ru": "Запятая в начале перенесённой строки",
+        "en": "Comma at the start of a wrapped line",
+    },
+    "style/wrap-comma.leading": {
+        "ru": "Запятая в начале перенесённой строки – запятые остаются в конце строк.",
+        "en": "Comma at the start of a wrapped line – commas stay at the end of the lines.",
+    },
+}
+i18n.register(MESSAGES)
+
 MAX_LINE = 120
 
 _INDENT_RE = re.compile(r"^[ \t]*")
 
-# Операции, которые при переносе выражения должны стоять в начале новой строки.
-# `+` исключён: документация прямо разрешает конец строки при конкатенации строк.
+# Operators that must sit at the start of a new line when an expression is wrapped.
+# `+` is excluded: the docs explicitly allow it at the end of a line for string concatenation.
 _WRAP_OPS = frozenset({"==", "!=", "<=", ">=", "*", "/", "%", "??", "**"})
 _WRAP_KEYWORDS = frozenset({"AND", "OR", "NOT"})
 
 
-@rule("style/tab-indent", "Табуляция в отступе", "B", severity=Severity.WARNING)
+@rule("style/tab-indent", "style/tab-indent.title", "B", severity=Severity.WARNING)
 def tab_indent(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.1: отступ – 4 пробела, табуляция запрещена."""
+    """1.1: the indent is 4 spaces, tabs are forbidden."""
     if source.kind != "xbsl":
         return
     strings = spans_of(source, ("STRING",))
@@ -47,24 +96,24 @@ def tab_indent(source: SourceFile) -> Iterable[Diagnostic]:
         if pos < 0:
             continue
         start, _ = line_span(source, num)
-        if inside(strings, start):  # строка внутри многострочного литерала
+        if inside(strings, start):  # a line inside a multi-line literal
             continue
         yield Diagnostic(
             source.rel, num, pos + 1, "style/tab-indent", Severity.WARNING,
-            "Табуляция в отступе – отступ задаётся четырьмя пробелами.",
+            i18n.t("style/tab-indent.found"),
         )
 
 
 @rule(
-    "style/line-length", "Строка длиннее 120 символов", "B",
+    "style/line-length", "style/line-length.title", "B",
     severity=Severity.INFO, enabled_by_default=False,
 )
 def line_length(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.2: максимальная длина строки – 120 символов.
+    """1.2: the maximum line length is 120 characters.
 
-    Строковые литералы исключены: документация разрешает длинные строки, когда разбиение
-    снижает читаемость, а в проекте это HTML/CSS/SVG во вставках. Признак – символ на
-    121-й позиции лежит внутри строкового литерала.
+    String literals are excluded: the docs allow long lines when splitting them hurts
+    readability, and in this project that is HTML/CSS/SVG in inserts. The marker – the
+    character at position 121 lies inside a string literal.
     """
     if source.kind != "xbsl":
         return
@@ -78,13 +127,13 @@ def line_length(source: SourceFile) -> Iterable[Diagnostic]:
             continue
         yield Diagnostic(
             source.rel, num, MAX_LINE + 1, "style/line-length", Severity.INFO,
-            f"Длина строки {len(text)} > {MAX_LINE} символов – перенести выражение.",
+            i18n.t("style/line-length.over", length=len(text), limit=MAX_LINE),
         )
 
 
-@rule("style/semicolon-line", "';' не на отдельной строке", "C", severity=Severity.WARNING)
+@rule("style/semicolon-line", "style/semicolon-line.title", "C", severity=Severity.WARNING)
 def semicolon_own_line(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.3: `;` закрывает составную инструкцию и пишется на отдельной строке."""
+    """1.3: `;` closes a compound statement and is written on its own line."""
     if source.kind != "xbsl":
         return
     for tok in code_tokens(source):
@@ -94,33 +143,31 @@ def semicolon_own_line(source: SourceFile) -> Iterable[Diagnostic]:
         if before.strip():
             yield Diagnostic(
                 source.rel, tok.line, tok.col, "style/semicolon-line", Severity.WARNING,
-                "';' закрывает составную инструкцию и пишется на отдельной строке "
-                "с отступом самой инструкции.",
+                i18n.t("style/semicolon-line.own-line"),
             )
 
 
-@rule("style/wrap-operator", "Операция в конце перенесённой строки", "C", severity=Severity.WARNING)
+@rule("style/wrap-operator", "style/wrap-operator.title", "C", severity=Severity.WARNING)
 def wrap_operator(source: SourceFile) -> Iterable[Diagnostic]:
-    """6.1: при переносе выражения операция пишется в начале новой строки (кроме `+`)."""
+    """6.1: when an expression is wrapped the operator goes at the start of a new line (except `+`)."""
     if source.kind != "xbsl":
         return
     toks = code_tokens(source)
     for i, tok in enumerate(toks[:-1]):
         if toks[i + 1].line == tok.end_line:
-            continue  # не последний токен строки
+            continue  # not the last token on the line
         is_op = tok.kind == "OP" and tok.value in _WRAP_OPS
         is_kw = tok.kind == "KEYWORD" and tok.canonical in _WRAP_KEYWORDS
         if is_op or is_kw:
             yield Diagnostic(
                 source.rel, tok.line, tok.col, "style/wrap-operator", Severity.WARNING,
-                f"Операция '{tok.value}' в конце перенесённой строки – "
-                "переносить операцию в начало следующей строки.",
+                i18n.t("style/wrap-operator.trailing", op=tok.value),
             )
 
 
-@rule("style/wrap-comma", "Запятая в начале перенесённой строки", "C", severity=Severity.WARNING)
+@rule("style/wrap-comma", "style/wrap-comma.title", "C", severity=Severity.WARNING)
 def wrap_comma(source: SourceFile) -> Iterable[Diagnostic]:
-    """6.2: при переносе списка параметров запятые остаются в конце строк."""
+    """6.2: when a parameter list is wrapped, commas stay at the end of the lines."""
     if source.kind != "xbsl":
         return
     toks = code_tokens(source)
@@ -128,8 +175,8 @@ def wrap_comma(source: SourceFile) -> Iterable[Diagnostic]:
         if not (tok.kind == "OP" and tok.value == ","):
             continue
         if i > 0 and toks[i - 1].end_line == tok.line:
-            continue  # запятая продолжает строку – всё верно
+            continue  # the comma continues the line – all good
         yield Diagnostic(
             source.rel, tok.line, tok.col, "style/wrap-comma", Severity.WARNING,
-            "Запятая в начале перенесённой строки – запятые остаются в конце строк.",
+            i18n.t("style/wrap-comma.leading"),
         )

@@ -1,24 +1,63 @@
-"""Тир B: типографика в комментариях и строковых литералах XBSL.
+"""Tier B: typography in XBSL comments and string literals.
 
-Правила типографики:
-- тире: среднее – (U+2013), НЕ длинное — (U+2014);  область: проза/комментарии;
-- многоточие: три точки ..., НЕ символ … (U+2026);  область: проза/комментарии;
-- кавычки: прямые "  (шире всего – и в коде, и в комментариях), НЕ кудрявые и НЕ ёлочки;
-  ИСКЛЮЧЕНИЕ: в UI-строках, выводимых пользователю, ёлочки «» допустимы.
+The typography rules:
+- dash: en dash – (U+2013), NOT em dash — (U+2014);  scope: prose/comments;
+- ellipsis: three dots ..., NOT the … character (U+2026);  scope: prose/comments;
+- quotes: straight " (the widest rule – code and comments alike), neither curly nor guillemets;
+  EXCEPTION: guillemets «» are fine inside UI strings shown to the user.
 
-Поэтому:
-- длинное тире и символ многоточия проверяем в комментариях (в строках кода – как есть);
-- кудрявые кавычки “ ” ‘ ’ – и в комментариях, и в строках (не допускаются нигде);
-- ёлочки « » – только в комментариях (в UI-строках допустимы).
+Hence:
+- the em dash and the ellipsis character are checked in comments only (code strings are left alone);
+- curly quotes “ ” ‘ ’ are checked in comments and in strings (allowed nowhere);
+- guillemets « » are checked in comments only (they are legitimate in UI strings).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 
+from xbsllint import i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import linemap, tokens
+
+MESSAGES = {
+    "typography/em-dash.title": {
+        "ru": "Длинное тире в комментарии",
+        "en": "Em dash in a comment",
+    },
+    "typography/em-dash.found": {
+        "ru": "Длинное тире U+2014 в комментарии – использовать среднее тире – (U+2013).",
+        "en": "Em dash U+2014 in a comment – use an en dash – (U+2013).",
+    },
+    "typography/ellipsis.title": {
+        "ru": "Символ многоточия в комментарии",
+        "en": "Ellipsis character in a comment",
+    },
+    "typography/ellipsis.found": {
+        "ru": "Символ многоточия U+2026 в комментарии – использовать три точки '...'.",
+        "en": "Ellipsis character U+2026 in a comment – use three dots '...'.",
+    },
+    "typography/curly-quotes.title": {
+        "ru": "Кудрявые кавычки",
+        "en": "Curly quotes",
+    },
+    "typography/curly-quotes.found": {
+        "ru": "Кудрявая кавычка U+{code} – использовать прямые кавычки \".",
+        "en": "Curly quote U+{code} – use straight quotes \".",
+    },
+    "typography/guillemets-comment.title": {
+        "ru": "Ёлочки в комментарии",
+        "en": "Guillemets in a comment",
+    },
+    "typography/guillemets-comment.found": {
+        "ru": "Ёлочка U+{code} в комментарии – в комментариях прямые кавычки \" "
+              "(ёлочки допустимы только в UI-строках).",
+        "en": "Guillemet U+{code} in a comment – comments use straight quotes \" "
+              "(guillemets are allowed in UI strings only).",
+    },
+}
+i18n.register(MESSAGES)
 
 _EM_DASH = "—"  # U+2014
 _ELLIPSIS = "…"  # U+2026
@@ -37,10 +76,10 @@ def _hits(source: SourceFile, kinds: tuple[str, ...], chars: str):
                 yield ch, line, col
 
 
-# Длинное тире и ёлочки массово встречаются в существующих комментариях кода, поэтому
-# эти два правила по умолчанию выключены и имеют severity=info (включаются через --select).
+# The em dash and guillemets are all over existing comments, so these two rules are off by
+# default and carry severity=info (enable them with --select).
 @rule(
-    "typography/em-dash", "Длинное тире в комментарии", "B",
+    "typography/em-dash", "typography/em-dash.title", "B",
     severity=Severity.INFO, enabled_by_default=False,
 )
 def em_dash(source: SourceFile) -> Iterable[Diagnostic]:
@@ -49,34 +88,34 @@ def em_dash(source: SourceFile) -> Iterable[Diagnostic]:
     for _ch, line, col in _hits(source, ("COMMENT",), _EM_DASH):
         yield Diagnostic(
             source.rel, line, col, "typography/em-dash", Severity.INFO,
-            "Длинное тире U+2014 в комментарии – использовать среднее тире – (U+2013).",
+            i18n.t("typography/em-dash.found"),
         )
 
 
-@rule("typography/ellipsis", "Символ многоточия в комментарии", "B", severity=Severity.WARNING)
+@rule("typography/ellipsis", "typography/ellipsis.title", "B", severity=Severity.WARNING)
 def ellipsis_char(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return
     for _ch, line, col in _hits(source, ("COMMENT",), _ELLIPSIS):
         yield Diagnostic(
             source.rel, line, col, "typography/ellipsis", Severity.WARNING,
-            "Символ многоточия U+2026 в комментарии – использовать три точки '...'.",
+            i18n.t("typography/ellipsis.found"),
         )
 
 
-@rule("typography/curly-quotes", "Кудрявые кавычки", "B", severity=Severity.WARNING)
+@rule("typography/curly-quotes", "typography/curly-quotes.title", "B", severity=Severity.WARNING)
 def curly_quotes(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return
     for ch, line, col in _hits(source, ("COMMENT", "STRING"), _CURLY):
         yield Diagnostic(
             source.rel, line, col, "typography/curly-quotes", Severity.WARNING,
-            f"Кудрявая кавычка U+{ord(ch):04X} – использовать прямые кавычки \".",
+            i18n.t("typography/curly-quotes.found", code=f"{ord(ch):04X}"),
         )
 
 
 @rule(
-    "typography/guillemets-comment", "Ёлочки в комментарии", "B",
+    "typography/guillemets-comment", "typography/guillemets-comment.title", "B",
     severity=Severity.INFO, enabled_by_default=False,
 )
 def guillemets_in_comment(source: SourceFile) -> Iterable[Diagnostic]:
@@ -85,6 +124,5 @@ def guillemets_in_comment(source: SourceFile) -> Iterable[Diagnostic]:
     for ch, line, col in _hits(source, ("COMMENT",), _GUILLEMETS):
         yield Diagnostic(
             source.rel, line, col, "typography/guillemets-comment", Severity.INFO,
-            f"Ёлочка U+{ord(ch):04X} в комментарии – в комментариях прямые кавычки \" "
-            "(ёлочки допустимы только в UI-строках).",
+            i18n.t("typography/guillemets-comment.found", code=f"{ord(ch):04X}"),
         )

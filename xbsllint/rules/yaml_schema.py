@@ -1,14 +1,14 @@
-"""Тир A: проверки YAML-описаний элементов.
+"""Tier A: checks on the YAML descriptions of elements.
 
-- yaml/valid            – YAML корректно парсится;
-- yaml/id-uuid          – каждый Ид (в т.ч. вложенных реквизитов) – валидный UUID;
-- yaml/id-unique        – Ид уникальны в пределах проекта (кросс-файловое правило);
-- yaml/id-required      – у объекта (есть ВидЭлемента) задан Ид верхнего уровня;
-- yaml/name-matches-file – Имя объекта совпадает с именем файла.
+- yaml/valid            – the YAML parses correctly;
+- yaml/id-uuid          – every Ид (including the nested attributes) is a valid UUID;
+- yaml/id-unique        – Ид values are unique within the project (a cross-file rule);
+- yaml/id-required      – an object (has ВидЭлемента) carries a top-level Ид;
+- yaml/name-matches-file – the object Имя matches the file name.
 
-Структурные файлы (Проект/Подсистема/Ресурсы) распознаются по отсутствию ВидЭлемента и от
-правил про Имя/обязательный Ид освобождены; проверки Ид (формат/уникальность) применяются
-ко всем Ид во всех файлах.
+Structural files (Проект/Подсистема/Ресурсы) are recognised by the absence of ВидЭлемента and
+are exempt from the Имя/required-Ид rules; the Ид checks (format/uniqueness) apply to every Ид
+in every file.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import re
 from collections import defaultdict
 from collections.abc import Iterable
 
+from xbsllint import i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import linemap
@@ -28,13 +29,61 @@ try:
 except ImportError:  # pragma: no cover
     _HAVE_YAML = False
 
+MESSAGES = {
+    "yaml/valid.title": {
+        "ru": "YAML не парсится",
+        "en": "YAML does not parse",
+    },
+    "yaml/valid.default-problem": {
+        "ru": "ошибка синтаксиса YAML",
+        "en": "YAML syntax error",
+    },
+    "yaml/valid.error": {
+        "ru": "YAML: {problem}.",
+        "en": "YAML: {problem}.",
+    },
+    "yaml/id-uuid.title": {
+        "ru": "Ид не является UUID",
+        "en": "Ид is not a UUID",
+    },
+    "yaml/id-uuid.not-uuid": {
+        "ru": "Ид '{value}' не является UUID (формат 8-4-4-4-12).",
+        "en": "Ид '{value}' is not a UUID (the 8-4-4-4-12 format).",
+    },
+    "yaml/id-required.title": {
+        "ru": "У объекта нет Ид",
+        "en": "The object has no Ид",
+    },
+    "yaml/id-required.missing": {
+        "ru": "У объекта не задан Ид верхнего уровня.",
+        "en": "The object has no top-level Ид.",
+    },
+    "yaml/name-matches-file.title": {
+        "ru": "Имя не совпадает с именем файла",
+        "en": "Имя does not match the file name",
+    },
+    "yaml/name-matches-file.mismatch": {
+        "ru": "Имя '{name}' не совпадает с именем файла '{stem}'.",
+        "en": "Имя '{name}' does not match the file name '{stem}'.",
+    },
+    "yaml/id-unique.title": {
+        "ru": "Дубли Ид в проекте",
+        "en": "Duplicate Ид in the project",
+    },
+    "yaml/id-unique.duplicate": {
+        "ru": "Дублирующийся Ид '{value}' (также: {others}).",
+        "en": "Duplicate Ид '{value}' (also: {others}).",
+    },
+}
+i18n.register(MESSAGES)
+
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 _ID_LINE_RE = re.compile(r"(?m)^[ \t]*Ид:[ \t]*(\S+)")
 _NAME_LINE_RE = re.compile(r"(?m)^[ \t]*Имя:[ \t]*(\S.*)$")
 
 
 def _parsed(source: SourceFile):
-    """Разобранный YAML (или None) и ошибка разбора (или None), с кэшированием."""
+    """The parsed YAML (or None) and the parse error (or None), cached."""
     if "yaml" not in source.cache:
         data = None
         err = None
@@ -48,7 +97,7 @@ def _parsed(source: SourceFile):
 
 
 def _id_lines(source: SourceFile) -> list[tuple[str, int, int]]:
-    """Список (значение Ид, строка, колонка) по всем строкам 'Ид:' файла."""
+    """List of (Ид value, line, column) for every 'Ид:' line in the file."""
     key = "id_lines"
     if key not in source.cache:
         lm = linemap(source)
@@ -61,11 +110,11 @@ def _id_lines(source: SourceFile) -> list[tuple[str, int, int]]:
 
 
 def _is_object(data) -> bool:
-    """Является ли файл описанием объекта метаданных (есть ВидЭлемента)."""
+    """Whether the file describes a metadata object (has ВидЭлемента)."""
     return isinstance(data, dict) and data.get("ВидЭлемента") is not None
 
 
-@rule("yaml/valid", "YAML не парсится", "A", severity=Severity.ERROR)
+@rule("yaml/valid", "yaml/valid.title", "A", severity=Severity.ERROR)
 def yaml_valid(source: SourceFile) -> Iterable[Diagnostic]:
     if not _HAVE_YAML or source.kind != "yaml":
         return
@@ -74,11 +123,14 @@ def yaml_valid(source: SourceFile) -> Iterable[Diagnostic]:
         mark = getattr(err, "problem_mark", None)
         line = mark.line + 1 if mark else 1
         col = mark.column + 1 if mark else 1
-        problem = getattr(err, "problem", None) or "ошибка синтаксиса YAML"
-        yield Diagnostic(source.rel, line, col, "yaml/valid", Severity.ERROR, f"YAML: {problem}.")
+        problem = getattr(err, "problem", None) or i18n.t("yaml/valid.default-problem")
+        yield Diagnostic(
+            source.rel, line, col, "yaml/valid", Severity.ERROR,
+            i18n.t("yaml/valid.error", problem=problem),
+        )
 
 
-@rule("yaml/id-uuid", "Ид не является UUID", "A", severity=Severity.ERROR)
+@rule("yaml/id-uuid", "yaml/id-uuid.title", "A", severity=Severity.ERROR)
 def yaml_id_uuid(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "yaml":
         return
@@ -86,11 +138,11 @@ def yaml_id_uuid(source: SourceFile) -> Iterable[Diagnostic]:
         if not _UUID_RE.match(value):
             yield Diagnostic(
                 source.rel, line, col, "yaml/id-uuid", Severity.ERROR,
-                f"Ид '{value}' не является UUID (формат 8-4-4-4-12).",
+                i18n.t("yaml/id-uuid.not-uuid", value=value),
             )
 
 
-@rule("yaml/id-required", "У объекта нет Ид", "A", severity=Severity.WARNING)
+@rule("yaml/id-required", "yaml/id-required.title", "A", severity=Severity.WARNING)
 def yaml_id_required(source: SourceFile) -> Iterable[Diagnostic]:
     if not _HAVE_YAML or source.kind != "yaml":
         return
@@ -100,11 +152,11 @@ def yaml_id_required(source: SourceFile) -> Iterable[Diagnostic]:
     if "Ид" not in data:
         yield Diagnostic(
             source.rel, 1, 1, "yaml/id-required", Severity.WARNING,
-            "У объекта не задан Ид верхнего уровня.",
+            i18n.t("yaml/id-required.missing"),
         )
 
 
-@rule("yaml/name-matches-file", "Имя не совпадает с именем файла", "A", severity=Severity.WARNING)
+@rule("yaml/name-matches-file", "yaml/name-matches-file.title", "A", severity=Severity.WARNING)
 def yaml_name_matches_file(source: SourceFile) -> Iterable[Diagnostic]:
     if not _HAVE_YAML or source.kind != "yaml":
         return
@@ -120,11 +172,11 @@ def yaml_name_matches_file(source: SourceFile) -> Iterable[Diagnostic]:
             line, col = linemap(source).linecol(m.start(1))
         yield Diagnostic(
             source.rel, line, col, "yaml/name-matches-file", Severity.WARNING,
-            f"Имя '{name}' не совпадает с именем файла '{stem}'.",
+            i18n.t("yaml/name-matches-file.mismatch", name=name, stem=stem),
         )
 
 
-@rule("yaml/id-unique", "Дубли Ид в проекте", "A", scope="project", severity=Severity.ERROR)
+@rule("yaml/id-unique", "yaml/id-unique.title", "A", scope="project", severity=Severity.ERROR)
 def yaml_id_unique(sources: list[SourceFile]) -> Iterable[Diagnostic]:
     occ: dict[str, list[tuple[SourceFile, int, int]]] = defaultdict(list)
     for s in sources:
@@ -139,5 +191,5 @@ def yaml_id_unique(sources: list[SourceFile]) -> Iterable[Diagnostic]:
             others = [f"{o.rel}:{ol}" for j, (o, ol, _oc) in enumerate(places) if j != i]
             yield Diagnostic(
                 s.rel, line, col, "yaml/id-unique", Severity.ERROR,
-                f"Дублирующийся Ид '{value}' (также: {', '.join(others[:3])}).",
+                i18n.t("yaml/id-unique.duplicate", value=value, others=", ".join(others[:3])),
             )

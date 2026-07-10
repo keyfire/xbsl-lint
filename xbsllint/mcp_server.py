@@ -1,9 +1,12 @@
-"""MCP-адаптер линтера (тонкая обёртка над xbsllint.engine).
+"""The linter's MCP adapter (a thin wrapper over xbsllint.engine).
 
-Запуск: xbsllint-mcp  (или python -m xbsllint.mcp_server). Транспорт – stdio.
-Зависимость `mcp` ставится через extra:  pip install "xbsllint[mcp]".
+Run: xbsllint-mcp  (or python -m xbsllint.mcp_server). Transport – stdio.
+The `mcp` dependency comes from an extra:  pip install "xbsllint[mcp]".
 
-Регистрация в Claude Code:
+Diagnostic message language follows env XBSLLINT_LANG (then the system locale, then ru), since
+an MCP server takes no CLI flags.
+
+Registration in Claude Code:
     claude mcp add xbsllint -- xbsllint-mcp
 """
 
@@ -17,9 +20,9 @@ from xbsllint.engine import RULES, load_text, run, run_sources
 
 try:
     from mcp.server.fastmcp import FastMCP
-except ModuleNotFoundError as exc:  # pragma: no cover - подсказка при отсутствии зависимости
+except ModuleNotFoundError as exc:  # pragma: no cover - hint when the dependency is absent
     raise SystemExit(
-        "Не найден пакет 'mcp'. Установите MCP-зависимости: pip install \"xbsllint[mcp]\""
+        "The 'mcp' package is missing. Install the MCP extra: pip install \"xbsllint[mcp]\""
     ) from exc
 
 
@@ -52,7 +55,7 @@ def _as_set(value: list[str] | None) -> set[str] | None:
 
 @mcp.tool()
 def list_rules() -> list[dict]:
-    """Список доступных правил линтера (id, заголовок, тир, область, severity)."""
+    """List the available linter rules (id, title, tier, scope, severity)."""
     return [r.as_dict() for r in sorted(RULES, key=lambda x: (x.tier, x.id))]
 
 
@@ -62,12 +65,12 @@ def lint_paths(
     select: list[str] | None = None,
     ignore: list[str] | None = None,
 ) -> dict:
-    """Проверить файлы/каталоги на диске.
+    """Check files/directories on disk.
 
-    paths  – список путей (файлы .xbsl/.yaml или каталоги, обход рекурсивный);
-    select – ограничить набор правил (id или буква тира A/B/C/D);
-    ignore – исключить правила.
-    Возвращает {diagnostics: [...], summary: {...}}.
+    paths  – list of paths (.xbsl/.yaml files or directories, traversed recursively);
+    select – limit the rule set (id or tier letter A/B/C/D);
+    ignore – exclude rules.
+    Returns {diagnostics: [...], summary: {...}}.
     """
     files = discover(paths)
     diags = run(files, select=_as_set(select), ignore=_as_set(ignore))
@@ -82,11 +85,11 @@ def lint_source(
     select: list[str] | None = None,
     ignore: list[str] | None = None,
 ) -> dict:
-    """Проверить содержимое в памяти (напр. перед записью файла).
+    """Check in-memory content (e.g. before writing the file).
 
-    filename – имя с расширением (.xbsl/.yaml), определяет тип и участвует в позициях;
-    content  – текст исходника.
-    Выполняются только пофайловые правила (кросс-файловым нужен весь проект).
+    filename – name with an extension (.xbsl/.yaml); sets the kind and appears in positions;
+    content  – the source text.
+    Only per-file rules run (cross-file rules need the whole project).
     """
     src = load_text(filename, content)
     diags = run_sources(

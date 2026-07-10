@@ -1,22 +1,22 @@
-"""Точки расширения: внешние пакеты добавляют правила и данные через entry points.
+"""Extension points: external packages add rules and data via entry points.
 
-Группа "xbsllint.rules" – значение указывает на модуль, импорт которого регистрирует
-правила декоратором @rule (см. xbsllint/engine.py). Группа "xbsllint.data" – значение
-указывает на корень данных: путь (Path/str) либо функция без аргументов, возвращающая путь.
+The "xbsllint.rules" group – the value points to a module whose import registers rules with
+the @rule decorator (see xbsllint/engine.py). The "xbsllint.data" group – the value points to
+a data root: a path (Path/str) or a zero-argument callable returning a path.
 
-Объявление в pyproject.toml стороннего пакета:
+Declaration in a third-party package's pyproject.toml:
 
     [project.entry-points."xbsllint.rules"]
-    имя-пакета = "мой_пакет.rules"
+    package-name = "my_package.rules"
 
     [project.entry-points."xbsllint.data"]
-    имя-пакета = "мой_пакет:data_root"
+    package-name = "my_package:data_root"
 
-Обе группы отключает переменная окружения XBSLLINT_NO_PLUGINS=1 – прогон только со
-встроенными правилами и данными.
+The XBSLLINT_NO_PLUGINS=1 environment variable disables both groups – a run with the built-in
+rules and data only.
 
-Сбой загрузки точки расширения – ошибка, а не предупреждение: линтер, молча потерявший
-правило, остаётся зелёным в CI и перестаёт что-либо гарантировать.
+A failing entry point is an error, not a warning: a linter that silently drops a rule stays
+green in CI and stops guaranteeing anything.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def _load(ep: EntryPoint):
 
 
 def load_rules() -> list[str]:
-    """Импортировать модули правил внешних пакетов; вернуть имена загруженных точек."""
+    """Import external packages' rule modules; return the names of the loaded entry points."""
     loaded: list[str] = []
     for ep in _points(RULES_GROUP):
         _load(ep)
@@ -66,7 +66,7 @@ def load_rules() -> list[str]:
 
 
 def data_roots() -> list[Path]:
-    """Корни данных, объявленные внешними пакетами (в порядке имён точек)."""
+    """Data roots declared by external packages (ordered by entry-point name)."""
     roots: list[Path] = []
     for ep in _points(DATA_GROUP):
         target = _load(ep)

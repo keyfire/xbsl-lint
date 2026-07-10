@@ -46,7 +46,14 @@ The extractors from step 1 ship with the repository, not with the PyPI package �
 repository to generate the data.
 
 Flags: `--list-rules`, `--select`/`--ignore` (by rule id, rule group — the part of the id before
-`/` — or tier letter), `--element-version`, `--data-dir`.
+`/` — or tier letter), `--element-version`, `--data-dir`, `--lang`.
+
+## Output language
+
+Rule titles and diagnostic messages come in Russian and English. The language is picked by
+`--lang ru|en` > the `XBSLLINT_LANG` env var > the system locale > Russian. Type names, keywords
+and other XBSL text inside a message are never translated — only the wording around them. The MCP
+server and the web panel follow the same setting (the web panel also has an in-page RU/EN toggle).
 
 ## Rule tiers
 

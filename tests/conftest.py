@@ -1,13 +1,18 @@
-"""Общие настройки тестов.
+"""Shared test setup.
 
-Данные о языке/типах (xbsllint/data/element/...) извлекаются из дистрибутива 1С:Элемент и
-могут не быть сгенерированы (напр. в публичной сборке без бандла данных). Тесты, которым
-данные нужны, в этом случае пропускаются, а не падают.
+The language/type data (xbsllint/data/element/...) is extracted from a 1C:Element distribution
+and may not have been generated (e.g. in a public checkout without a data bundle). Tests that
+need the data are skipped rather than failed.
+
+The output language is pinned to Russian: assertions elsewhere match Russian message text, and
+without pinning the result would depend on the developer's system locale.
 """
 
 import pytest
 
-from xbsllint import dataset
+from xbsllint import dataset, i18n
+
+i18n.set_lang("ru")
 
 _DATA_DEPENDENT = {
     "test_lexer",

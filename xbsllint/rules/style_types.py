@@ -1,16 +1,17 @@
-"""Типы, инициализация и сигнатуры (CODE_STYLE, разделы 3 и 7).
+"""Types, initialization and signatures (CODE_STYLE, sections 3 and 7).
 
-- 3.1 тип отделяется двоеточием и пробелом после него;
-- 3.2 в составном типе вокруг `|` пробелов нет;
-- 3.3 `Неопределено` в типе записывается сокращением `?`;
-- 3.4 при инициализации литералом или конструктором тип не указывается;
-- 7.1 необязательные параметры – после обязательных.
+- 3.1 a type is set off by a colon with a space after it;
+- 3.2 no spaces around `|` in a union type;
+- 3.3 `Неопределено` in a type is written with the `?` shorthand;
+- 3.4 on initialization by a literal or a constructor the type is omitted;
+- 7.1 optional parameters – after the required ones.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 
+from xbsllint import i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import Token
@@ -22,13 +23,71 @@ from xbsllint.rules._syntax import (
     type_expr,
 )
 
-# Литерал -> тип, который выводится из него без аннотации (3.4).
+MESSAGES = {
+    "style/type-colon-space.title": {
+        "ru": "Пробелы вокруг двоеточия типа",
+        "en": "Spaces around the type colon",
+    },
+    "style/type-colon-space.space-before": {
+        "ru": "Пробел перед двоеточием типа – тип отделяется двоеточием сразу после имени.",
+        "en": "Space before the type colon – the type is set off by a colon right after the name.",
+    },
+    "style/type-colon-space.no-space-after": {
+        "ru": "Нет пробела после двоеточия типа.",
+        "en": "No space after the type colon.",
+    },
+    "style/union-spaces.title": {
+        "ru": "Пробелы вокруг '|' в составном типе",
+        "en": "Spaces around '|' in a union type",
+    },
+    "style/union-spaces.found": {
+        "ru": "Пробелы вокруг '|' в составном типе – писать слитно: 'Строка|Число'.",
+        "en": "Spaces around '|' in a union type – write it joined: 'Строка|Число'.",
+    },
+    "style/nullable-shorthand.title": {
+        "ru": "Неопределено в типе без сокращения '?'",
+        "en": "Неопределено in a type without the '?' shorthand",
+    },
+    "style/nullable-shorthand.undefined-word": {
+        "ru": "'Неопределено' в составном типе – записывается сокращением '?'.",
+        "en": "'Неопределено' in a union type – write it with the '?' shorthand.",
+    },
+    "style/nullable-shorthand.two-types": {
+        "ru": "Два типа – '?' пишется слитно: '{type}?', не '...|?'.",
+        "en": "Two types – '?' is written joined: '{type}?', not '...|?'.",
+    },
+    "style/nullable-shorthand.many-types": {
+        "ru": "Три и более типов – 'Неопределено' отделяется: '...|?', не '...Тип?'.",
+        "en": "Three or more types – 'Неопределено' is set apart: '...|?', not '...Тип?'.",
+    },
+    "style/redundant-type.title": {
+        "ru": "Избыточная аннотация типа при инициализации",
+        "en": "Redundant type annotation on initialization",
+    },
+    "style/redundant-type.inferred": {
+        "ru": "Тип '{annotation}' выводится из инициализации – аннотацию не писать.",
+        "en": "Type '{annotation}' is inferred from the initializer – do not write the annotation.",
+    },
+    "style/optional-params-last.title": {
+        "ru": "Необязательный параметр перед обязательным",
+        "en": "Optional parameter before a required one",
+    },
+    "style/optional-params-last.required-after-optional": {
+        "ru": "Обязательный параметр '{name}' после необязательного – "
+              "необязательные параметры пишутся последними.",
+        "en": "Required parameter '{name}' after an optional one – "
+              "optional parameters come last.",
+    },
+}
+i18n.register(MESSAGES)
+
+# Literal -> the type inferred from it without an annotation (3.4).
 _LITERAL_TYPE = {"STRING": "Строка", "NUMBER": "Число"}
 _BOOLEAN_KEYWORDS = ("TRUE", "FALSE")
 
 
 def _type_positions(toks: list[Token]) -> list[tuple[Token, int]]:
-    """Пары (двоеточие, индекс первого токена типа) во всех типовых позициях модуля."""
+    """Pairs (colon, index of the first type token) for every type position in the module."""
     out: list[tuple[Token, int]] = []
     for decl in declarations(toks):
         if decl.colon is not None and decl.type_start is not None:
@@ -53,9 +112,9 @@ def _text(source: SourceFile, toks: list[Token]) -> str:
     return source.text[toks[0].start: toks[-1].end]
 
 
-@rule("style/type-colon-space", "Пробелы вокруг двоеточия типа", "C", severity=Severity.WARNING)
+@rule("style/type-colon-space", "style/type-colon-space.title", "C", severity=Severity.WARNING)
 def type_colon_space(source: SourceFile) -> Iterable[Diagnostic]:
-    """3.1: `пер Переменная: Строка` – без пробела перед `:` и с пробелом после."""
+    """3.1: `пер Переменная: Строка` – no space before `:` and a space after."""
     if source.kind != "xbsl":
         return
     text = source.text
@@ -65,19 +124,19 @@ def type_colon_space(source: SourceFile) -> Iterable[Diagnostic]:
         if before in (" ", "\t"):
             yield Diagnostic(
                 source.rel, colon.line, colon.col, "style/type-colon-space", Severity.WARNING,
-                "Пробел перед двоеточием типа – тип отделяется двоеточием сразу после имени.",
+                i18n.t("style/type-colon-space.space-before"),
             )
         if after not in (" ", "\r", "\n", ""):
             yield Diagnostic(
                 source.rel, colon.line, colon.col, "style/type-colon-space", Severity.WARNING,
-                "Нет пробела после двоеточия типа.",
+                i18n.t("style/type-colon-space.no-space-after"),
             )
 
 
-@rule("style/union-spaces", "Пробелы вокруг '|' в составном типе", "C",
+@rule("style/union-spaces", "style/union-spaces.title", "C",
       severity=Severity.WARNING)
 def union_spaces(source: SourceFile) -> Iterable[Diagnostic]:
-    """3.2: `Строка|Число|Булево`, не `Строка | Число | Булево`."""
+    """3.2: `Строка|Число|Булево`, not `Строка | Число | Булево`."""
     if source.kind != "xbsl":
         return
     text = source.text
@@ -90,14 +149,14 @@ def union_spaces(source: SourceFile) -> Iterable[Diagnostic]:
             if before in (" ", "\t") or after in (" ", "\t"):
                 yield Diagnostic(
                     source.rel, tok.line, tok.col, "style/union-spaces", Severity.WARNING,
-                    "Пробелы вокруг '|' в составном типе – писать слитно: 'Строка|Число'.",
+                    i18n.t("style/union-spaces.found"),
                 )
 
 
-@rule("style/nullable-shorthand", "Неопределено в типе без сокращения '?'", "C",
+@rule("style/nullable-shorthand", "style/nullable-shorthand.title", "C",
       severity=Severity.WARNING)
 def nullable_shorthand(source: SourceFile) -> Iterable[Diagnostic]:
-    """3.3: два типа – слитно (`Строка?`), три и более – через `|` (`Строка|Число|?`)."""
+    """3.3: two types – joined (`Строка?`), three or more – via `|` (`Строка|Число|?`)."""
     if source.kind != "xbsl":
         return
     for te in _type_exprs(code_tokens(source)):
@@ -109,34 +168,35 @@ def nullable_shorthand(source: SourceFile) -> Iterable[Diagnostic]:
             if len(alt) == 1 and alt[0].kind == "KEYWORD" and alt[0].canonical == "UNDEFINED":
                 yield Diagnostic(
                     source.rel, alt[0].line, alt[0].col, "style/nullable-shorthand", Severity.WARNING,
-                    "'Неопределено' в составном типе – записывается сокращением '?'.",
+                    i18n.t("style/nullable-shorthand.undefined-word"),
                 )
 
         last = alts[-1]
         first_of_last = last[0]
         if len(alts) == 2 and len(last) == 1 and last[0].kind == "OP" and last[0].value == "?":
+            first_type = _text(source, alts[0])
             yield Diagnostic(
                 source.rel, first_of_last.line, first_of_last.col,
                 "style/nullable-shorthand", Severity.WARNING,
-                f"Два типа – '?' пишется слитно: '{_text(source, alts[0])}?', не '...|?'.",
+                i18n.t("style/nullable-shorthand.two-types", type=first_type),
             )
         elif len(last) > 1 and last[-1].kind == "OP" and last[-1].value == "?":
             yield Diagnostic(
                 source.rel, last[-1].line, last[-1].col,
                 "style/nullable-shorthand", Severity.WARNING,
-                "Три и более типов – 'Неопределено' отделяется: '...|?', не '...Тип?'.",
+                i18n.t("style/nullable-shorthand.many-types"),
             )
 
 
-@rule("style/redundant-type", "Избыточная аннотация типа при инициализации", "C",
+@rule("style/redundant-type", "style/redundant-type.title", "C",
       severity=Severity.WARNING)
 def redundant_type(source: SourceFile) -> Iterable[Diagnostic]:
-    """3.4: при инициализации литералом или конструктором тип выводится и не пишется.
+    """3.4: on initialization by a literal or a constructor the type is inferred and omitted.
 
-    Сообщаем только когда аннотация заведомо совпадает с выводимым типом: строковый или
-    числовой литерал при типе `Строка`/`Число`, `Истина`/`Ложь` при типе `Булево`,
-    конструктор `новый Т(...)` при том же `Т`. Пустые литералы `[]`/`{}` не трогаем –
-    для них вывод типа невозможен и аннотация обязательна.
+    We report only when the annotation is bound to match the inferred type: a string or a
+    number literal against the type `Строка`/`Число`, `Истина`/`Ложь` against `Булево`, the
+    constructor `новый Т(...)` against the same `Т`. Empty literals `[]`/`{}` are left alone –
+    the type cannot be inferred for them and the annotation is required.
     """
     if source.kind != "xbsl":
         return
@@ -148,7 +208,7 @@ def redundant_type(source: SourceFile) -> Iterable[Diagnostic]:
         if te is None or len(te.alternatives) != 1:
             continue
         annotation = _text(source, te.toks)
-        if annotation.endswith("?"):  # nullable шире выводимого типа – аннотация нужна
+        if annotation.endswith("?"):  # nullable is wider than the inferred type – annotation needed
             continue
 
         value = toks[decl.value_start]
@@ -167,14 +227,14 @@ def redundant_type(source: SourceFile) -> Iterable[Diagnostic]:
             continue
         yield Diagnostic(
             source.rel, decl.colon.line, decl.colon.col, "style/redundant-type", Severity.WARNING,
-            f"Тип '{annotation}' выводится из инициализации – аннотацию не писать.",
+            i18n.t("style/redundant-type.inferred", annotation=annotation),
         )
 
 
-@rule("style/optional-params-last", "Необязательный параметр перед обязательным", "C",
+@rule("style/optional-params-last", "style/optional-params-last.title", "C",
       severity=Severity.WARNING)
 def optional_params_last(source: SourceFile) -> Iterable[Diagnostic]:
-    """7.1: параметры со значением по умолчанию идут после обязательных."""
+    """7.1: parameters with a default value come after the required ones."""
     if source.kind != "xbsl":
         return
     for sig in signatures(code_tokens(source)):
@@ -186,6 +246,6 @@ def optional_params_last(source: SourceFile) -> Iterable[Diagnostic]:
                 yield Diagnostic(
                     source.rel, param.name.line, param.name.col,
                     "style/optional-params-last", Severity.WARNING,
-                    f"Обязательный параметр '{param.name.value}' после необязательного – "
-                    "необязательные параметры пишутся последними.",
+                    i18n.t("style/optional-params-last.required-after-optional",
+                           name=param.name.value),
                 )

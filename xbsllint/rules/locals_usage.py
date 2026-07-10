@@ -1,12 +1,12 @@
-"""Тир C-2: неиспользуемые локальные переменные (объявления знч/пер).
+"""Tier C-2: unused local variables (знч/пер declarations).
 
-Метод сегментируется по выверенной блочной модели (см. code_structure). Внутри метода
-собираются объявления знч/пер и все использования идентификаторов; если имя больше нигде
-не встречается (в т.ч. в интерполяциях строк %{...}/${...}/%имя) – переменная не используется.
+A method is segmented by the verified block model (see code_structure). Inside a method the
+знч/пер declarations and every identifier use are collected; if a name occurs nowhere else
+(including string interpolations %{...}/${...}/%name) – the variable is unused.
 
-Область намеренно узкая (только знч/пер), чтобы не давать ложных срабатываний: параметры,
-переменные цикла `для`, ресурсы `исп` и перехват `поймать` не проверяются (часто не
-используются намеренно). Правило выверено на реальном корпусе (0 срабатываний).
+The scope is deliberately narrow (знч/пер only), to avoid false positives: parameters, `для`
+loop variables, `исп` resources and `поймать` catches are not checked (they are often left
+unused on purpose). The rule is verified on the real corpus (0 hits).
 """
 
 from __future__ import annotations
@@ -15,17 +15,38 @@ import re
 from collections import Counter
 from collections.abc import Iterable
 
+from xbsllint import i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import tokens
 from xbsllint.rules.code_structure import _OPENERS
+
+MESSAGES = {
+    "code/unused-local.title": {
+        "ru": "Неиспользуемая локальная переменная",
+        "en": "Unused local variable",
+    },
+    "code/unused-local.declared": {
+        "ru": "Локальная переменная '{name}' объявлена, но не используется.",
+        "en": "Local variable '{name}' is declared but not used.",
+    },
+    "code/unused-loop-var.title": {
+        "ru": "Неиспользуемая переменная цикла",
+        "en": "Unused loop variable",
+    },
+    "code/unused-loop-var.unused": {
+        "ru": "Переменная цикла '{name}' не используется.",
+        "en": "Loop variable '{name}' is not used.",
+    },
+}
+i18n.register(MESSAGES)
 
 _IDENT_IN = re.compile(r"[^\W\d]\w*", re.UNICODE)
 _INTERP = re.compile(r"[%$]\{([^}]*)\}|[%$]([^\W\d]\w*)", re.UNICODE)
 
 
 def _interp_idents(value: str) -> list[str]:
-    """Идентификаторы, использованные в интерполяциях строки (%{expr}, ${expr}, %имя)."""
+    """Identifiers used in a string's interpolations (%{expr}, ${expr}, %name)."""
     out: list[str] = []
     for m in _INTERP.finditer(value):
         if m.group(1) is not None:
@@ -36,7 +57,7 @@ def _interp_idents(value: str) -> list[str]:
 
 
 def _method_spans(toks: list) -> list[tuple[int, int]]:
-    """Диапазоны индексов токенов [начало, конец) для каждого метода верхнего уровня."""
+    """Token index ranges [start, end) for each top-level method."""
     spans: list[tuple[int, int]] = []
     depth = 0
     start: int | None = None
@@ -68,8 +89,8 @@ def _method_spans(toks: list) -> list[tuple[int, int]]:
 
 
 def _usage_counts(toks: list, start: int, end: int) -> Counter:
-    """Число использований каждого идентификатора в диапазоне: IDENT (не после точки)
-    + идентификаторы из интерполяций строк (%{...}/${...}/%имя)."""
+    """Number of uses of each identifier in the range: IDENT (not after a dot)
+    + identifiers from string interpolations (%{...}/${...}/%name)."""
     counts: Counter = Counter()
     prev = None
     for j in range(start, end):
@@ -86,14 +107,14 @@ def _usage_counts(toks: list, start: int, end: int) -> Counter:
 
 
 def _next_ident(toks: list, i: int, end: int):
-    """Ближайший IDENT после позиции i (пропуская комментарии), или None."""
+    """The nearest IDENT after position i (skipping comments), or None."""
     k = i + 1
     while k < end and toks[k].kind == "COMMENT":
         k += 1
     return toks[k] if k < end and toks[k].kind == "IDENT" else None
 
 
-@rule("code/unused-local", "Неиспользуемая локальная переменная", "C", severity=Severity.WARNING)
+@rule("code/unused-local", "code/unused-local.title", "C", severity=Severity.WARNING)
 def unused_local(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return []
@@ -108,19 +129,20 @@ def unused_local(source: SourceFile) -> Iterable[Diagnostic]:
                 name_tok = _next_ident(toks, j, end)
                 if name_tok is not None and name_tok.value not in seen:
                     seen.add(name_tok.value)
-                    if counts[name_tok.value] <= 1:  # только объявление, больше нигде
+                    if counts[name_tok.value] <= 1:  # declaration only, nowhere else
                         diags.append(Diagnostic(
                             source.rel, name_tok.line, name_tok.col,
                             "code/unused-local", Severity.WARNING,
-                            f"Локальная переменная '{name_tok.value}' объявлена, но не используется.",
+                            i18n.t("code/unused-local.declared", name=name_tok.value),
                         ))
     return diags
 
 
-@rule("code/unused-loop-var", "Неиспользуемая переменная цикла", "C", severity=Severity.WARNING)
+@rule("code/unused-loop-var", "code/unused-loop-var.title", "C", severity=Severity.WARNING)
 def unused_loop_var(source: SourceFile) -> Iterable[Diagnostic]:
-    # Переменная цикла `для X из ...`, не используемая в теле. Выверено на корпусе –
-    # воспроизводит находки серверной компиляции ("Неиспользуемая переменная") без ложных.
+    # A `для X из ...` loop variable that is not used in the body. Verified on the corpus –
+    # reproduces the server-side compilation findings ("Неиспользуемая переменная") without
+    # false positives.
     if source.kind != "xbsl":
         return []
     toks = tokens(source)
@@ -130,7 +152,7 @@ def unused_loop_var(source: SourceFile) -> Iterable[Diagnostic]:
         for j in range(start, end):
             t = toks[j]
             if t.kind == "KEYWORD" and t.canonical == "FOR" and t.value[:1].islower():
-                # переменные до `из`: X либо X, Y (через запятую)
+                # variables before `из`: X, or X, Y (comma-separated)
                 k = j + 1
                 while k < end:
                     while k < end and toks[k].kind == "COMMENT":
@@ -142,7 +164,7 @@ def unused_loop_var(source: SourceFile) -> Iterable[Diagnostic]:
                         diags.append(Diagnostic(
                             source.rel, var.line, var.col,
                             "code/unused-loop-var", Severity.WARNING,
-                            f"Переменная цикла '{var.value}' не используется.",
+                            i18n.t("code/unused-loop-var.unused", name=var.value),
                         ))
                     k += 1
                     if k < end and toks[k].kind == "OP" and toks[k].value == ",":

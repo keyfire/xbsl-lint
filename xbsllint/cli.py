@@ -1,4 +1,4 @@
-"""Точка входа командной строки: xbsllint / python -m xbsllint."""
+"""Command-line entry point: xbsllint / python -m xbsllint."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from xbsllint import __version__, dataset
+from xbsllint import __version__, dataset, i18n
 
 
 def discover(paths: list[str]) -> list[Path]:
-    """Собрать файлы исходников (.xbsl и .yaml) по указанным путям."""
+    """Collect source files (.xbsl and .yaml) under the given paths."""
     out: list[Path] = []
     for raw in paths:
         p = Path(raw)
@@ -20,7 +20,7 @@ def discover(paths: list[str]) -> list[Path]:
         elif p.is_dir():
             out.extend(sorted(p.rglob("*.xbsl")))
             out.extend(sorted(p.rglob("*.yaml")))
-    # Уникализируем, сохраняя порядок
+    # Uniquify, preserving order
     seen: set[Path] = set()
     uniq: list[Path] = []
     for f in out:
@@ -61,6 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="КАТАЛОГ",
         help="корень данных Элемента (каталог с index.json); также env XBSLLINT_DATA_DIR",
     )
+    parser.add_argument(
+        "--lang",
+        choices=i18n.LANGS,
+        help="язык вывода линтера (по умолчанию: env XBSLLINT_LANG / локаль системы / ru)",
+    )
     data_note = ""
     try:
         data_note = (
@@ -80,8 +85,8 @@ def _parse_set(value: str | None) -> set[str] | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Вывод линтера всегда в UTF-8, независимо от кодировки консоли (важно для кириллицы
-    # и для перенаправления в файл/редактор).
+    # The linter output is always UTF-8, regardless of the console encoding (matters for
+    # Cyrillic and for redirection to a file/editor).
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
@@ -93,14 +98,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    i18n.set_lang(args.lang)  # None keeps the env/locale lookup order
     if args.data_dir:
         dataset.set_data_root(args.data_dir)
     if args.element_version:
         dataset.set_version(args.element_version)
     try:
-        dataset.resolve_version()  # проверить доступность выбранной версии данных
+        dataset.resolve_version()  # check the selected data version is available
     except dataset.DatasetError as exc:
-        print(f"Ошибка данных Элемента: {exc}", file=sys.stderr)
+        print(i18n.t("cli.data-error", error=exc), file=sys.stderr)
         return 2
 
     from xbsllint.engine import RULES, run
@@ -110,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             mark = "   " if r.enabled_by_default else "off"
             print(f"{r.tier} {mark} {r.id:30} {r.severity.value:7} {r.title}")
         if not RULES:
-            print("(правила ещё не зарегистрированы)")
+            print(i18n.t("cli.no-rules"))
         return 0
 
     files = discover(args.paths or ["."])
@@ -122,8 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     n_yaml = sum(1 for f in files if f.suffix == ".yaml")
     n_err = sum(1 for d in diagnostics if d.severity.value == "error")
     print(
-        f"\nПроверено файлов: {len(files)} ({n_xbsl} .xbsl, {n_yaml} .yaml); "
-        f"замечаний: {len(diagnostics)} (ошибок: {n_err})",
+        i18n.t("cli.summary", files=len(files), xbsl=n_xbsl, yaml=n_yaml,
+               diags=len(diagnostics), errors=n_err),
         file=sys.stderr,
     )
     return 1 if n_err else 0

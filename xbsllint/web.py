@@ -1,11 +1,15 @@
-"""Веб-интерфейс линтера: указать папку проекта -> увидеть замечания.
+"""Web interface for the linter: point it at a project folder -> see the diagnostics.
 
-Тонкий адаптер поверх ядра (как CLI и MCP), на стандартной библиотеке (http.server, без
-внешних зависимостей). Слушает только 127.0.0.1. Запуск: xbsllint-web (или
-python -m xbsllint.web), затем открыть http://127.0.0.1:8771/.
+A thin adapter over the core (like the CLI and MCP), on the standard library (http.server,
+no external dependencies). Listens on 127.0.0.1 only. Start with xbsllint-web (or
+python -m xbsllint.web), then open http://127.0.0.1:8771/.
 
-Оформление: тёмная/светлая тема; наполнение –
-под линтер: ввод пути, настройки правил по тирам, сводка, фильтры по severity и тексту.
+Look and feel: dark/light theme; the content is tailored to the linter – path input, rule
+settings by tier, a summary, and filters by severity and text.
+
+The UI text lives in two places: strings the server produces are looked up in the i18n
+catalog (MESSAGES below), and the page's own labels are switched client-side (STRINGS in
+INDEX_HTML). The browser learns the process language from /api/info.
 """
 
 from __future__ import annotations
@@ -16,10 +20,25 @@ from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from xbsllint import __version__, dataset
+from xbsllint import __version__, dataset, i18n
 from xbsllint.cli import discover
 from xbsllint.diagnostics import Diagnostic
 from xbsllint.engine import RULES, run
+
+# User-facing strings produced by this module. The rest of the UI text lives in the page
+# itself (STRINGS in INDEX_HTML); these are the few strings the server returns. Keys carry
+# both languages, the way the rule modules do.
+MESSAGES = {
+    "web.no-path": {
+        "ru": "Укажите путь к папке проекта.",
+        "en": "Provide the path to the project folder.",
+    },
+    "web.path-missing": {
+        "ru": "Путь не найден: {paths}",
+        "en": "Path not found: {paths}",
+    },
+}
+i18n.register(MESSAGES)
 
 
 def _diag_dict(d: Diagnostic) -> dict:
@@ -48,24 +67,24 @@ def _lint(body: dict) -> dict:
     version = body.get("element_version")
     if version:
         dataset.set_version(version)
-        dataset.resolve_version()  # бросит DatasetError, если версия недоступна
+        dataset.resolve_version()  # raises DatasetError if the version is unavailable
 
     raw_paths = body.get("paths")
     if not raw_paths:
         one = (body.get("path") or "").strip()
         raw_paths = [one] if one else []
     if not raw_paths:
-        return {"error": "Укажите путь к папке проекта."}
+        return {"error": i18n.t("web.no-path")}
     missing = [p for p in raw_paths if not Path(p).exists()]
     if missing:
-        return {"error": f"Путь не найден: {', '.join(missing)}"}
+        return {"error": i18n.t("web.path-missing", paths=", ".join(missing))}
 
     select = body.get("select")
     ignore = body.get("ignore")
     files = discover(raw_paths)
     sel = set(select) if select is not None else None
     if sel is not None and not sel:
-        diags: list[Diagnostic] = []  # правила не выбраны
+        diags: list[Diagnostic] = []  # no rules selected
     else:
         diags = run(files, select=sel, ignore=set(ignore) if ignore else None)
     diags = sorted(diags, key=lambda x: x.sort_key())
@@ -76,7 +95,7 @@ def _lint(body: dict) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, *args):  # тихий лог
+    def log_message(self, *args):  # quiet log
         pass
 
     def _send(self, status: int, ctype: str, body: bytes):
@@ -95,7 +114,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             self._send(200, "text/html; charset=utf-8", INDEX_HTML.encode("utf-8"))
         elif path == "/api/info":
-            info = {"tool_version": __version__, "element_default": None, "element_available": []}
+            info = {"tool_version": __version__, "lang": i18n.current_lang(),
+                    "element_default": None, "element_available": []}
             try:
                 info["element_default"] = dataset.default_version()
                 info["element_available"] = dataset.available_versions()
@@ -117,7 +137,7 @@ class Handler(BaseHTTPRequestHandler):
             result = _lint(body)
         except dataset.DatasetError as exc:
             result = {"error": str(exc)}
-        except Exception as exc:  # noqa: BLE001 - показать пользователю, не падать
+        except Exception as exc:  # noqa: BLE001 - show the user, don't crash
             result = {"error": f"{type(exc).__name__}: {exc}"}
         self._json(result)
 
@@ -233,6 +253,7 @@ button.run:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none;}
     <span class="logo">xbsl<b>-</b>lint</span>
     <span class="ver" id="ver"></span>
     <span class="spacer"></span>
+    <button class="tgl" id="lang" title="Язык">RU</button>
     <button class="tgl" id="theme" title="Тема">◐</button>
   </header>
 
@@ -242,7 +263,7 @@ button.run:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none;}
       <select id="version" title="Версия данных Элемента"></select>
       <button class="run" id="run">Проверить</button>
     </div>
-    <div class="hint">Локальный инструмент (только 127.0.0.1). Кликните по замечанию, чтобы открыть файл в VS Code.</div>
+    <div class="hint" id="hint">Локальный инструмент (только 127.0.0.1). Кликните по замечанию, чтобы открыть файл в VS Code.</div>
   </section>
 
   <section class="panel" id="settingsPanel">
@@ -257,6 +278,48 @@ button.run:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none;}
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let RULES = [], LAST = null, fSev = 'all', fText = '';
+let LANG = 'ru', INFO = null;
+
+// UI strings for both languages. STRINGS.ru is the wording that used to be hard-coded in the
+// markup and the render functions; the diagnostics themselves arrive already localized by the
+// server, so they are not listed here.
+const STRINGS = {
+  ru: {
+    langTitle: 'Язык', themeTitle: 'Тема',
+    pathPlaceholder: 'Путь к папке проекта',
+    versionTitle: 'Версия данных Элемента',
+    run: 'Проверить',
+    hint: 'Локальный инструмент (только 127.0.0.1). Кликните по замечанию, чтобы открыть файл в VS Code.',
+    settings: 'Настройки правил',
+    element: 'Элемент',
+    serverDown: 'Сервер недоступен: ',
+    tierA: 'A · структура / YAML', tierB: 'B · текст / конвенции', tierC: 'C · код', tierD: 'D · семантика',
+    checking: 'Проверяю...',
+    error: 'Ошибка: ',
+    chipFiles: 'Файлов', chipTotal: 'всего', chipErrors: 'ошибок', chipWarnings: 'предупр.', chipInfo: 'инфо',
+    searchPlaceholder: 'Фильтр по тексту / правилу / файлу',
+    clean: '✓ Замечаний нет – чисто.',
+    noMatch: 'Ничего не найдено по фильтру.',
+  },
+  en: {
+    langTitle: 'Language', themeTitle: 'Theme',
+    pathPlaceholder: 'Path to the project folder',
+    versionTitle: 'Element data version',
+    run: 'Check',
+    hint: 'Local tool (127.0.0.1 only). Click a diagnostic to open the file in VS Code.',
+    settings: 'Rule settings',
+    element: 'Element',
+    serverDown: 'Server unavailable: ',
+    tierA: 'A · structure / YAML', tierB: 'B · text / conventions', tierC: 'C · code', tierD: 'D · semantics',
+    checking: 'Checking...',
+    error: 'Error: ',
+    chipFiles: 'Files', chipTotal: 'total', chipErrors: 'errors', chipWarnings: 'warnings', chipInfo: 'info',
+    searchPlaceholder: 'Filter by text / rule / file',
+    clean: '✓ No issues – clean.',
+    noMatch: 'Nothing matches the filter.',
+  },
+};
+const S = () => STRINGS[LANG] || STRINGS.ru;
 
 async function jget(u){ return (await fetch(u)).json(); }
 async function jpost(u,b){ return (await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json(); }
@@ -264,11 +327,44 @@ async function jpost(u,b){ return (await fetch(u,{method:'POST',headers:{'Conten
 function setTheme(t){ document.documentElement.setAttribute('data-theme', t); localStorage.setItem('xbsllint-theme', t); }
 $('#theme').onclick = () => setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light');
 
+// Apply the current language to every static label. The version line depends on INFO, so it is
+// rebuilt here too (and is left empty until /api/info answers).
+function applyStatic(){
+  const t = S();
+  document.documentElement.lang = LANG;
+  $('#lang').textContent = LANG.toUpperCase();
+  $('#lang').title = t.langTitle;
+  $('#theme').title = t.themeTitle;
+  $('#path').placeholder = t.pathPlaceholder;
+  $('#version').title = t.versionTitle;
+  $('#run').textContent = t.run;
+  $('#hint').textContent = t.hint;
+  $('#settingsToggle').innerHTML = '<span class="chev">▾</span> ' + t.settings;
+  if (INFO) $('#ver').textContent = 'v' + INFO.tool_version + (INFO.element_default ? ' · ' + t.element + ' ' + INFO.element_default : '');
+}
+
+// Switch language: persist the choice, re-label the static UI, and re-render the two dynamic
+// parts (rule settings and results) in place – the diagnostics are kept, not re-fetched.
+function setLang(l){
+  LANG = l;
+  localStorage.setItem('xbsllint-lang', l);
+  applyStatic();
+  if (RULES.length) renderSettings();
+  if (LAST) render();
+}
+$('#lang').onclick = () => setLang(LANG === 'ru' ? 'en' : 'ru');
+
 async function init(){
   setTheme(localStorage.getItem('xbsllint-theme') || 'dark');
+  const saved = localStorage.getItem('xbsllint-lang');
+  if (saved === 'ru' || saved === 'en') LANG = saved;
+  applyStatic();  // label the page before /api/info answers
   try{
     const info = await jget('/api/info');
-    $('#ver').textContent = 'v' + info.tool_version + (info.element_default ? ' · Элемент ' + info.element_default : '');
+    INFO = info;
+    // Start language: a saved choice wins, otherwise the server's process language.
+    if (!saved && (info.lang === 'ru' || info.lang === 'en')) LANG = info.lang;
+    applyStatic();
     const vs = $('#version'); vs.innerHTML = '';
     (info.element_available || []).forEach(v => {
       const o = document.createElement('option'); o.value = v; o.textContent = v;
@@ -277,21 +373,29 @@ async function init(){
     RULES = await jget('/api/rules');
     renderSettings();
     $('#status').classList.add('ok');
-  }catch(e){ $('#results').innerHTML = '<div class="err-box">Сервер недоступен: ' + esc(e) + '</div>'; }
+  }catch(e){ $('#results').innerHTML = '<div class="err-box">' + S().serverDown + esc(e) + '</div>'; }
 }
 
-const TIERS = {A:'A · структура / YAML', B:'B · текст / конвенции', C:'C · код', D:'D · семантика'};
+// Tier headers by language. Only the descriptions are translated – the tier letters A/B/C/D
+// and data words (YAML) stay put.
+function tiers(){ const t = S(); return {A: t.tierA, B: t.tierB, C: t.tierC, D: t.tierD}; }
 function renderSettings(){
-  const box = $('#rules'); box.innerHTML = '';
+  const box = $('#rules');
+  // Preserve the current checkbox state across a re-render (e.g. a language switch).
+  const prev = {};
+  box.querySelectorAll('input[data-rule]').forEach(c => { prev[c.dataset.rule] = c.checked; });
+  box.innerHTML = '';
+  const T = tiers();
   const byTier = {};
   RULES.forEach(r => (byTier[r.tier] = byTier[r.tier] || []).push(r));
-  Object.keys(TIERS).forEach(t => {
+  Object.keys(T).forEach(t => {
     if (!byTier[t]) return;
     const g = document.createElement('div'); g.className = 'rulegroup';
-    g.innerHTML = '<div class="rgh">' + TIERS[t] + '</div>';
+    g.innerHTML = '<div class="rgh">' + T[t] + '</div>';
     byTier[t].forEach(r => {
+      const checked = (r.id in prev) ? prev[r.id] : r.enabled_by_default;
       const lab = document.createElement('label'); lab.className = 'rulerow';
-      lab.innerHTML = '<input type="checkbox" data-rule="' + esc(r.id) + '"' + (r.enabled_by_default ? ' checked' : '') + '>'
+      lab.innerHTML = '<input type="checkbox" data-rule="' + esc(r.id) + '"' + (checked ? ' checked' : '') + '>'
         + '<span class="rid">' + esc(r.id) + '</span>'
         + '<span class="sev sev-' + r.severity + '">' + r.severity + '</span>'
         + '<span class="rtitle">' + esc(r.title) + '</span>';
@@ -316,12 +420,12 @@ async function runLint(){
   const path = $('#path').value.trim();
   if (!path){ $('#path').focus(); return; }
   $('#run').disabled = true;
-  $('#results').innerHTML = '<div class="muted">Проверяю…</div>';
+  $('#results').innerHTML = '<div class="muted">' + S().checking + '</div>';
   try{
     const res = await jpost('/api/lint', {path, select: selectedRules(), element_version: $('#version').value});
     LAST = res; fSev = 'all'; fText = '';
     render();
-  }catch(e){ $('#results').innerHTML = '<div class="err-box">Ошибка: ' + esc(e) + '</div>'; }
+  }catch(e){ $('#results').innerHTML = '<div class="err-box">' + S().error + esc(e) + '</div>'; }
   finally{ $('#run').disabled = false; }
 }
 $('#run').onclick = runLint;
@@ -331,15 +435,16 @@ function render(){
   if (!LAST) return;
   if (LAST.error){ $('#results').innerHTML = '<div class="err-box">' + esc(LAST.error) + '</div>'; return; }
   const s = LAST.summary;
+  const t = S();
   const chip = (key, label, cls, n) =>
     '<span class="chip' + (fSev === key ? ' on' : '') + '" data-sev="' + key + '"><b class="' + cls + '">' + n + '</b> ' + label + '</span>';
   let html = '<div class="panel">';
   html += '<div class="summary">'
-    + '<span class="chip' + (fSev==='all'?' on':'') + '" data-sev="all">Файлов <b>' + s.files + '</b> · всего <b>' + s.diagnostics + '</b></span>'
-    + chip('error', 'ошибок', 'c-err', s.errors)
-    + chip('warning', 'предупр.', 'c-warn', s.warnings)
-    + chip('info', 'инфо', 'c-info', s.info)
-    + '<input class="search" id="search" placeholder="Фильтр по тексту / правилу / файлу" value="' + esc(fText) + '">'
+    + '<span class="chip' + (fSev==='all'?' on':'') + '" data-sev="all">' + t.chipFiles + ' <b>' + s.files + '</b> · ' + t.chipTotal + ' <b>' + s.diagnostics + '</b></span>'
+    + chip('error', t.chipErrors, 'c-err', s.errors)
+    + chip('warning', t.chipWarnings, 'c-warn', s.warnings)
+    + chip('info', t.chipInfo, 'c-info', s.info)
+    + '<input class="search" id="search" placeholder="' + esc(t.searchPlaceholder) + '" value="' + esc(fText) + '">'
     + '</div>';
 
   let diags = LAST.diagnostics;
@@ -347,9 +452,9 @@ function render(){
   if (fText) { const q = fText.toLowerCase(); diags = diags.filter(d => (d.message + ' ' + d.rule + ' ' + d.path).toLowerCase().includes(q)); }
 
   if (!LAST.diagnostics.length){
-    html += '<div class="ok-box">✓ Замечаний нет — чисто.</div>';
+    html += '<div class="ok-box">' + t.clean + '</div>';
   } else if (!diags.length){
-    html += '<div class="muted">Ничего не найдено по фильтру.</div>';
+    html += '<div class="muted">' + t.noMatch + '</div>';
   } else {
     const groups = {};
     diags.forEach(d => (groups[d.path] = groups[d.path] || []).push(d));
