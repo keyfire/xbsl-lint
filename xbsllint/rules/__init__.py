@@ -31,6 +31,7 @@ from . import (  # noqa: F401
     enum_values,
     environment,
     handlers,
+    local_visibility,
     ns_objects,
     reserved_names,
     semantics,
