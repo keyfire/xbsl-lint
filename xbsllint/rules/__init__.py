@@ -31,6 +31,7 @@ from . import (  # noqa: F401
     environment,
     handlers,
     ns_objects,
+    reserved_names,
     semantics,
     size_stretch,
     yaml_properties,
