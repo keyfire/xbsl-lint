@@ -17,6 +17,7 @@ i18n.set_lang("ru")
 _DATA_DEPENDENT = {
     "test_lexer",
     "test_language",
+    "test_rule_ns_objects",
     "test_rules",
     "test_style_rules",
     "test_mcp",

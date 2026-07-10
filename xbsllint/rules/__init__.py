@@ -29,6 +29,7 @@ from . import (  # noqa: F401
     enum_nullable,
     enum_values,
     handlers,
+    ns_objects,
     semantics,
     size_stretch,
     yaml_properties,
