@@ -11,10 +11,10 @@ a project object (the Имя of a yaml with a ВидЭлемента), or a loca
   comma-separated list of names with a shared type – `знч a, b: <Type>`);
 - a method signature – the parameter types `(<name>: <Type>, ...)` and the return type `): <Type>`.
 
-A type expression is parsed by its root: for an FQN (`КэшДанныхСервиса.СтрокаКопии`) only the
+A type expression is parsed by its root: for an FQN (`КэшПрайса.СтрокаДанных`) only the
 first segment is checked (nested types are not described by the catalog – we leave them alone
 to avoid false positives); the nullable suffix `?` is ignored; for a generic
-(`Массив<ОрганизацияJSON>`) both the base and each argument are checked. The namespace roots
+(`Массив<СотрудникJSON>`) both the base and each argument are checked. The namespace roots
 (Справочник/Документ/...) are present in the catalog, so an FQN like `Справочник.Товары.Ссылка`
 resolves by its root.
 
