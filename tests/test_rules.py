@@ -460,6 +460,108 @@ def test_yaml_type_non_element_file_skipped(tmp_path):
     assert not _has(d, "yaml/unknown-type")
 
 
+# --- Тир D (значения перечислений) ----------------------------------------------------
+
+_ВИД_YAML = (
+    "ВидЭлемента: Перечисление\nИмя: ВидСообщения\nЭлементы:\n"
+    "    -\n        Имя: Важное\n    -\n        Имя: Обычное\n"
+)
+
+
+def _вид(tmp_path, code=None, extra_yaml=None):
+    (tmp_path / "ВидСообщения.yaml").write_text(_ВИД_YAML, encoding="utf-8")
+    if code is not None:
+        (tmp_path / "м.xbsl").write_text(code, encoding="utf-8")
+    if extra_yaml is not None:
+        (tmp_path / "Ф.yaml").write_text(extra_yaml, encoding="utf-8")
+    return engine.run(discover([str(tmp_path)]), select={"code/unknown-enum-value"})
+
+
+def test_enum_value_known_not_flagged(tmp_path):
+    d = _вид(tmp_path, "метод Ф(): ВидСообщения\n    возврат ВидСообщения.Важное\n;\n")
+    assert not _has(d, "code/unknown-enum-value")
+
+
+def test_enum_value_typo_flagged(tmp_path):
+    d = _вид(tmp_path, "метод Ф(): ВидСообщения\n    возврат ВидСообщения.Важнейшее\n;\n")
+    assert any(x.rule_id == "code/unknown-enum-value" and "Важнейшее" in x.message for x in d)
+
+
+def test_enum_builtin_member_not_flagged(tmp_path):
+    d = _вид(tmp_path, "метод Ф(): Строка\n    возврат ВидСообщения.Важное.Представление()\n;\n")
+    assert not _has(d, "code/unknown-enum-value")
+
+
+def test_enum_shadowed_name_skipped(tmp_path):
+    # локальная переменная затеняет перечисление - файл не проверяется по этому имени
+    d = _вид(
+        tmp_path,
+        "метод Ф(Данные: Структура): Строка\n"
+        "    знч ВидСообщения = Данные.Вид\n    возврат ВидСообщения.Что\n;\n",
+    )
+    assert not _has(d, "code/unknown-enum-value")
+
+
+def test_enum_member_assignment_not_shadowing(tmp_path):
+    # присваивание реквизита 'Объект.ВидСообщения = ...' затенением не считается
+    d = _вид(
+        tmp_path,
+        "метод Ф(Объект: Структура)\n    Объект.ВидСообщения = ВидСообщения.Важнейшее\n;\n",
+    )
+    assert any("Важнейшее" in x.message for x in d)
+
+
+def test_enum_member_of_other_object_not_flagged(tmp_path):
+    # 'Данные.ВидСообщения.Что' - обращение к полю, корень не перечисление
+    d = _вид(tmp_path, "метод Ф(Данные: Структура): Строка\n    возврат Данные.ВидСообщения.Что\n;\n")
+    assert not _has(d, "code/unknown-enum-value")
+
+
+def test_enum_in_query_not_scanned(tmp_path):
+    d = _вид(
+        tmp_path,
+        "метод Ф(): Число\n    знч Р = Запрос{\n        ВЫБРАТЬ ВидСообщения.Ерунда ИЗ Т\n    }\n    возврат 0\n;\n",
+    )
+    assert not _has(d, "code/unknown-enum-value")
+
+
+def test_enum_yaml_binding_typo_flagged(tmp_path):
+    d = _вид(
+        tmp_path,
+        extra_yaml=(
+            "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n    -\n"
+            "        Тип: Надпись\n        Видимость: '=Вид == ВидСообщения.Важнейшее'\n"
+        ),
+    )
+    assert any(x.rule_id == "code/unknown-enum-value" and "Важнейшее" in x.message for x in d)
+    assert next(x for x in d if "Важнейшее" in x.message).line == 6
+
+
+def test_enum_yaml_binding_known_not_flagged(tmp_path):
+    d = _вид(
+        tmp_path,
+        extra_yaml=(
+            "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n    -\n"
+            "        Тип: Надпись\n        Видимость: '=Вид == ВидСообщения.Важное'\n"
+        ),
+    )
+    assert not _has(d, "code/unknown-enum-value")
+
+
+def test_enum_yaml_field_named_as_enum_skipped(tmp_path):
+    # у формы есть реквизит с именем перечисления - биндинги файла не проверяются по нему
+    d = _вид(
+        tmp_path,
+        extra_yaml=(
+            "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nРеквизиты:\n    -\n"
+            "        Имя: ВидСообщения\n        Тип: Строка\n"
+            "Содержимое:\n    -\n        Тип: Надпись\n"
+            "        Значение: '=ВидСообщения.Чтото'\n"
+        ),
+    )
+    assert not _has(d, "code/unknown-enum-value")
+
+
 # --- Тир D (обработчики форм) --------------------------------------------------------
 
 def test_handler_missing_flagged(tmp_path):
