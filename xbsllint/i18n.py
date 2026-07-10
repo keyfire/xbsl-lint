@@ -49,6 +49,10 @@ _CORE_MESSAGES = {
         "ru": "Ошибка данных Элемента: {error}",
         "en": "Element data error: {error}",
     },
+    "cli.stdin-needs-filename": {
+        "ru": "Режиму --stdin нужен --filename (напр. Форма.xbsl): по расширению определяется вид файла.",
+        "en": "--stdin needs --filename (e.g. Form.xbsl): the extension sets the file kind.",
+    },
 }
 
 

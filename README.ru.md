@@ -45,7 +45,9 @@ xbsllint путь/к/исходникам        # или: python -m xbsllint п
 нужен клон репозитория.
 
 Флаги: `--list-rules`, `--select`/`--ignore` (по id правила, группе – части id до `/` – или букве
-тира), `--element-version`, `--data-dir`, `--lang`.
+тира), `--element-version`, `--data-dir`, `--lang`, `--format text|json`. Для интеграции с редактором
+`--stdin --filename ИМЯ` проверяет один буфер из stdin (только пофайловые правила); JSON
+(`{diagnostics, summary}`) – тот же, что отдаёт MCP-сервер.
 
 ## Язык вывода
 
@@ -132,6 +134,13 @@ xbsllint-web            # затем открыть http://127.0.0.1:8771/
 
 Настройки правил по тирам, выбор версии данных, фильтры по severity/тексту, тёмная/светлая тема;
 клик по замечанию открывает файл в VS Code (`vscode://`).
+
+## Поддержка редактора (VS Code)
+
+Расширение VS Code в [`editors/vscode`](editors/vscode) даёт подсветку синтаксиса `.xbsl` и
+диагностику по мере набора, вызывая линтер через `xbsllint --stdin --format json`. Сборка `.vsix` –
+`npm install && npm run package` в этой папке; настройки и требования – в её
+[README](editors/vscode/README.md).
 
 ## Версии Элемента
 

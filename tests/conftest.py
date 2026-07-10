@@ -20,6 +20,7 @@ _DATA_DEPENDENT = {
     "test_rules",
     "test_style_rules",
     "test_mcp",
+    "test_cli",
     "test_dataset",
     "test_corpus",
 }

@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from xbsllint import report
 from xbsllint.cli import discover
-from xbsllint.diagnostics import Diagnostic
 from xbsllint.engine import RULES, load_text, run, run_sources
 
 try:
@@ -27,26 +27,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover - hint when the dependenc
 
 
 mcp = FastMCP("xbsllint")
-
-
-def _diag_dict(d: Diagnostic) -> dict:
-    return {
-        "path": d.path,
-        "line": d.line,
-        "col": d.col,
-        "rule": d.rule_id,
-        "severity": d.severity.value,
-        "message": d.message,
-    }
-
-
-def _summary(diags: list[Diagnostic], n_files: int) -> dict:
-    return {
-        "files": n_files,
-        "diagnostics": len(diags),
-        "errors": sum(1 for d in diags if d.severity.value == "error"),
-        "warnings": sum(1 for d in diags if d.severity.value == "warning"),
-    }
 
 
 def _as_set(value: list[str] | None) -> set[str] | None:
@@ -74,8 +54,7 @@ def lint_paths(
     """
     files = discover(paths)
     diags = run(files, select=_as_set(select), ignore=_as_set(ignore))
-    diags = sorted(diags, key=lambda x: x.sort_key())
-    return {"diagnostics": [_diag_dict(d) for d in diags], "summary": _summary(diags, len(files))}
+    return report.report(diags, len(files))
 
 
 @mcp.tool()
@@ -95,8 +74,7 @@ def lint_source(
     diags = run_sources(
         [src], select=_as_set(select), ignore=_as_set(ignore), scopes=("file",)
     )
-    diags = sorted(diags, key=lambda x: x.sort_key())
-    return {"diagnostics": [_diag_dict(d) for d in diags], "summary": _summary(diags, 1)}
+    return report.report(diags, 1)
 
 
 def main() -> None:

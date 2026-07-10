@@ -9,6 +9,9 @@ compilation on deploy does not, and gives fast local feedback. Overview and usag
 - Thin adapters over the core: CLI (`xbsllint/cli.py`), MCP (`xbsllint/mcp_server.py`, FastMCP,
   optional `[mcp]` extra), and web (`xbsllint/web.py`, standard library, binds to `127.0.0.1` only).
   The core does not depend on `mcp`.
+- Machine-readable output: `xbsllint/report.py` holds the shared `{diagnostics, summary}` shape used
+  by the CLI `--format json`, the MCP server, and editors. `xbsllint --stdin --filename NAME` checks
+  one buffer (per-file rules only) — this is what the VS Code extension in `editors/vscode/` drives.
 - Lexer `xbsllint/lexer.py` — follows the platform grammar; rules live in `xbsllint/rules/`.
 
 ## Language data (versioned, generated locally)

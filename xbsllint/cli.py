@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
-from xbsllint import __version__, dataset, i18n
+from xbsllint import __version__, dataset, i18n, report
 
 
 def discover(paths: list[str]) -> list[Path]:
@@ -66,6 +67,23 @@ def build_parser() -> argparse.ArgumentParser:
         choices=i18n.LANGS,
         help="язык вывода линтера (по умолчанию: env XBSLLINT_LANG / локаль системы / ru)",
     )
+    parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="формат вывода: text (по умолчанию) или json (машиночитаемый: diagnostics + summary)",
+    )
+    parser.add_argument(
+        "--stdin",
+        action="store_true",
+        help="проверить один буфер из stdin (для интеграции с редактором); "
+             "вид файла и путь в позициях задаёт --filename",
+    )
+    parser.add_argument(
+        "--filename",
+        metavar="ИМЯ",
+        help="имя проверяемого буфера при --stdin (напр. Форма.xbsl); расширение задаёт вид файла",
+    )
     data_note = ""
     try:
         data_note = (
@@ -109,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         print(i18n.t("cli.data-error", error=exc), file=sys.stderr)
         return 2
 
-    from xbsllint.engine import RULES, run
+    from xbsllint.engine import RULES, make_source, run, run_sources
 
     if args.list_rules:
         for r in sorted(RULES, key=lambda x: (x.tier, x.id)):
@@ -119,20 +137,38 @@ def main(argv: list[str] | None = None) -> int:
             print(i18n.t("cli.no-rules"))
         return 0
 
-    files = discover(args.paths or ["."])
-    diagnostics = run(files, select=_parse_set(args.select), ignore=_parse_set(args.ignore))
-    for d in sorted(diagnostics, key=lambda x: x.sort_key()):
-        print(d.format())
+    select = _parse_set(args.select)
+    ignore = _parse_set(args.ignore)
 
-    n_xbsl = sum(1 for f in files if f.suffix == ".xbsl")
-    n_yaml = sum(1 for f in files if f.suffix == ".yaml")
-    n_err = sum(1 for d in diagnostics if d.severity.value == "error")
-    print(
-        i18n.t("cli.summary", files=len(files), xbsl=n_xbsl, yaml=n_yaml,
-               diags=len(diagnostics), errors=n_err),
-        file=sys.stderr,
-    )
-    return 1 if n_err else 0
+    if args.stdin:
+        # Editor mode: one buffer from stdin, checked with per-file rules only (cross-file rules
+        # need the whole project). --filename sets the kind (.xbsl/.yaml) and the reported path.
+        if not args.filename:
+            print(i18n.t("cli.stdin-needs-filename"), file=sys.stderr)
+            return 2
+        src = make_source(Path(args.filename), sys.stdin.buffer.read())
+        diagnostics = run_sources([src], select=select, ignore=ignore, scopes=("file",))
+        files = [Path(args.filename)]
+    else:
+        files = discover(args.paths or ["."])
+        diagnostics = run(files, select=select, ignore=ignore)
+
+    if args.format == "json":
+        # Machine-readable: the whole payload on stdout, nothing on stderr.
+        print(json.dumps(report.report(diagnostics, len(files)), ensure_ascii=False))
+    else:
+        for d in sorted(diagnostics, key=lambda x: x.sort_key()):
+            print(d.format())
+        n_xbsl = sum(1 for f in files if f.suffix == ".xbsl")
+        n_yaml = sum(1 for f in files if f.suffix == ".yaml")
+        n_err = sum(1 for d in diagnostics if d.severity.value == "error")
+        print(
+            i18n.t("cli.summary", files=len(files), xbsl=n_xbsl, yaml=n_yaml,
+                   diags=len(diagnostics), errors=n_err),
+            file=sys.stderr,
+        )
+
+    return 1 if any(d.severity.value == "error" for d in diagnostics) else 0
 
 
 if __name__ == "__main__":
