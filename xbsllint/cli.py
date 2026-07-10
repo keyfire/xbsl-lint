@@ -69,9 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=("text", "json"),
+        choices=("text", "json", "codeclimate"),
         default="text",
-        help="формат вывода: text (по умолчанию) или json (машиночитаемый: diagnostics + summary)",
+        help="формат вывода: text (по умолчанию), json (машиночитаемый: diagnostics + summary) "
+             "или codeclimate (отчёт GitLab Code Quality – виджет в merge request)",
     )
     parser.add_argument(
         "--stdin",
@@ -156,6 +157,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.format == "json":
         # Machine-readable: the whole payload on stdout, nothing on stderr.
         print(json.dumps(report.report(diagnostics, len(files)), ensure_ascii=False))
+    elif args.format == "codeclimate":
+        # GitLab Code Quality report: the issue array on stdout, nothing on stderr.
+        # Paths are made relative to the current directory — run from the repository root.
+        print(json.dumps(report.codeclimate(diagnostics), ensure_ascii=False))
     else:
         for d in sorted(diagnostics, key=lambda x: x.sort_key()):
             print(d.format())
