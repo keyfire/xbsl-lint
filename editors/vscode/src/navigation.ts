@@ -61,7 +61,7 @@ function runRaw(command: string, args: string[], cwd: string): Promise<RawRun> {
       if (code === 0) {
         resolve({ stdout: out });
       } else {
-        resolve({ stdout: out, error: (err || out || `код возврата ${code}`).trim().slice(0, 500) });
+        resolve({ stdout: out, error: (err || out || vscode.l10n.t("exit code {0}", code ?? -1)).trim().slice(0, 500) });
       }
     });
     if (child.stdin) {
@@ -122,7 +122,7 @@ class IndexCache {
       const shown = `${cfg.command} ${args.join(" ")}`;
       const run = await runRaw(cfg.command, args, root);
       if (run.error) {
-        this.output.appendLine(`навигация: "${shown}": ${run.error}`);
+        this.output.appendLine(vscode.l10n.t('navigation: "{0}": {1}', shown, run.error));
         continue;
       }
       try {
@@ -130,18 +130,23 @@ class IndexCache {
         this.lookup = new IndexLookup(index);
         this.rootFsPath = path.normalize(index.meta.root || root);
         this.output.appendLine(
-          `навигация: индекс "${this.folder.name}" загружен – объектов: ${index.objects.length}, ` +
-            `методов: ${index.methods.length}, компонентов: ${index.components.length}`
+          vscode.l10n.t(
+            'navigation: index "{0}" loaded – objects: {1}, methods: {2}, components: {3}',
+            this.folder.name, index.objects.length, index.methods.length, index.components.length
+          )
         );
         return;
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
-        this.output.appendLine(`навигация: "${shown}": ${reason}`);
+        this.output.appendLine(vscode.l10n.t('navigation: "{0}": {1}', shown, reason));
       }
     }
     // Every variant failed: keep the previous index (if any) and stay silent.
     this.output.appendLine(
-      `навигация: индекс проекта "${this.folder.name}" недоступен – переходы и дополнение по индексу молчат`
+      vscode.l10n.t(
+        'navigation: the project index "{0}" is unavailable – index-based navigation and completion stay silent',
+        this.folder.name
+      )
     );
   }
 

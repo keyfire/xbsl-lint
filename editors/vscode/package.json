@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -61,17 +61,17 @@
     "commands": [
       {
         "command": "xbsl.lintProject",
-        "title": "XBSL: проверить весь проект",
+        "title": "%cmd.lintProject%",
         "category": "XBSL"
       },
       {
         "command": "xbsl.restartLinter",
-        "title": "XBSL: перезапустить линтер",
+        "title": "%cmd.restartLinter%",
         "category": "XBSL"
       },
       {
         "command": "xbsl.choosePalette",
-        "title": "XBSL: палитра кода",
+        "title": "%cmd.choosePalette%",
         "category": "XBSL"
       }
     ],
@@ -86,31 +86,31 @@
             "off"
           ],
           "enumDescriptions": [
-            "Проверять по мере набора (с задержкой) и при сохранении",
-            "Проверять только при сохранении и открытии",
-            "Не проверять автоматически (только команда \"XBSL: проверить весь проект\")"
+            "%config.linter.run.enum.0%",
+            "%config.linter.run.enum.1%",
+            "%config.linter.run.enum.2%"
           ],
           "default": "onType",
           "scope": "resource",
-          "description": "Когда запускать линтер xbsllint для .xbsl."
+          "description": "%config.linter.run%"
         },
         "xbsl.linter.command": {
           "type": "string",
           "default": "xbsllint",
           "scope": "resource",
-          "description": "Исполняемый файл линтера (в PATH или абсолютный путь). Игнорируется, если задан xbsl.linter.pythonPath."
+          "description": "%config.linter.command%"
         },
         "xbsl.linter.pythonPath": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Путь к интерпретатору Python. Если задан, линтер вызывается как \"<python> -m xbsllint\" (пакет xbsllint должен быть установлен в этот интерпретатор)."
+          "description": "%config.linter.pythonPath%"
         },
         "xbsl.linter.dataDir": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Корень данных Элемента (каталог с index.json). Если пусто – линтер резолвит их сам (env XBSLLINT_DATA_DIR / внешний пакет данных / бандл)."
+          "description": "%config.linter.dataDir%"
         },
         "xbsl.linter.lang": {
           "type": "string",
@@ -120,69 +120,69 @@
             "en"
           ],
           "enumDescriptions": [
-            "Как определит линтер (env / локаль системы / ru)",
-            "Русский",
-            "Английский"
+            "%config.linter.lang.enum.0%",
+            "%config.linter.lang.enum.1%",
+            "%config.linter.lang.enum.2%"
           ],
           "default": "",
           "scope": "resource",
-          "description": "Язык текста замечаний."
+          "description": "%config.linter.lang%"
         },
         "xbsl.linter.select": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Проверять только эти правила (через запятую: id, группа или буква тира A/B/C/D). Пусто – набор по умолчанию."
+          "description": "%config.linter.select%"
         },
         "xbsl.linter.ignore": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Исключить эти правила (через запятую: id, группа или буква тира)."
+          "description": "%config.linter.ignore%"
         },
         "xbsl.projectRoot": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Корень исходников для прогонов по проекту и индекса навигации: путь относительно папки воркспейса (или абсолютный). Пусто – вся папка воркспейса. Задайте, если в репозитории кроме проекта лежат примеры или копии: иначе проектные правила (уникальность Ид и др.) дают ложные срабатывания между каталогами."
+          "description": "%config.projectRoot%"
         },
         "xbsl.lsp.enabled": {
           "type": "boolean",
           "default": false,
           "scope": "resource",
-          "description": "Экспериментально: работать через долгоживущий LSP-сервер xbsllint-lsp (нужен линтер с extra [lsp]: pip install \"xbsllint[lsp]\"). Даёт hover и мгновенный отклик диагностики; при недоступности сервера расширение само откатывается в обычный режим. Смена требует перезагрузки окна."
+          "description": "%config.lsp.enabled%"
         },
         "xbsl.lsp.command": {
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Команда запуска LSP-сервера. Пусто – xbsllint-lsp из PATH, либо `<xbsl.linter.pythonPath> -m xbsllint.lsp`, если задан интерпретатор. Пример: C:/Python/Scripts/xbsllint-lsp.exe."
+          "description": "%config.lsp.command%"
         },
         "xbsl.linter.debounce": {
           "type": "number",
           "default": 300,
           "minimum": 0,
           "scope": "resource",
-          "description": "Задержка в миллисекундах перед проверкой по мере набора (режим onType)."
+          "description": "%config.linter.debounce%"
         },
         "xbsl.workspaceLint": {
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "description": "При сохранении .xbsl/.yaml запускать полный прогон линтера по папке workspace и раскладывать замечания по всем файлам. Приносит межфайловые правила (code/unknown-type, yaml/unknown-type и др.), которые не видны при проверке одного буфера."
+          "description": "%config.workspaceLint%"
         },
         "xbsl.workspaceLintTimeout": {
           "type": "number",
           "default": 60000,
           "minimum": 0,
           "scope": "resource",
-          "description": "Таймаут полного прогона workspace в миллисекундах (0 – без ограничения). По истечении процесс линтера останавливается, сообщение пишется в журнал XBSL."
+          "description": "%config.workspaceLintTimeout%"
         },
         "xbsl.navigation.enabled": {
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "description": "Переходы к определению и автодополнение по индексу проекта (команда \"xbsllint index\"). Если установленный линтер индекс не поддерживает, навигация просто молчит."
+          "description": "%config.navigation.enabled%"
         }
       }
     }
@@ -207,5 +207,6 @@
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
-  }
+  },
+  "l10n": "./l10n"
 }

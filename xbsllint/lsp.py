@@ -32,7 +32,7 @@ except ImportError:  # pragma: no cover - the extra is not installed
     lsp = None
     LanguageServer = None
 
-from xbsllint import __version__, dataset, engine, indexer
+from xbsllint import __version__, dataset, engine, i18n, indexer
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.lsp_nav import IndexLookup, resolve_completions, resolve_definition, resolve_hover
 
@@ -340,9 +340,10 @@ def _make_server() -> "LanguageServer":
                 ),
                 new_text=fix["new"],
             )
+            title = f"Fix: {d.code}" if i18n.current_lang() == "en" else f"Исправить: {d.code}"
             actions.append(
                 lsp.CodeAction(
-                    title=f"Исправить: {d.code}",
+                    title=title,
                     kind=lsp.CodeActionKind.QuickFix,
                     diagnostics=[d],
                     edit=lsp.WorkspaceEdit(changes={params.text_document.uri: [edit]}),
@@ -364,9 +365,11 @@ def main() -> None:
     parser.add_argument("--ignore", help="исключить правила (через запятую)")
     parser.add_argument("--enable", help="включить правила поверх набора по умолчанию")
     parser.add_argument("--data-dir", help="корень данных Элемента (папка с index.json)")
+    parser.add_argument("--lang", choices=i18n.LANGS, help="язык текста замечаний")
     args = parser.parse_args()
     if args.data_dir:
         dataset.set_data_root(args.data_dir)
+    i18n.set_lang(args.lang)  # None сохраняет порядок env/локаль
     STATE.project_root_arg = args.project_root
     STATE.select = _rule_set(args.select)
     STATE.ignore = _rule_set(args.ignore)

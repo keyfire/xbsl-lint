@@ -87,7 +87,7 @@ function projectRootFor(folder: vscode.WorkspaceFolder): string {
   }
   const abs = path.isAbsolute(raw) ? raw : path.join(folder.uri.fsPath, raw);
   if (!fs.existsSync(abs)) {
-    output.appendLine(`XBSL: xbsl.projectRoot "${raw}" не найден – используется папка воркспейса.`);
+    output.appendLine(vscode.l10n.t('XBSL: xbsl.projectRoot "{0}" not found – using the workspace folder.', raw));
     return folder.uri.fsPath;
   }
   return abs;
@@ -135,7 +135,7 @@ function reportProblem(message: string): void {
   output.appendLine(message);
   if (!warnedOnce) {
     warnedOnce = true;
-    void vscode.window.showErrorMessage(`XBSL: ${message}`, "Показать журнал").then((pick) => {
+    void vscode.window.showErrorMessage(`XBSL: ${message}`, vscode.l10n.t("Show log")).then((pick) => {
       if (pick) {
         output.show(true);
       }
@@ -218,7 +218,7 @@ async function runWorkspaceLint(folder: vscode.WorkspaceFolder, notify: boolean)
   const result = await handle.result;
   activeRun = undefined;
   if (result.canceled) {
-    output.appendLine(`XBSL: прогон workspace "${folder.name}" отменён – файлы изменились.`);
+    output.appendLine(vscode.l10n.t('XBSL: the workspace run "{0}" was canceled – the files changed.', folder.name));
     return;
   }
   if (result.error) {
@@ -226,15 +226,15 @@ async function runWorkspaceLint(folder: vscode.WorkspaceFolder, notify: boolean)
     if (notify) {
       reportProblem(result.error);
     } else {
-      output.appendLine(`XBSL: прогон workspace "${folder.name}" не удался: ${result.error}`);
+      output.appendLine(vscode.l10n.t('XBSL: the workspace run "{0}" failed: {1}', folder.name, result.error));
     }
     return;
   }
   if (result.report) {
     applyWorkspaceReport(folder, result.report);
     const s = result.report.summary;
-    const stats = s ? `${s.diagnostics} замечаний в ${s.files} файлах` : "готово";
-    output.appendLine(`XBSL: прогон workspace "${folder.name}": ${stats}, ${Date.now() - started} мс.`);
+    const stats = s ? vscode.l10n.t("{0} findings in {1} files", s.diagnostics, s.files) : vscode.l10n.t("done");
+    output.appendLine(vscode.l10n.t('XBSL: workspace run "{0}": {1}, {2} ms.', folder.name, stats, Date.now() - started));
   }
 }
 
@@ -309,11 +309,11 @@ function scheduleWorkspaceLintAll(): void {
 async function lintProject(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
-    void vscode.window.showInformationMessage("XBSL: нет открытой папки для проверки.");
+    void vscode.window.showInformationMessage(vscode.l10n.t("XBSL: no open folder to check."));
     return;
   }
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Window, title: "XBSL: проверка проекта..." },
+    { location: vscode.ProgressLocation.Window, title: vscode.l10n.t("XBSL: checking the project...") },
     async () => {
       await Promise.all(folders.map((folder) => enqueueWorkspaceRun(folder, true)));
     }

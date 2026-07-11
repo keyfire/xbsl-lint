@@ -48,6 +48,7 @@ export async function activateLsp(
     ["--select", "linter.select"],
     ["--ignore", "linter.ignore"],
     ["--data-dir", "linter.dataDir"],
+    ["--lang", "linter.lang"],
   ] as const) {
     const value = (cfg.get<string>(key) || "").trim();
     if (value) {
@@ -73,28 +74,29 @@ export async function activateLsp(
     await client.start();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    output.appendLine(`XBSL LSP: сервер не запустился (${plan.command}): ${msg}`);
+    output.appendLine(vscode.l10n.t('XBSL LSP: the server failed to start ({0}): {1}', plan.command, msg));
     void vscode.window.showErrorMessage(
-      "XBSL: не удалось запустить xbsllint-lsp. Установите линтер с extra [lsp] " +
-        "(pip install \"xbsllint[lsp]\") или укажите команду в настройке xbsl.lsp.command. " +
-        "Расширение работает в обычном режиме (CLI)."
+      vscode.l10n.t(
+        'XBSL: failed to start xbsllint-lsp. Install the linter with the [lsp] extra (pip install "xbsllint[lsp]") or set the command in the xbsl.lsp.command setting. The extension keeps working in the regular mode (CLI).'
+      )
     );
     client = undefined;
     return false;
   }
-  output.appendLine(`XBSL LSP: сервер запущен (${plan.command} ${args.join(" ")}).`);
+  output.appendLine(vscode.l10n.t('XBSL LSP: server started ({0} {1}).', plan.command, args.join(" ")));
 
   context.subscriptions.push(
     { dispose: () => void client?.stop() },
     // Команды сохраняют привычные идентификаторы и в LSP-режиме.
     vscode.commands.registerCommand("xbsl.restartLinter", async () => {
       await client?.restart();
-      void vscode.window.setStatusBarMessage("XBSL LSP: сервер перезапущен", 3000);
+      void vscode.window.setStatusBarMessage(vscode.l10n.t("XBSL LSP: server restarted"), 3000);
     }),
     vscode.commands.registerCommand("xbsl.lintProject", () => {
       void vscode.window.showInformationMessage(
-        "XBSL LSP: проектная диагностика выполняется сервером при каждом сохранении; " +
-          "принудительно - командой \"XBSL: перезапустить линтер\"."
+        vscode.l10n.t(
+          'XBSL LSP: project-wide diagnostics run on the server on every save; force them with the "XBSL: restart the linter" command.'
+        )
       );
     })
   );

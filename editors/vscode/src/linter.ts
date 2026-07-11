@@ -85,7 +85,7 @@ function runProcess(command: string, args: string[], opts: RunOptions): RunHandl
         return;
       }
       if (timedOut) {
-        resolve({ error: `линтер не уложился в ${opts.timeoutMs} мс и был остановлен` });
+        resolve({ error: vscode.l10n.t("the linter did not finish within {0} ms and was stopped", opts.timeoutMs ?? 0) });
         return;
       }
       if (tooBig) {
@@ -114,9 +114,9 @@ function runProcess(command: string, args: string[], opts: RunOptions): RunHandl
 function describeSpawnError(command: string, e: unknown): string {
   const err = e as NodeJS.ErrnoException;
   if (err && err.code === "ENOENT") {
-    return `не найден исполняемый файл линтера "${command}". Установите xbsllint (pip install xbsllint) или задайте xbsl.linter.command / xbsl.linter.pythonPath.`;
+    return vscode.l10n.t('linter executable "{0}" not found. Install xbsllint (pip install xbsllint) or set xbsl.linter.command / xbsl.linter.pythonPath.', command);
   }
-  return `не удалось запустить линтер "${command}": ${err && err.message ? err.message : String(e)}`;
+  return vscode.l10n.t('failed to start the linter "{0}": {1}', command, err && err.message ? err.message : String(e));
 }
 
 // Check one buffer via `xbsllint --stdin` (per-file rules only).

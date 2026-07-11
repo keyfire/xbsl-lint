@@ -70,7 +70,7 @@ export class XbslCodeActionProvider implements vscode.CodeActionProvider {
           continue;
         }
         const action = new vscode.CodeAction(
-          `Исправить: ${diag.code}`,
+          vscode.l10n.t("Fix: {0}", String(diag.code)),
           vscode.CodeActionKind.QuickFix
         );
         action.diagnostics = [diag];
@@ -88,7 +88,7 @@ export class XbslCodeActionProvider implements vscode.CodeActionProvider {
     if (wantFixAll) {
       const all = selectNonOverlapping(collectFixes(diags));
       if (all.length > 0) {
-        const action = new vscode.CodeAction("Исправить все (xbsllint)", FIX_ALL_KIND);
+        const action = new vscode.CodeAction(vscode.l10n.t("Fix all (xbsllint)"), FIX_ALL_KIND);
         action.edit = new vscode.WorkspaceEdit();
         action.edit.set(document.uri, editsFor(document, all));
         actions.push(action);

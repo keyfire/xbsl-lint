@@ -40,12 +40,12 @@ interface Palette {
 // Цвета взяты из канонических значений соответствующих тем.
 const PALETTES: Palette[] = [
   {
-    label: "Тема редактора",
-    detail: "Снять переопределения – XBSL красится активной темой VS Code",
+    label: vscode.l10n.t("Editor theme"),
+    detail: vscode.l10n.t("Remove the overrides – XBSL is colored by the active VS Code theme"),
   },
   {
-    label: "1С:Элемент (веб-среда)",
-    detail: "Красные ключевые слова, синие строки – как в среде разработки платформы",
+    label: vscode.l10n.t("1C:Element (web IDE)"),
+    detail: vscode.l10n.t("Red keywords, blue strings – like the platform IDE"),
     colors: {
       keyword: { fg: "#F14C4C" },
       storage: { fg: "#F14C4C" },
@@ -62,7 +62,7 @@ const PALETTES: Palette[] = [
   },
   {
     label: "One Dark",
-    detail: "Палитра Atom One Dark",
+    detail: vscode.l10n.t("The Atom One Dark palette"),
     colors: {
       keyword: { fg: "#C678DD" },
       storage: { fg: "#C678DD" },
@@ -79,7 +79,7 @@ const PALETTES: Palette[] = [
   },
   {
     label: "Monokai",
-    detail: "Классическая палитра Monokai",
+    detail: vscode.l10n.t("The classic Monokai palette"),
     colors: {
       keyword: { fg: "#F92672" },
       storage: { fg: "#F92672" },
@@ -96,7 +96,7 @@ const PALETTES: Palette[] = [
   },
   {
     label: "Dracula",
-    detail: "Палитра Dracula",
+    detail: vscode.l10n.t("The Dracula palette"),
     colors: {
       keyword: { fg: "#FF79C6" },
       storage: { fg: "#FF79C6" },
@@ -113,7 +113,7 @@ const PALETTES: Palette[] = [
   },
   {
     label: "GitHub Dark",
-    detail: "Палитра GitHub Dark",
+    detail: vscode.l10n.t("The GitHub Dark palette"),
     colors: {
       keyword: { fg: "#FF7B72" },
       storage: { fg: "#FF7B72" },
@@ -176,7 +176,7 @@ export function registerPalettePicker(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("xbsl.choosePalette", async () => {
       const picked = await vscode.window.showQuickPick(
         PALETTES.map((p) => ({ label: p.label, detail: p.detail, palette: p })),
-        { title: "Палитра кода XBSL", placeHolder: "Цвета применяются только к XBSL, тема редактора не меняется" }
+        { title: vscode.l10n.t("XBSL code palette"), placeHolder: vscode.l10n.t("Colors apply to XBSL only, the editor theme stays") }
       );
       if (!picked) {
         return;
@@ -184,8 +184,8 @@ export function registerPalettePicker(context: vscode.ExtensionContext): void {
       await applyPalette(picked.palette);
       void vscode.window.showInformationMessage(
         picked.palette.colors
-          ? `XBSL: палитра "${picked.palette.label}" применена.`
-          : "XBSL: переопределения сняты, действует тема редактора."
+          ? vscode.l10n.t('XBSL: the "{0}" palette is applied.', picked.palette.label)
+          : vscode.l10n.t("XBSL: overrides removed, the editor theme applies.")
       );
     })
   );
