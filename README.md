@@ -211,6 +211,15 @@ config file. A failing entry point raises instead of warning: a linter that sile
 stays green in CI and guarantees nothing. `XBSLLINT_NO_PLUGINS=1` ignores every external package
 (built-in rules and bundled data only).
 
+## LSP server (experimental)
+
+`xbsllint-lsp` (the `[lsp]` extra: `pip install "xbsllint[lsp]"`) runs the linter as a
+long-living Language Server over stdio: live per-file diagnostics as you type, project-wide
+diagnostics on save, go to definition, completion and hover over a resident project index,
+and quick-fix code actions - without paying the interpreter start-up cost per call. Flags:
+`--project-root` (the sources root relative to the workspace folder), `--select`/`--ignore`/
+`--enable`, `--data-dir`. Any LSP-capable editor (VS Code, Neovim, JetBrains) can spawn it.
+
 ## MCP server
 
 A thin adapter over the same core: an agent (e.g. Claude Code) can call the checks as tools and
