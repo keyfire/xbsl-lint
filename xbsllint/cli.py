@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from xbsllint import __version__, dataset, i18n, report
+from xbsllint import __version__, baseline, dataset, i18n, report
 
 
 def discover(paths: list[str]) -> list[Path]:
@@ -50,6 +50,25 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ID/ГРУППА/ТИР",
         action="append",
         help="исключить эти правила (через запятую или повтором флага: id, группа или буква тира)",
+    )
+    parser.add_argument(
+        "--enable",
+        metavar="ID/ГРУППА/ТИР",
+        action="append",
+        help="добавить выключенные по умолчанию правила ПОВЕРХ стандартного набора "
+             "(--select набор заменяет); формы значений те же",
+    )
+    parser.add_argument(
+        "--baseline",
+        metavar="ФАЙЛ",
+        help="гасить находки, замороженные в файле базлайна (создаётся --write-baseline); "
+             "новые находки выводятся как обычно",
+    )
+    parser.add_argument(
+        "--write-baseline",
+        metavar="ФАЙЛ",
+        help="вместо отчёта записать все текущие находки в файл базлайна "
+             "(заморозить долг; пути в файле – относительно его каталога)",
     )
     parser.add_argument(
         "--list-rules", action="store_true", help="вывести список правил и выйти"
@@ -165,6 +184,7 @@ def main(argv: list[str] | None = None) -> int:
 
     select = _parse_set(args.select)
     ignore = _parse_set(args.ignore)
+    enable = _parse_set(args.enable)
 
     if args.stdin:
         # Editor mode: one buffer from stdin, checked with per-file rules only (cross-file rules
@@ -173,15 +193,44 @@ def main(argv: list[str] | None = None) -> int:
             print(i18n.t("cli.stdin-needs-filename"), file=sys.stderr)
             return 2
         src = make_source(Path(args.filename), sys.stdin.buffer.read())
-        diagnostics = run_sources([src], select=select, ignore=ignore, scopes=("file",))
+        diagnostics = run_sources(
+            [src], select=select, ignore=ignore, enable=enable, scopes=("file",),
+        )
         files = [Path(args.filename)]
     else:
         files = discover(args.paths or ["."])
-        diagnostics = run(files, select=select, ignore=ignore)
+        diagnostics = run(files, select=select, ignore=ignore, enable=enable)
+
+    if args.write_baseline:
+        # Freeze mode: the findings become the baseline instead of a report. Deliberate debt –
+        # the run itself succeeds regardless of severities.
+        target = Path(args.write_baseline)
+        data = baseline.write(target, diagnostics)
+        print(
+            i18n.t("cli.baseline-written", path=target,
+                   diags=len(diagnostics), files=len(data["files"])),
+            file=sys.stderr,
+        )
+        return 0
+
+    suppressed = unused = None
+    if args.baseline:
+        try:
+            data = baseline.load(Path(args.baseline))
+        except baseline.BaselineError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        diagnostics, suppressed, unused = baseline.apply(
+            diagnostics, data, Path(args.baseline).parent,
+        )
 
     if args.format == "json":
         # Machine-readable: the whole payload on stdout, nothing on stderr.
-        print(json.dumps(report.report(diagnostics, len(files)), ensure_ascii=False))
+        payload = report.report(diagnostics, len(files))
+        if suppressed is not None:
+            payload["summary"]["baselined"] = suppressed
+            payload["summary"]["baseline_unused"] = unused
+        print(json.dumps(payload, ensure_ascii=False))
     elif args.format == "codeclimate":
         # GitLab Code Quality report: the issue array on stdout, nothing on stderr.
         # Paths are made relative to the current directory — run from the repository root.
@@ -197,6 +246,11 @@ def main(argv: list[str] | None = None) -> int:
                    diags=len(diagnostics), errors=n_err),
             file=sys.stderr,
         )
+        if suppressed is not None:
+            print(
+                i18n.t("cli.baseline-summary", suppressed=suppressed, unused=unused),
+                file=sys.stderr,
+            )
 
     return 1 if any(d.severity.value == "error" for d in diagnostics) else 0
 

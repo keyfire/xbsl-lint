@@ -106,14 +106,35 @@ regressions. Rules that typically fire on accumulated legacy debt are `info` and
 them to measure the debt and pay it down:
 
 ```sh
-xbsllint path/to/sources --select style     # all conventions, including the disabled ones
-xbsllint path/to/sources --ignore style     # none of them
+xbsllint path/to/sources --select style     # ONLY these rules (replaces the default set)
+xbsllint path/to/sources --enable style     # the default set PLUS these
+xbsllint path/to/sources --ignore style     # the default set minus these
 ```
+
+`--select`, `--enable` and `--ignore` accept a rule id, a group (the part before `/`) or a tier
+letter, repeated or comma-separated. `--select` narrows to exactly the given rules; `--enable`
+switches on off-by-default rules on top of the defaults.
 
 `Запрос{ ... }` blocks (the query DSL) and string literals (HTML/CSS/SVG in web views) are
 excluded from these checks. Not covered, and left to the author and review: indentation being a
 multiple of four, collection idioms, `Строки.Соединить()` for bulk concatenation, the `?.` / `??`
 idioms, and `выбор` instead of an `иначе если` chain.
+
+## Baseline: adopt a rule on a legacy codebase
+
+To enable a rule over code that already violates it without drowning in legacy findings, freeze the
+current findings into a baseline and hold only new code to the rule:
+
+```sh
+xbsllint e1c/site --enable style --write-baseline baseline.json   # freeze the debt once
+xbsllint e1c/site --enable style --baseline baseline.json         # only NEW findings surface
+```
+
+A finding's identity is `(file, rule, message)` with an allowed count, so moving a line keeps its
+finding suppressed while a genuinely new violation surfaces. The summary reports how many findings
+the baseline suppressed and how many of its entries are now stale (debt paid down) — a signal to
+rewrite the file. Paths are stored relative to the baseline file, so commit it at the repository
+root and run the linter from anywhere.
 
 ## Extending: your own rules and data
 

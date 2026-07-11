@@ -61,6 +61,14 @@ _CORE_MESSAGES = {
         "ru": "Путь '{path}' не существует.",
         "en": "Path '{path}' does not exist.",
     },
+    "cli.baseline-summary": {
+        "ru": "Погашено базлайном: {suppressed}; устаревших записей базлайна: {unused}",
+        "en": "Suppressed by the baseline: {suppressed}; stale baseline entries: {unused}",
+    },
+    "cli.baseline-written": {
+        "ru": "Базлайн записан: {path} ({diags} замечаний в {files} файлах)",
+        "en": "Baseline written: {path} ({diags} findings in {files} files)",
+    },
 }
 
 

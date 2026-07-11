@@ -135,8 +135,13 @@ def rule(
     return deco
 
 
-def _is_selected(info: RuleInfo, select: set[str] | None, ignore: set[str] | None) -> bool:
-    # select/ignore match a rule id, a rule group (the part of the id before '/')
+def _is_selected(
+    info: RuleInfo,
+    select: set[str] | None,
+    ignore: set[str] | None,
+    enable: set[str] | None = None,
+) -> bool:
+    # select/ignore/enable match a rule id, a rule group (the part of the id before '/')
     # or a tier letter ('A'..'D')
     group = info.id.split("/", 1)[0]
 
@@ -148,11 +153,18 @@ def _is_selected(info: RuleInfo, select: set[str] | None, ignore: set[str] | Non
     if select:
         # An explicit selection enables a rule even when it is off by default
         return matches(select)
+    if enable and matches(enable):
+        # enable adds off-by-default rules ON TOP of the default set (select replaces it)
+        return True
     return info.enabled_by_default
 
 
-def active_rules(select: set[str] | None = None, ignore: set[str] | None = None) -> list[RuleInfo]:
-    return [r for r in RULES if _is_selected(r, select, ignore)]
+def active_rules(
+    select: set[str] | None = None,
+    ignore: set[str] | None = None,
+    enable: set[str] | None = None,
+) -> list[RuleInfo]:
+    return [r for r in RULES if _is_selected(r, select, ignore, enable)]
 
 
 def run_sources(
@@ -160,10 +172,11 @@ def run_sources(
     *,
     select: set[str] | None = None,
     ignore: set[str] | None = None,
+    enable: set[str] | None = None,
     scopes: tuple[str, ...] = ("file", "project"),
 ) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
-    active = active_rules(select, ignore)
+    active = active_rules(select, ignore, enable)
     if "file" in scopes:
         file_rules = [r for r in active if r.scope == "file"]
         for src in sources:
@@ -180,9 +193,10 @@ def run(
     *,
     select: set[str] | None = None,
     ignore: set[str] | None = None,
+    enable: set[str] | None = None,
 ) -> list[Diagnostic]:
     sources = [load(p) for p in paths]
-    return run_sources(sources, select=select, ignore=ignore)
+    return run_sources(sources, select=select, ignore=ignore, enable=enable)
 
 
 # Importing the rules package registers them (the decorators run on module import).

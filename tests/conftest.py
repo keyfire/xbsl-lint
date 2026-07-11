@@ -27,6 +27,7 @@ _DATA_DEPENDENT = {
     "test_corpus",
     "test_rule_reserved",
     "test_index",
+    "test_baseline",
 }
 
 
