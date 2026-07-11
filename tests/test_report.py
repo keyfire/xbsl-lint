@@ -3,7 +3,7 @@
 import json
 
 from xbsllint import report
-from xbsllint.diagnostics import Diagnostic, Severity
+from xbsllint.diagnostics import Diagnostic, Severity, TextEdit
 
 
 def _d(line, col, rule, sev):
@@ -40,3 +40,16 @@ def test_report_empty():
         "diagnostics": [],
         "summary": {"files": 0, "diagnostics": 0, "errors": 0, "warnings": 0},
     }
+
+
+def test_fix_span_emitted_when_present():
+    d = Diagnostic(
+        path="X.xbsl", line=2, col=14, rule_id="whitespace/trailing",
+        severity=Severity.WARNING, message="m", fix=TextEdit(20, 23, ""),
+    )
+    payload = report.report([d], 1)
+    first = payload["diagnostics"][0]
+    assert first["fix"] == {"start": 20, "end": 23, "newText": ""}
+    # без правки ключ отсутствует
+    plain = report.report([_d(1, 1, "code/unused-loop-var", Severity.WARNING)], 1)
+    assert "fix" not in plain["diagnostics"][0]

@@ -17,8 +17,14 @@ from xbsllint.diagnostics import Diagnostic
 
 
 def diag_dict(d: Diagnostic) -> dict:
-    """One diagnostic as a plain dict. Position is 1-based (line, col), as in the model."""
-    return {
+    """One diagnostic as a plain dict. Position is 1-based (line, col), as in the model.
+
+    A mechanically fixable finding also carries `fix`: {start, end, newText}, where start/end
+    are 0-based character offsets into the file's decoded text (a UTF-8 buffer as sent to the
+    linter). An editor turns it into a Quick Fix; the key is absent when the rule has no span
+    fix (including whole-file fixes like whitespace/mixed-newline).
+    """
+    out = {
         "path": d.path,
         "line": d.line,
         "col": d.col,
@@ -26,6 +32,9 @@ def diag_dict(d: Diagnostic) -> dict:
         "severity": d.severity.value,
         "message": d.message,
     }
+    if d.fix is not None:
+        out["fix"] = {"start": d.fix.start, "end": d.fix.end, "newText": d.fix.new}
+    return out
 
 
 def summary(diags: list[Diagnostic], n_files: int) -> dict:
