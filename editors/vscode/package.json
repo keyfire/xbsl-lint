@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -75,7 +75,11 @@
       "properties": {
         "xbsl.linter.run": {
           "type": "string",
-          "enum": ["onType", "onSave", "off"],
+          "enum": [
+            "onType",
+            "onSave",
+            "off"
+          ],
           "enumDescriptions": [
             "Проверять по мере набора (с задержкой) и при сохранении",
             "Проверять только при сохранении и открытии",
@@ -105,7 +109,11 @@
         },
         "xbsl.linter.lang": {
           "type": "string",
-          "enum": ["", "ru", "en"],
+          "enum": [
+            "",
+            "ru",
+            "en"
+          ],
           "enumDescriptions": [
             "Как определит линтер (env / локаль системы / ru)",
             "Русский",
@@ -126,6 +134,12 @@
           "default": "",
           "scope": "resource",
           "description": "Исключить эти правила (через запятую: id, группа или буква тира)."
+        },
+        "xbsl.projectRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Корень исходников для прогонов по проекту и индекса навигации: путь относительно папки воркспейса (или абсолютный). Пусто – вся папка воркспейса. Задайте, если в репозитории кроме проекта лежат примеры или копии: иначе проектные правила (уникальность Ид и др.) дают ложные срабатывания между каталогами."
         },
         "xbsl.linter.debounce": {
           "type": "number",

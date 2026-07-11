@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
 import * as path from "path";
 import { LinterConfig, RawDiag, RawReport } from "./report";
 import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from "./linter";
@@ -70,6 +71,24 @@ function readSettings(resource?: vscode.Uri): Settings {
     workspaceLint: c.get<boolean>("workspaceLint") ?? true,
     workspaceTimeout: c.get<number>("workspaceLintTimeout") ?? 60000,
   };
+}
+
+// Корень исходников для прогонов по проекту и для индекса навигации: настройка
+// xbsl.projectRoot (путь относительно папки воркспейса или абсолютный). Позволяет не
+// линтить посторонние каталоги репозитория (примеры, копии), из-за которых проектные
+// правила (уникальность Ид и т.п.) дают ложные срабатывания. Пусто или не существует –
+// сама папка воркспейса.
+function projectRootFor(folder: vscode.WorkspaceFolder): string {
+  const raw = (vscode.workspace.getConfiguration("xbsl", folder.uri).get<string>("projectRoot") || "").trim();
+  if (!raw) {
+    return folder.uri.fsPath;
+  }
+  const abs = path.isAbsolute(raw) ? raw : path.join(folder.uri.fsPath, raw);
+  if (!fs.existsSync(abs)) {
+    output.appendLine(`XBSL: xbsl.projectRoot "${raw}" не найден – используется папка воркспейса.`);
+    return folder.uri.fsPath;
+  }
+  return abs;
 }
 
 function cwdFor(uri: vscode.Uri): string | undefined {
@@ -191,7 +210,7 @@ function enqueueWorkspaceRun(folder: vscode.WorkspaceFolder, notify = false): Pr
 
 async function runWorkspaceLint(folder: vscode.WorkspaceFolder, notify: boolean): Promise<void> {
   const settings = readSettings(folder.uri);
-  const handle = lintPath(folder.uri.fsPath, folder.uri.fsPath, settings.linter, settings.workspaceTimeout);
+  const handle = lintPath(projectRootFor(folder), folder.uri.fsPath, settings.linter, settings.workspaceTimeout);
   activeRun = { folderKey: folder.uri.toString(), handle };
   const started = Date.now();
   const result = await handle.result;
@@ -417,7 +436,7 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  registerNavigation(context, output, (resource) => readSettings(resource).linter);
+  registerNavigation(context, output, (resource) => readSettings(resource).linter, projectRootFor);
 
   lintOpenDocuments();
   scheduleWorkspaceLintAll();

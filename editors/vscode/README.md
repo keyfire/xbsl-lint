@@ -103,6 +103,7 @@ newlines) are left to `xbsllint --fix` on the command line.
 | `xbsl.linter.select` | – | Only these rules (ids, groups, or tier letters `A`–`D`). |
 | `xbsl.linter.ignore` | – | Exclude these rules. |
 | `xbsl.linter.debounce` | `300` | Delay (ms) before linting while typing. |
+| `xbsl.projectRoot` | – | Sources root for project-wide runs and the navigation index, relative to the workspace folder (or absolute). Empty – the whole folder. Set it when the repository holds examples or copies next to the project: otherwise project-scope rules (`Ид` uniqueness etc.) cross-fire between directories. |
 | `xbsl.workspaceLint` | `true` | Full workspace run on every save of a `.xbsl`/`.yaml` file. |
 | `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 | `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |

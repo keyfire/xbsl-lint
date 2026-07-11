@@ -83,7 +83,8 @@ class IndexCache {
   constructor(
     private readonly folder: vscode.WorkspaceFolder,
     private readonly output: vscode.OutputChannel,
-    private readonly getLinter: (resource?: vscode.Uri) => LinterConfig
+    private readonly getLinter: (resource?: vscode.Uri) => LinterConfig,
+    private readonly getRoot: (folder: vscode.WorkspaceFolder) => string
   ) {}
 
   schedule(): void {
@@ -115,7 +116,7 @@ class IndexCache {
 
   private async load(): Promise<void> {
     const cfg = this.getLinter(this.folder.uri);
-    const root = this.folder.uri.fsPath;
+    const root = this.getRoot(this.folder);
     for (const variant of INDEX_COMMAND_VARIANTS) {
       const args = [...(cfg.usePython ? ["-m", "xbsllint"] : []), ...variant(root)];
       const shown = `${cfg.command} ${args.join(" ")}`;
@@ -155,7 +156,8 @@ class IndexCache {
 export function registerNavigation(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
-  getLinter: (resource?: vscode.Uri) => LinterConfig
+  getLinter: (resource?: vscode.Uri) => LinterConfig,
+  getRoot: (folder: vscode.WorkspaceFolder) => string
 ): void {
   const caches = new Map<string, IndexCache>();
 
@@ -170,7 +172,7 @@ export function registerNavigation(
       alive.add(key);
       if (enabled(folder.uri)) {
         if (!caches.has(key)) {
-          const cache = new IndexCache(folder, output, getLinter);
+          const cache = new IndexCache(folder, output, getLinter, getRoot);
           caches.set(key, cache);
           void cache.refresh();
         }
