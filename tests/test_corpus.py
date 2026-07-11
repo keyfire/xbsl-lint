@@ -16,10 +16,9 @@ _CORPUS = os.environ.get("XBSLLINT_CORPUS")
 
 
 # Правила, чьи находки на корпусе допустимы: это НАСТОЯЩИЕ находки, а не ложные.
-# code/unused-loop-var – их же выдаёт серверная компиляция; code/unused-method – корпус
-# сейчас несёт мёртвый обработчик, ожидающий чистки на стороне проекта. Любое срабатывание
-# ДРУГОГО правила на корпусе – признак ложного и должно ловиться этим тестом.
-_KNOWN_FINDING_RULES = {"code/unused-loop-var", "code/unused-method"}
+# code/unused-loop-var – их же выдаёт серверная компиляция. Любое срабатывание ДРУГОГО
+# правила на корпусе – признак ложного и должно ловиться этим тестом.
+_KNOWN_FINDING_RULES = {"code/unused-loop-var"}
 
 
 @pytest.mark.skipif(not (_CORPUS and Path(_CORPUS).exists()), reason="корпус недоступен (задайте XBSLLINT_CORPUS)")
