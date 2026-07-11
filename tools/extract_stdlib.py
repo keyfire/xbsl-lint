@@ -13,8 +13,16 @@
 имена порождаемых членов (второй сегмент русского заголовка). Члены-плейсхолдеры
 ("{ИмяМетрики}", латинские шаблоны SOAP) пропускаются, виды вне известной карты – тоже.
 
+Со страниц компонентов интерфейса (тип – компонент, если в секции "Иерархия типа" среди
+базовых есть Стд::Интерфейс::Компонент; плюс страница самого Компонента) дополнительно
+собирается словарь component_props: русское имя типа -> полный набор встроенных свойств
+(свои – заголовки H3 секции "Свойства", унаследованные – тексты ссылок секций "Список
+унаследованных свойств"). Одноимённые типы с разными наборами схлопываются в пересечение –
+по голому имени в yaml их не различить, оставляем только бесспорное.
+
 Результат – xbsllint/data/element/<версия>/stdlib.json:
-{ "names": [...], "object_members": {"Справочник": [...], ...} }.
+{ "names": [...], "object_members": {"Справочник": [...], ...},
+  "component_props": {"СтандартнаяКарточка": [...], ...} }.
 Версия определяется из дистрибутива автоматически (или задаётся --element-version).
 """
 
@@ -35,6 +43,17 @@ TEMPLATE_BASE = "data/docs/help/ru/stdlib/element/xbsl/DeveloperName/ProjectName
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.S)
 _CYRILLIC_NAME_RE = re.compile(r"^[А-ЯЁ][А-Яа-яЁё0-9]*$")
 
+# Разбор страницы компонента: контент в <article>, секции – заголовки H2, свои свойства –
+# заголовки H3, унаследованные – ссылки на свойства базового типа.
+COMPONENT_BASE = "Стд::Интерфейс::Компонент"
+COMPONENT_PAGE = STD_BASE + "Interface/Component_ru/index.html"
+_ARTICLE_RE = re.compile(r"<article[^>]*>(.*?)</article>", re.S)
+_H2_OPEN_RE = re.compile(r"<h2[^>]*>")
+_H3_RE = re.compile(r"<h3[^>]*>(.*?)</h3>", re.S)
+_LINK_RE = re.compile(r"<a[^>]*>(.*?)</a>", re.S)
+_TAG_RE = re.compile(r"<[^>]+>")
+_PROP_NAME_RE = re.compile(r"^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z0-9]*$")
+
 # Английское имя шаблона в пути -> русское имя вида (значение ВидЭлемента в yaml).
 _TEMPLATE_KINDS = {
     "CatalogName": "Справочник",
@@ -53,6 +72,48 @@ _TEMPLATE_KINDS = {
 }
 
 
+def _plain_text(html: str) -> str:
+    """Текст без тегов и служебных символов-якорей Docusaurus (zero-width space)."""
+    return _TAG_RE.sub("", html).replace("​", "").strip()
+
+
+def component_props(entry: str, raw: str) -> tuple[str, set[str]] | None:
+    """(русское имя типа компонента, его встроенные свойства) или None – не компонент.
+
+    Компонент – тип, в секции "Иерархия типа" которого среди базовых есть
+    Стд::Интерфейс::Компонент, плюс страница самого Компонента (у него в базовых
+    только Объект). Набор свойств полный: свои (H3 секции "Свойства") вместе с
+    унаследованными (тексты ссылок секций "Список унаследованных свойств") –
+    цепочку наследования разрешать не нужно.
+    """
+    mt = _TITLE_RE.search(raw)
+    ma = _ARTICLE_RE.search(raw)
+    if not mt or not ma:
+        return None
+    title = mt.group(1).split("|")[0].strip()
+    if not title or not _PROP_NAME_RE.match(title):
+        return None
+    sections = _H2_OPEN_RE.split(ma.group(1))
+    is_component = entry == COMPONENT_PAGE
+    props: set[str] = set()
+    for section in sections:
+        head = _plain_text(section[:200])
+        if head.startswith("Иерархия типа"):
+            if COMPONENT_BASE in _plain_text(section):
+                is_component = True
+        elif head.startswith("Свойства"):
+            for m in _H3_RE.finditer(section):
+                name = _plain_text(m.group(1))
+                if _PROP_NAME_RE.match(name):
+                    props.add(name)
+        elif head.startswith("Список унаследованных свойств"):
+            for m in _LINK_RE.finditer(section):
+                name = _plain_text(m.group(1))
+                if _PROP_NAME_RE.match(name):
+                    props.add(name)
+    return (title, props) if is_component else None
+
+
 def _english_from_path(entry: str) -> str | None:
     """Английское имя типа из сегмента пути `.../<Имя>_ru/index.html` (без точек)."""
     seg = entry[len(STD_BASE):].split("/")
@@ -65,11 +126,12 @@ def _english_from_path(entry: str) -> str | None:
     return name if name and "." not in name else None
 
 
-def extract(dist: Path) -> tuple[set[str], dict[str, set[str]]]:
-    """Имена символов stdlib (двуязычно) + порождаемые члены по видам объектов."""
+def extract(dist: Path) -> tuple[set[str], dict[str, set[str]], dict[str, set[str]]]:
+    """Имена stdlib (двуязычно), порождаемые члены по видам, свойства компонентов."""
     car = _distro.find_car(dist)
     names: set[str] = set()
     members: dict[str, set[str]] = {}
+    components: dict[str, set[str]] = {}
     with zipfile.ZipFile(car) as z:
         entries = z.namelist()
         for n in (e for e in entries if e.startswith(STD_BASE) and e.endswith("/index.html")):
@@ -82,6 +144,13 @@ def extract(dist: Path) -> tuple[set[str], dict[str, set[str]]]:
             eng = _english_from_path(n)
             if eng:
                 names.add(eng)
+            got = component_props(n, raw)
+            if got is not None:
+                comp, props = got
+                if comp in components and components[comp] != props:
+                    components[comp] &= props  # одноимённые типы: только бесспорное
+                else:
+                    components[comp] = props
         for n in (e for e in entries if e.startswith(TEMPLATE_BASE) and e.endswith("/index.html")):
             dirname = n[len(TEMPLATE_BASE):].split("/")[0]
             kind = _TEMPLATE_KINDS.get(dirname.split(".")[0])
@@ -95,7 +164,7 @@ def extract(dist: Path) -> tuple[set[str], dict[str, set[str]]]:
             if len(segs) < 2 or not _CYRILLIC_NAME_RE.match(segs[1]):
                 continue  # член-плейсхолдер или латинский шаблон
             members.setdefault(kind, set()).add(segs[1])
-    return names, members
+    return names, members, components
 
 
 def main() -> int:
@@ -113,17 +182,20 @@ def main() -> int:
         raise SystemExit(f"Каталог дистрибутива не найден: {dist}")
 
     version = _distro.detect_version(dist, args.element_version)
-    names, members = extract(dist)
+    names, members, components = extract(dist)
     data = {
         "meta": {
             "element_version": version,
             "source": "docs/help/ru/stdlib/element/xbsl",
             "count": len(names),
             "note": "двуязычные имена символов stdlib (русское из title + английское из пути)"
-                    " + порождаемые члены по видам объектов (шаблонные страницы)",
+                    " + порождаемые члены по видам объектов (шаблонные страницы)"
+                    " + встроенные свойства компонентов интерфейса (страницы наследников"
+                    " Стд::Интерфейс::Компонент)",
         },
         "names": sorted(names),
         "object_members": {k: sorted(v) for k, v in sorted(members.items())},
+        "component_props": {k: sorted(v) for k, v in sorted(components.items())},
     }
 
     out = Path(args.out) if args.out else _distro.version_dir(version) / "stdlib.json"
@@ -134,6 +206,7 @@ def main() -> int:
     print(f"Записано: {out} (версия {version})")
     print(f"  имён stdlib (двуязычно): {len(names)}")
     print(f"  видов с порождаемыми членами: {len(members)}")
+    print(f"  компонентов интерфейса со свойствами: {len(components)}")
     return 0
 
 

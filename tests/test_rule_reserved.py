@@ -1,6 +1,9 @@
 """Проверки правил code/reserved-name и yaml/builtin-property-name."""
 
-from xbsllint import engine
+import pytest
+
+from xbsllint import dataset, engine
+from xbsllint.rules import reserved_names
 
 
 def _lint(name, content, rule_id):
@@ -153,20 +156,61 @@ def test_custom_property_not_flagged():
     assert d == []
 
 
-def test_unvetted_base_type_skipped():
-    # у КонтейнерHtml нет проверенного списка встроенных свойств; в живом корпусе
-    # наследник КонтейнерHtml легально объявляет свойство Заголовок – не гадаем
+def test_container_html_zagolovok_not_flagged():
+    # у КонтейнерHtml в документированном наборе нет свойства Заголовок; в живом корпусе
+    # наследник КонтейнерHtml легально объявляет такое свойство – проверка строго по типу
     content = _КАРТОЧКА.replace("СтандартнаяКарточка", "КонтейнерHtml").format(prop="Заголовок")
     d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
     assert d == []
 
 
-def test_generic_base_type_skipped():
+def test_unknown_base_type_skipped():
+    # база, которой нет ни в метамодели, ни в каталоге, ни в страховочной таблице
+    # (например, собственный компонент проекта) – пропуск, не гадаем
+    content = _КАРТОЧКА.replace(
+        "СтандартнаяКарточка", "НикакойБазовыйКомпонент",
+    ).format(prop="Заголовок")
+    d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
+    assert d == []
+
+
+def _catalog_or_skip() -> dict:
+    catalog = reserved_names._catalog_component_props()
+    if not catalog:
+        pytest.skip("в данных нет component_props (старые данные)")
+    return catalog
+
+
+def test_catalog_base_group_flagged():
+    # база из каталога дистрибутива (за пределами страховочной таблицы)
+    assert "Группа" in _catalog_or_skip()
+    content = _КАРТОЧКА.replace("СтандартнаяКарточка", "Группа").format(prop="Компоновка")
+    d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
+    assert len(d) == 1
+    assert "Компоновка" in d[0].message and "Группа" in d[0].message
+
+
+def test_generic_base_root_resolved_via_catalog():
+    # корень дженерик-базы (ФормаОбъекта<...>) резолвится по каталогу свойств компонентов
+    assert "ФормаОбъекта" in _catalog_or_skip()
     content = _КАРТОЧКА.replace(
         "СтандартнаяКарточка", "ФормаОбъекта<Товары.Объект>",
     ).format(prop="Заголовок")
     d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
-    assert d == []
+    assert len(d) == 1 and "ФормаОбъекта" in d[0].message
+
+
+def test_catalog_wiring_reads_component_props(monkeypatch):
+    # каталог доезжает до правила через dataset.load_json("stdlib.json").component_props
+    fake = {"component_props": {"ОсобаяБаза": ["Заголовок", "Видимость"]}}
+    monkeypatch.setattr(dataset, "load_json", lambda name, version=None: fake)
+    reserved_names._catalog_component_props.cache_clear()
+    try:
+        content = _КАРТОЧКА.replace("СтандартнаяКарточка", "ОсобаяБаза").format(prop="Заголовок")
+        d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
+        assert len(d) == 1 and "ОсобаяБаза" in d[0].message
+    finally:
+        reserved_names._catalog_component_props.cache_clear()
 
 
 def test_event_with_builtin_name_not_flagged():

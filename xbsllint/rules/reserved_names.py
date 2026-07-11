@@ -20,14 +20,16 @@ server apply ("Invalid property name") – the classic case is `Заголово
 СтандартнаяКарточка. The built-in property set of the base type is taken from the metamodel
 class (transitively over inheritance, as in yaml/unknown-property) when the type is present
 there; the current metamodel (configuration .xcore) does not describe UI component types, so
-the module carries a built-in table verified against the platform docs (stdlib reference,
-9.2): the type's own properties plus the ones inherited from Карточка and Компонент. A base
-type found in neither source is skipped rather than guessed – in particular a base that is
-itself a project component (unresolvable in file scope). The check is strictly per base
-type: the real corpus legally declares a property `Заголовок` on an inheritor of
-КонтейнерHtml, so no cross-type generalization is allowed. Positions are searched only
-inside the top-level `Свойства:` block – the same name as an event or a nested component
-name cannot false-match.
+the sets come from the versioned catalog (stdlib.json component_props, extracted from the
+distribution docs by tools/extract_stdlib.py: the type's own properties plus the inherited
+ones the page lists itself), with the module's vetted СтандартнаяКарточка table kept as the
+safety net for data generated before that key existed – per base type the two sources are
+unioned. A base type found in no source is skipped rather than guessed – in particular a
+base that is itself a project component (unresolvable in file scope). The check is strictly
+per base type: the real corpus legally declares a property `Заголовок` on an inheritor of
+КонтейнерHtml (whose documented set has no Заголовок), so no cross-type generalization is
+allowed. Positions are searched only inside the top-level `Свойства:` block – the same name
+as an event or a nested component name cannot false-match.
 """
 
 from __future__ import annotations
@@ -35,8 +37,9 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import replace
+from functools import lru_cache
 
-from xbsllint import i18n
+from xbsllint import dataset, i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import linemap
@@ -154,10 +157,11 @@ def reserved_name(source: SourceFile) -> Iterable[Diagnostic]:
 
 # Built-in properties of platform base component types, verified against the platform docs
 # (the stdlib reference of Element 9.2): the type's own properties plus the ones inherited
-# from its documented base types (Карточка, Компонент). Only vetted types are listed; the
-# metamodel takes precedence when it describes the type. The confirmed apply failure is
-# `Заголовок` on an inheritor of СтандартнаяКарточка; the other names of the same documented
-# set are rejected by the same name-conflict mechanism.
+# from its documented base types (Карточка, Компонент). The primary source is the versioned
+# catalog (stdlib.json component_props); this hand-vetted table is the safety net for data
+# generated before that key existed, unioned with the catalog per base type. The confirmed
+# apply failure is `Заголовок` on an inheritor of СтандартнаяКарточка; the other names of
+# the same documented set are rejected by the same name-conflict mechanism.
 _BUILTIN_COMPONENT_PROPS: dict[str, frozenset[str]] = {
     "СтандартнаяКарточка": frozenset({
         # own (Стд::Интерфейс::ОбщиеКомпоненты::СтандартнаяКарточка)
@@ -194,12 +198,24 @@ def _base_root(type_expr: str) -> str | None:
     return m.group(1)
 
 
+@lru_cache(maxsize=1)
+def _catalog_component_props() -> dict[str, frozenset[str]]:
+    """Built-in component properties from the versioned catalog ({} when absent)."""
+    try:
+        raw = dataset.load_json("stdlib.json").get("component_props") or {}
+    except (dataset.DatasetError, KeyError, ValueError):
+        return {}
+    return {k: frozenset(v) for k, v in raw.items() if isinstance(v, list)}
+
+
 def _builtin_props(base: str) -> frozenset[str]:
-    """Built-in properties of the base type: the metamodel first, then the vetted table."""
+    """Built-in properties of the base type: the metamodel first, then the catalog
+    unioned with the vetted safety-net table."""
     mm = _metamodel()
     if mm and base in mm.get("classes", {}):
         return _allowed_for_class(base)
-    return _BUILTIN_COMPONENT_PROPS.get(base, frozenset())
+    return (_catalog_component_props().get(base, frozenset())
+            | _BUILTIN_COMPONENT_PROPS.get(base, frozenset()))
 
 
 def _prop_positions(source: SourceFile, prop: str) -> list[tuple[int, int]]:
