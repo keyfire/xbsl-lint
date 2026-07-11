@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Go to definition and completion powered by the project index (`xbsllint index`, with the
+  `--index` spelling probed as a fallback): objects, tabular sections, local types, enum values,
+  methods, form components, yaml `Обработчик:` / `Тип:`. Silent when the installed linter has no
+  index command.
+- New setting `xbsl.navigation.enabled` (default `true`).
+- Activation on workspaces containing `.xbsl` (so navigation also works in `.yaml` descriptions).
+
 ## 0.1.0
 
 - Initial release.

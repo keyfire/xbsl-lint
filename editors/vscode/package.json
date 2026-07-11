@@ -34,7 +34,8 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onLanguage:xbsl"
+    "onLanguage:xbsl",
+    "workspaceContains:**/*.xbsl"
   ],
   "contributes": {
     "languages": [
@@ -132,6 +133,12 @@
           "minimum": 0,
           "scope": "resource",
           "description": "Задержка в миллисекундах перед проверкой по мере набора (режим onType)."
+        },
+        "xbsl.navigation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Переходы к определению и автодополнение по индексу проекта (команда \"xbsllint index\"). Если установленный линтер индекс не поддерживает, навигация просто молчит."
         }
       }
     }
@@ -141,6 +148,7 @@
     "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
     "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "check": "tsc --noEmit",
+    "test": "esbuild test/navCore.test.ts --bundle --outfile=dist/navCore.test.js --format=cjs --platform=node && node dist/navCore.test.js",
     "package": "vsce package --no-dependencies -o xbsl-vscode.vsix",
     "publish:vsce": "vsce publish --no-dependencies",
     "publish:ovsx": "ovsx publish xbsl-vscode.vsix"

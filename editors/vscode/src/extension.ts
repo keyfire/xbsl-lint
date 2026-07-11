@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { LinterConfig } from "./report";
 import { lintBuffer, lintPath, makeDiagnostic, toDiagnostic } from "./linter";
+import { registerNavigation } from "./navigation";
 
 let collection: vscode.DiagnosticCollection;
 let output: vscode.OutputChannel;
@@ -176,6 +177,8 @@ export function activate(context: vscode.ExtensionContext): void {
       lintOpenDocuments();
     })
   );
+
+  registerNavigation(context, output, (resource) => readSettings(resource).linter);
 
   lintOpenDocuments();
 }

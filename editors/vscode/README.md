@@ -15,6 +15,8 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
 - **Whole-project check** — the command *XBSL: проверить весь проект* runs the linter across the
   workspace, including cross-file rules (`Ид` uniqueness, unknown types) that a single buffer
   cannot see.
+- **Go to definition and completion across the project** – powered by a project index built by
+  the linter (`xbsllint index`). See [Navigation and completion](#navigation-and-completion).
 
 `.yaml` element descriptions keep their built-in YAML highlighting.
 
@@ -31,6 +33,37 @@ By default the extension calls `xbsllint` from `PATH`. Point it elsewhere with
 `xbsl.linter.command` (an executable) or `xbsl.linter.pythonPath` (an interpreter — the linter is
 then invoked as `<python> -m xbsllint`).
 
+## Navigation and completion
+
+The extension asks the linter for a project index once on activation and rebuilds it (debounced,
+one process at a time) whenever a `.xbsl`/`.yaml` file is saved. The index command is probed as
+`xbsllint index <root>` first, then `xbsllint --index <root>` as a fallback. If the installed
+linter does not support the index yet, navigation silently stays off – details go to the *XBSL*
+output channel, no popups.
+
+**Go to definition** (F12 / Ctrl+Click), in `.xbsl` and `.yaml`:
+
+- a project object name (bare, or the root of a dotted chain) → its `.yaml`;
+- `Объект.ЛокальныйТип` → the type declaration; `Объект.ТабличнаяЧасть` → the section in the
+  object's yaml; `Перечисление.Значение` → the value line;
+- `Модуль.Метод` (including manager modules named after the object), and a bare method name
+  inside its own module → the method;
+- `Компоненты.Имя` → the component node in the current form's yaml; `Компоненты.Имя.Метод` → the
+  method of that module;
+- in yaml, the value of `Обработчик: Имя` → the handler in the paired `.xbsl`.
+
+**Completion** (triggered by `.` and `:`):
+
+- after `Объект.` – the type family (`Ссылка`, `Объект`, ...), tabular sections, local types and
+  manager-module methods; for an enum – its values;
+- after `Компоненты.` – components of the current form; after `Компоненты.X.` – methods of
+  module `X`;
+- in yaml after `Тип:` – project object names (the object kind is shown as the detail).
+
+Known limits – by design, the index knows declarations, not types: no completion after variables
+or arbitrary expressions, no type inference for dotted chains deeper than one level, no rename.
+When the context is ambiguous the providers return nothing rather than guessing.
+
 ## Settings
 
 | Setting | Default | Meaning |
@@ -43,6 +76,7 @@ then invoked as `<python> -m xbsllint`).
 | `xbsl.linter.select` | – | Only these rules (ids, groups, or tier letters `A`–`D`). |
 | `xbsl.linter.ignore` | – | Exclude these rules. |
 | `xbsl.linter.debounce` | `300` | Delay (ms) before linting while typing. |
+| `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |
 
 ## Commands
 
@@ -62,6 +96,7 @@ project command against files on disk.
 npm install
 npm run compile          # esbuild bundle -> dist/extension.js
 npm run check            # tsc type-check
+npm test                 # unit tests for the navigation core (plain Node, no runner)
 npm run package          # build the .vsix (via @vscode/vsce)
 ```
 

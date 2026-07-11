@@ -1,0 +1,302 @@
+// VS Code glue for index-based navigation: a per-workspace-folder cache of the project
+// index built by the linter (loaded on activation, refreshed on save with a debounce,
+// one build process at a time), plus definition and completion providers on top of the
+// pure logic in navCore.ts. When the linter cannot produce an index, navigation stays
+// silent: details go to the output channel, no popups.
+
+import * as vscode from "vscode";
+import { spawn } from "child_process";
+import * as path from "path";
+import { LinterConfig } from "./report";
+import {
+  CompletionKind,
+  INDEX_COMMAND_VARIANTS,
+  IndexLookup,
+  parseIndex,
+  resolveCompletions,
+  resolveDefinition,
+  Target,
+} from "./navCore";
+
+const REFRESH_DELAY = 1500; // debounce (ms) for the on-save index rebuild
+const OUTPUT_LIMIT = 64 * 1024 * 1024; // guard against a runaway process
+
+const KIND_MAP: Record<CompletionKind, vscode.CompletionItemKind> = {
+  object: vscode.CompletionItemKind.Class,
+  enum: vscode.CompletionItemKind.Enum,
+  family: vscode.CompletionItemKind.Class,
+  tabular: vscode.CompletionItemKind.Field,
+  localType: vscode.CompletionItemKind.Struct,
+  enumMember: vscode.CompletionItemKind.EnumMember,
+  method: vscode.CompletionItemKind.Method,
+  component: vscode.CompletionItemKind.Variable,
+};
+
+interface RawRun {
+  stdout: string;
+  error?: string;
+}
+
+function runRaw(command: string, args: string[], cwd: string): Promise<RawRun> {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(command, args, { cwd });
+    } catch (e) {
+      resolve({ stdout: "", error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
+    let out = "";
+    let err = "";
+    child.on("error", (e) => resolve({ stdout: "", error: e.message }));
+    child.stdout.on("data", (d: Buffer) => {
+      if (out.length < OUTPUT_LIMIT) {
+        out += d.toString("utf8");
+      }
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      err += d.toString("utf8");
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ stdout: out });
+      } else {
+        resolve({ stdout: out, error: (err || out || `код возврата ${code}`).trim().slice(0, 500) });
+      }
+    });
+    if (child.stdin) {
+      child.stdin.on("error", () => {
+        /* ignore EPIPE if the child exits early */
+      });
+      child.stdin.end();
+    }
+  });
+}
+
+class IndexCache {
+  lookup: IndexLookup | undefined;
+  rootFsPath: string | undefined; // from meta.root; targets are resolved against it
+  private timer: NodeJS.Timeout | undefined;
+  private loading = false;
+  private pending = false;
+
+  constructor(
+    private readonly folder: vscode.WorkspaceFolder,
+    private readonly output: vscode.OutputChannel,
+    private readonly getLinter: (resource?: vscode.Uri) => LinterConfig
+  ) {}
+
+  schedule(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+    }
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.refresh();
+    }, REFRESH_DELAY);
+  }
+
+  async refresh(): Promise<void> {
+    if (this.loading) {
+      this.pending = true; // one build process at a time; rerun after the current one
+      return;
+    }
+    this.loading = true;
+    try {
+      await this.load();
+    } finally {
+      this.loading = false;
+      if (this.pending) {
+        this.pending = false;
+        this.schedule();
+      }
+    }
+  }
+
+  private async load(): Promise<void> {
+    const cfg = this.getLinter(this.folder.uri);
+    const root = this.folder.uri.fsPath;
+    for (const variant of INDEX_COMMAND_VARIANTS) {
+      const args = [...(cfg.usePython ? ["-m", "xbsllint"] : []), ...variant(root)];
+      const shown = `${cfg.command} ${args.join(" ")}`;
+      const run = await runRaw(cfg.command, args, root);
+      if (run.error) {
+        this.output.appendLine(`навигация: "${shown}": ${run.error}`);
+        continue;
+      }
+      try {
+        const index = parseIndex(run.stdout);
+        this.lookup = new IndexLookup(index);
+        this.rootFsPath = path.normalize(index.meta.root || root);
+        this.output.appendLine(
+          `навигация: индекс "${this.folder.name}" загружен – объектов: ${index.objects.length}, ` +
+            `методов: ${index.methods.length}, компонентов: ${index.components.length}`
+        );
+        return;
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        this.output.appendLine(`навигация: "${shown}": ${reason}`);
+      }
+    }
+    // Every variant failed: keep the previous index (if any) and stay silent.
+    this.output.appendLine(
+      `навигация: индекс проекта "${this.folder.name}" недоступен – переходы и дополнение по индексу молчат`
+    );
+  }
+
+  dispose(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+  }
+}
+
+export function registerNavigation(
+  context: vscode.ExtensionContext,
+  output: vscode.OutputChannel,
+  getLinter: (resource?: vscode.Uri) => LinterConfig
+): void {
+  const caches = new Map<string, IndexCache>();
+
+  const enabled = (resource?: vscode.Uri): boolean =>
+    vscode.workspace.getConfiguration("xbsl", resource ?? null).get<boolean>("navigation.enabled", true);
+
+  // Keeps the cache set in sync with workspace folders and the enabled flag.
+  const syncCaches = (): void => {
+    const alive = new Set<string>();
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const key = folder.uri.toString();
+      alive.add(key);
+      if (enabled(folder.uri)) {
+        if (!caches.has(key)) {
+          const cache = new IndexCache(folder, output, getLinter);
+          caches.set(key, cache);
+          void cache.refresh();
+        }
+      } else {
+        caches.get(key)?.dispose();
+        caches.delete(key);
+      }
+    }
+    for (const key of [...caches.keys()]) {
+      if (!alive.has(key)) {
+        caches.get(key)?.dispose();
+        caches.delete(key);
+      }
+    }
+  };
+
+  const cacheFor = (uri: vscode.Uri): IndexCache | undefined => {
+    const folder = vscode.workspace.getWorkspaceFolder(uri);
+    return folder ? caches.get(folder.uri.toString()) : undefined;
+  };
+
+  const fileStem = (uri: vscode.Uri): string => path.basename(uri.fsPath).replace(/\.[^.]*$/, "");
+
+  // POSIX path of the document relative to the index root (undefined when outside).
+  const relPath = (cache: IndexCache, uri: vscode.Uri): string | undefined => {
+    if (!cache.rootFsPath || uri.scheme !== "file") {
+      return undefined;
+    }
+    const rel = path.relative(cache.rootFsPath, uri.fsPath);
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
+      return undefined;
+    }
+    return rel.split(path.sep).join("/");
+  };
+
+  const toLocation = (cache: IndexCache, target: Target): vscode.Location | undefined => {
+    if (!cache.rootFsPath || !target.path) {
+      return undefined;
+    }
+    const fsPath = path.join(cache.rootFsPath, ...target.path.split("/"));
+    return new vscode.Location(vscode.Uri.file(fsPath), new vscode.Position(Math.max(0, target.line - 1), 0));
+  };
+
+  const definitionProvider: vscode.DefinitionProvider = {
+    provideDefinition(doc, position) {
+      if (!enabled(doc.uri)) {
+        return undefined;
+      }
+      const cache = cacheFor(doc.uri);
+      if (!cache || !cache.lookup) {
+        return undefined;
+      }
+      const target = resolveDefinition(cache.lookup, {
+        languageId: doc.languageId,
+        lineText: doc.lineAt(position.line).text,
+        character: position.character,
+        fileStem: fileStem(doc.uri),
+        filePath: relPath(cache, doc.uri),
+      });
+      return target ? toLocation(cache, target) : undefined;
+    },
+  };
+
+  const completionProvider: vscode.CompletionItemProvider = {
+    provideCompletionItems(doc, position) {
+      if (!enabled(doc.uri)) {
+        return undefined;
+      }
+      const cache = cacheFor(doc.uri);
+      if (!cache || !cache.lookup) {
+        return undefined;
+      }
+      const entries = resolveCompletions(cache.lookup, {
+        languageId: doc.languageId,
+        linePrefix: doc.lineAt(position.line).text.slice(0, position.character),
+        fileStem: fileStem(doc.uri),
+      });
+      if (!entries || entries.length === 0) {
+        return undefined;
+      }
+      return entries.map((e) => {
+        const item = new vscode.CompletionItem(e.label, KIND_MAP[e.kind]);
+        item.detail = e.detail;
+        return item;
+      });
+    },
+  };
+
+  const selector: vscode.DocumentSelector = [
+    { language: "xbsl", scheme: "file" },
+    { language: "yaml", scheme: "file" },
+  ];
+
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(selector, definitionProvider),
+    vscode.languages.registerCompletionItemProvider(selector, completionProvider, ".", ":"),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      if (doc.uri.scheme !== "file") {
+        return;
+      }
+      const ext = path.extname(doc.uri.fsPath).toLowerCase();
+      if (ext !== ".xbsl" && ext !== ".yaml") {
+        return;
+      }
+      cacheFor(doc.uri)?.schedule();
+    }),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => syncCaches()),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("xbsl.navigation")) {
+        syncCaches();
+      }
+      if (e.affectsConfiguration("xbsl.linter")) {
+        for (const cache of caches.values()) {
+          cache.schedule();
+        }
+      }
+    }),
+    {
+      dispose: () => {
+        for (const cache of caches.values()) {
+          cache.dispose();
+        }
+        caches.clear();
+      },
+    }
+  );
+
+  syncCaches();
+}
