@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -34,7 +34,8 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onLanguage:xbsl"
+    "onLanguage:xbsl",
+    "workspaceContains:**/*.xbsl"
   ],
   "contributes": {
     "languages": [
@@ -132,6 +133,19 @@
           "minimum": 0,
           "scope": "resource",
           "description": "Задержка в миллисекундах перед проверкой по мере набора (режим onType)."
+        },
+        "xbsl.workspaceLint": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "При сохранении .xbsl/.yaml запускать полный прогон линтера по папке workspace и раскладывать замечания по всем файлам. Приносит межфайловые правила (code/unknown-type, yaml/unknown-type и др.), которые не видны при проверке одного буфера."
+        },
+        "xbsl.workspaceLintTimeout": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 0,
+          "scope": "resource",
+          "description": "Таймаут полного прогона workspace в миллисекундах (0 – без ограничения). По истечении процесс линтера останавливается, сообщение пишется в журнал XBSL."
         }
       }
     }

@@ -1,17 +1,38 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { LinterConfig } from "./report";
-import { lintBuffer, lintPath, makeDiagnostic, toDiagnostic } from "./linter";
+import { LinterConfig, RawReport } from "./report";
+import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from "./linter";
 
 let collection: vscode.DiagnosticCollection;
 let output: vscode.OutputChannel;
 const debounceTimers = new Map<string, NodeJS.Timeout>();
 let warnedOnce = false;
 
+// --- Workspace lint state ---------------------------------------------------------------
+// One diagnostic collection, two producers:
+//  * the fast `--stdin` lint owns the diagnostics of the buffer being edited (dirty);
+//  * the whole-workspace run (on save, debounced, one at a time) replaces the diagnostics
+//    of every other file – it sees project-scope rules a single buffer cannot.
+
+// The last completed workspace run per workspace folder: file uri -> its diagnostics.
+const workspaceResults = new Map<string, Map<string, { uri: vscode.Uri; diags: vscode.Diagnostic[] }>>();
+// Debounce timers of scheduled workspace runs, per folder.
+const workspaceTimers = new Map<string, NodeJS.Timeout>();
+// Runs waiting in the chain (not started yet), per folder – dedupes repeated saves.
+const queuedRuns = new Map<string, Promise<void>>();
+// The single run in flight; a newer save of the same folder cancels it.
+let activeRun: { folderKey: string; handle: RunHandle } | undefined;
+// Workspace runs execute strictly one after another.
+let runChain: Promise<void> = Promise.resolve();
+
+const WORKSPACE_DEBOUNCE_MS = 500;
+
 interface Settings {
   linter: LinterConfig;
   run: "onType" | "onSave" | "off";
   debounce: number;
+  workspaceLint: boolean;
+  workspaceTimeout: number;
 }
 
 function readSettings(resource?: vscode.Uri): Settings {
@@ -30,6 +51,8 @@ function readSettings(resource?: vscode.Uri): Settings {
     },
     run: c.get<"onType" | "onSave" | "off">("linter.run") || "onType",
     debounce: c.get<number>("linter.debounce") ?? 300,
+    workspaceLint: c.get<boolean>("workspaceLint") ?? true,
+    workspaceTimeout: c.get<number>("workspaceLintTimeout") ?? 60000,
   };
 }
 
@@ -39,6 +62,15 @@ function cwdFor(uri: vscode.Uri): string | undefined {
     return folder.uri.fsPath;
   }
   return uri.scheme === "file" ? path.dirname(uri.fsPath) : undefined;
+}
+
+// Files the linter understands: .xbsl modules and .yaml element descriptions.
+function isLintableUri(uri: vscode.Uri): boolean {
+  if (uri.scheme !== "file") {
+    return false;
+  }
+  const p = uri.fsPath.toLowerCase();
+  return p.endsWith(".xbsl") || p.endsWith(".yaml");
 }
 
 async function lintDocument(doc: vscode.TextDocument): Promise<void> {
@@ -88,6 +120,148 @@ function scheduleLint(doc: vscode.TextDocument, delay: number): void {
   );
 }
 
+// --- Workspace lint ----------------------------------------------------------------------
+
+// The last completed workspace run's diagnostics for a file: an array (possibly empty) when
+// the file's folder has been linted, undefined when no run has finished yet.
+function workspaceBaseline(uri: vscode.Uri): vscode.Diagnostic[] | undefined {
+  const folder = vscode.workspace.getWorkspaceFolder(uri);
+  if (!folder) {
+    return undefined;
+  }
+  const store = workspaceResults.get(folder.uri.toString());
+  if (!store) {
+    return undefined;
+  }
+  return store.get(uri.toString())?.diags ?? [];
+}
+
+// Debounced entry point: repeated saves within the window collapse into one run.
+function scheduleWorkspaceLint(folder: vscode.WorkspaceFolder): void {
+  const key = folder.uri.toString();
+  const prev = workspaceTimers.get(key);
+  if (prev) {
+    clearTimeout(prev);
+  }
+  workspaceTimers.set(
+    key,
+    setTimeout(() => {
+      workspaceTimers.delete(key);
+      void enqueueWorkspaceRun(folder);
+    }, WORKSPACE_DEBOUNCE_MS)
+  );
+}
+
+// One run at a time: runs chain up, a folder waits in the queue at most once, and a save
+// that arrives while its folder is being linted cancels the now-stale run.
+function enqueueWorkspaceRun(folder: vscode.WorkspaceFolder, notify = false): Promise<void> {
+  const key = folder.uri.toString();
+  const queued = queuedRuns.get(key);
+  if (queued) {
+    return queued; // not started yet – it will pick up the fresh files from disk
+  }
+  if (activeRun && activeRun.folderKey === key) {
+    activeRun.handle.cancel(); // the result would describe files that no longer exist as such
+  }
+  const run = runChain.then(() => {
+    queuedRuns.delete(key);
+    return runWorkspaceLint(folder, notify);
+  });
+  queuedRuns.set(key, run);
+  runChain = run.catch(() => undefined);
+  return run;
+}
+
+async function runWorkspaceLint(folder: vscode.WorkspaceFolder, notify: boolean): Promise<void> {
+  const settings = readSettings(folder.uri);
+  const handle = lintPath(folder.uri.fsPath, folder.uri.fsPath, settings.linter, settings.workspaceTimeout);
+  activeRun = { folderKey: folder.uri.toString(), handle };
+  const started = Date.now();
+  const result = await handle.result;
+  activeRun = undefined;
+  if (result.canceled) {
+    output.appendLine(`XBSL: прогон workspace "${folder.name}" отменён – файлы изменились.`);
+    return;
+  }
+  if (result.error) {
+    // Graceful failure: a huge workspace or a broken linter must not spam popups on every save.
+    if (notify) {
+      reportProblem(result.error);
+    } else {
+      output.appendLine(`XBSL: прогон workspace "${folder.name}" не удался: ${result.error}`);
+    }
+    return;
+  }
+  if (result.report) {
+    applyWorkspaceReport(folder, result.report);
+    const s = result.report.summary;
+    const stats = s ? `${s.diagnostics} замечаний в ${s.files} файлах` : "готово";
+    output.appendLine(`XBSL: прогон workspace "${folder.name}": ${stats}, ${Date.now() - started} мс.`);
+  }
+}
+
+// Lays the workspace run's diagnostics out over the folder's files, replacing whatever was
+// there before. Dirty buffers are the exception: their diagnostics belong to the live
+// `--stdin` lint until the buffer is saved (a run over files on disk cannot see them).
+function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport): void {
+  const folderKey = folder.uri.toString();
+  const openDocs = new Map<string, vscode.TextDocument>();
+  for (const doc of vscode.workspace.textDocuments) {
+    openDocs.set(doc.uri.toString(), doc);
+  }
+  const fresh = new Map<string, { uri: vscode.Uri; diags: vscode.Diagnostic[] }>();
+  for (const d of report.diagnostics ?? []) {
+    // The linter echoes paths as given (we pass the folder absolute, so they come back
+    // absolute with OS separators); relative ones are resolved against the folder.
+    const fsPath = path.isAbsolute(d.path) ? d.path : path.join(folder.uri.fsPath, d.path);
+    const uri = vscode.Uri.file(fsPath);
+    const key = uri.toString();
+    const doc = openDocs.get(key);
+    const diag = doc && !doc.isDirty ? toDiagnostic(d, doc) : makeDiagnostic(d, undefined);
+    const entry = fresh.get(key) ?? { uri, diags: [] };
+    entry.diags.push(diag);
+    fresh.set(key, entry);
+  }
+  workspaceResults.set(folderKey, fresh);
+  for (const [key, entry] of fresh) {
+    const doc = openDocs.get(key);
+    if (doc && doc.isDirty) {
+      continue;
+    }
+    collection.set(entry.uri, entry.diags);
+  }
+  // Files whose diagnostics are all gone: everything in this folder that the fresh run
+  // did not mention is clean now.
+  const stale: vscode.Uri[] = [];
+  collection.forEach((uri) => {
+    const key = uri.toString();
+    if (fresh.has(key)) {
+      return;
+    }
+    if (vscode.workspace.getWorkspaceFolder(uri)?.uri.toString() !== folderKey) {
+      return;
+    }
+    const doc = openDocs.get(key);
+    if (doc && doc.isDirty) {
+      return;
+    }
+    stale.push(uri);
+  });
+  for (const uri of stale) {
+    collection.delete(uri);
+  }
+}
+
+function scheduleWorkspaceLintAll(): void {
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const settings = readSettings(folder.uri);
+    if (settings.workspaceLint && settings.run !== "off") {
+      scheduleWorkspaceLint(folder);
+    }
+  }
+}
+
+// The manual command: lint every workspace folder, with progress and a visible error.
 async function lintProject(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
@@ -97,25 +271,7 @@ async function lintProject(): Promise<void> {
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: "XBSL: проверка проекта..." },
     async () => {
-      collection.clear();
-      for (const folder of folders) {
-        const settings = readSettings(folder.uri);
-        const result = await lintPath(folder.uri.fsPath, folder.uri.fsPath, settings.linter);
-        if (result.error) {
-          reportProblem(result.error);
-          continue;
-        }
-        const byFile = new Map<string, vscode.Diagnostic[]>();
-        for (const d of result.report?.diagnostics ?? []) {
-          const fsPath = path.isAbsolute(d.path) ? d.path : path.resolve(folder.uri.fsPath, d.path);
-          const list = byFile.get(fsPath) ?? [];
-          list.push(makeDiagnostic(d, undefined));
-          byFile.set(fsPath, list);
-        }
-        for (const [fsPath, diags] of byFile) {
-          collection.set(vscode.Uri.file(fsPath), diags);
-        }
-      }
+      await Promise.all(folders.map((folder) => enqueueWorkspaceRun(folder, true)));
     }
   );
 }
@@ -128,6 +284,20 @@ function lintOpenDocuments(): void {
   }
 }
 
+// Forget everything and start over: used by the restart command and on configuration changes.
+function resetAndRelint(): void {
+  warnedOnce = false;
+  activeRun?.handle.cancel();
+  for (const t of workspaceTimers.values()) {
+    clearTimeout(t);
+  }
+  workspaceTimers.clear();
+  workspaceResults.clear();
+  collection.clear();
+  lintOpenDocuments();
+  scheduleWorkspaceLintAll();
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   collection = vscode.languages.createDiagnosticCollection("xbsl");
   output = vscode.window.createOutputChannel("XBSL");
@@ -135,9 +305,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((doc) => {
-      if (doc.languageId === "xbsl" && readSettings(doc.uri).run !== "off") {
-        void lintDocument(doc);
+      if (doc.languageId !== "xbsl") {
+        return;
       }
+      const settings = readSettings(doc.uri);
+      if (settings.run === "off") {
+        return;
+      }
+      // A clean buffer whose file a workspace run has already covered needs no `--stdin`
+      // pass: it would see only the per-file rules and wipe the project-scope ones.
+      if (settings.workspaceLint && !doc.isDirty && workspaceBaseline(doc.uri) !== undefined) {
+        return;
+      }
+      void lintDocument(doc);
     }),
     vscode.workspace.onDidChangeTextDocument((e) => {
       const doc = e.document;
@@ -150,7 +330,18 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (doc.languageId === "xbsl" && readSettings(doc.uri).run !== "off") {
+      const settings = readSettings(doc.uri);
+      if (settings.run === "off") {
+        return;
+      }
+      const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
+      if (settings.workspaceLint && folder && isLintableUri(doc.uri)) {
+        // The file on disk is current now – the whole-workspace run replaces the buffer
+        // diagnostics with the full set (per-file and project-scope rules together).
+        scheduleWorkspaceLint(folder);
+        return;
+      }
+      if (doc.languageId === "xbsl") {
         void lintDocument(doc);
       }
     }),
@@ -161,23 +352,43 @@ export function activate(context: vscode.ExtensionContext): void {
         clearTimeout(t);
         debounceTimers.delete(key);
       }
-      collection.delete(doc.uri);
+      // The file is still part of the project: put the last workspace run's diagnostics
+      // back (the closed buffer may have been dirty, its `--stdin` results die with it).
+      const baseline = workspaceBaseline(doc.uri);
+      if (baseline !== undefined && readSettings(doc.uri).workspaceLint) {
+        collection.set(doc.uri, baseline);
+      } else {
+        collection.delete(doc.uri);
+      }
+    }),
+    vscode.workspace.onDidChangeWorkspaceFolders((e) => {
+      for (const folder of e.removed) {
+        const key = folder.uri.toString();
+        workspaceResults.delete(key);
+        const t = workspaceTimers.get(key);
+        if (t) {
+          clearTimeout(t);
+          workspaceTimers.delete(key);
+        }
+      }
+      for (const folder of e.added) {
+        const settings = readSettings(folder.uri);
+        if (settings.workspaceLint && settings.run !== "off") {
+          scheduleWorkspaceLint(folder);
+        }
+      }
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("xbsl")) {
-        warnedOnce = false;
-        lintOpenDocuments();
+        resetAndRelint();
       }
     }),
     vscode.commands.registerCommand("xbsl.lintProject", () => lintProject()),
-    vscode.commands.registerCommand("xbsl.restartLinter", () => {
-      warnedOnce = false;
-      collection.clear();
-      lintOpenDocuments();
-    })
+    vscode.commands.registerCommand("xbsl.restartLinter", () => resetAndRelint())
   );
 
   lintOpenDocuments();
+  scheduleWorkspaceLintAll();
 }
 
 export function deactivate(): void {
@@ -185,6 +396,11 @@ export function deactivate(): void {
     clearTimeout(t);
   }
   debounceTimers.clear();
+  for (const t of workspaceTimers.values()) {
+    clearTimeout(t);
+  }
+  workspaceTimers.clear();
+  activeRun?.handle.cancel();
   collection?.dispose();
   output?.dispose();
 }

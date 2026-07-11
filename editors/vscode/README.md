@@ -12,9 +12,12 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
 - **Live diagnostics** as you type (debounced) and on save — brackets/blocks balance, unused
   locals, typography, code-style conventions, and everything else the linter reports. Squiggles
   carry the rule id (e.g. `code/brackets`) and severity.
-- **Whole-project check** — the command *XBSL: проверить весь проект* runs the linter across the
-  workspace, including cross-file rules (`Ид` uniqueness, unknown types) that a single buffer
-  cannot see.
+- **Workspace diagnostics** – saving any `.xbsl`/`.yaml` file runs the linter over the whole
+  workspace folder in the background, so project-scope rules (`code/unknown-type`,
+  `yaml/unknown-type`, `Ид` uniqueness) show up right in the editor, across all files.
+  Controlled by `xbsl.workspaceLint` (on by default).
+- **Whole-project check** – the command *XBSL: проверить весь проект* runs the same
+  workspace-wide check on demand.
 
 `.yaml` element descriptions keep their built-in YAML highlighting.
 
@@ -43,6 +46,8 @@ then invoked as `<python> -m xbsllint`).
 | `xbsl.linter.select` | – | Only these rules (ids, groups, or tier letters `A`–`D`). |
 | `xbsl.linter.ignore` | – | Exclude these rules. |
 | `xbsl.linter.debounce` | `300` | Delay (ms) before linting while typing. |
+| `xbsl.workspaceLint` | `true` | Full workspace run on every save of a `.xbsl`/`.yaml` file. |
+| `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 
 ## Commands
 
@@ -51,10 +56,25 @@ then invoked as `<python> -m xbsllint`).
 
 ## How it works
 
-For each buffer the extension runs `xbsllint --stdin --filename <name> --format json` and turns the
-resulting `{diagnostics, summary}` payload into VS Code diagnostics — the same JSON contract the
-linter's MCP server exposes. Per-file rules run on the live buffer; cross-file rules run via the
-project command against files on disk.
+Two producers feed one diagnostic collection, and the split is by buffer state:
+
+- **While you type** (dirty buffer) the extension runs
+  `xbsllint --stdin --filename <name> --format json` on the live text – per-file rules only,
+  fast, debounced. Its result replaces the diagnostics of *that buffer only*.
+- **When you save** any `.xbsl`/`.yaml` file, the extension runs
+  `xbsllint <workspace folder> --format json` in the background (debounced, at most one run
+  at a time; a save during a run cancels the now-stale run and starts over). The result covers
+  per-file *and* project-scope rules, so it replaces the diagnostics of *every* file in the
+  folder – except buffers that are dirty again by then: those stay with their live `--stdin`
+  diagnostics until the next save.
+
+This way there are no duplicates and no rule is lost: a clean file always shows the full
+workspace-run picture, a file being edited shows the instant per-file picture, and each save
+reconciles the two. Both runs speak the same `{diagnostics, summary}` JSON contract that the
+linter's MCP server exposes.
+
+A workspace run that fails or exceeds `xbsl.workspaceLintTimeout` is reported to the *XBSL*
+output channel only – no popups on every save.
 
 ## Development
 
