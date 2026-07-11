@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { LinterConfig, RawReport } from "./report";
 import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from "./linter";
+import { registerNavigation } from "./navigation";
 
 let collection: vscode.DiagnosticCollection;
 let output: vscode.OutputChannel;
@@ -386,6 +387,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("xbsl.lintProject", () => lintProject()),
     vscode.commands.registerCommand("xbsl.restartLinter", () => resetAndRelint())
   );
+
+  registerNavigation(context, output, (resource) => readSettings(resource).linter);
 
   lintOpenDocuments();
   scheduleWorkspaceLintAll();

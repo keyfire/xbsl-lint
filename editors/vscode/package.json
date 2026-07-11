@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -146,6 +146,12 @@
           "minimum": 0,
           "scope": "resource",
           "description": "Таймаут полного прогона workspace в миллисекундах (0 – без ограничения). По истечении процесс линтера останавливается, сообщение пишется в журнал XBSL."
+        },
+        "xbsl.navigation.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Переходы к определению и автодополнение по индексу проекта (команда \"xbsllint index\"). Если установленный линтер индекс не поддерживает, навигация просто молчит."
         }
       }
     }
@@ -155,6 +161,7 @@
     "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
     "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "check": "tsc --noEmit",
+    "test": "esbuild test/navCore.test.ts --bundle --outfile=dist/navCore.test.js --format=cjs --platform=node && node dist/navCore.test.js",
     "package": "vsce package --no-dependencies -o xbsl-vscode.vsix",
     "publish:vsce": "vsce publish --no-dependencies",
     "publish:ovsx": "ovsx publish xbsl-vscode.vsix"
