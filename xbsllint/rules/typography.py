@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from xbsllint import i18n
-from xbsllint.diagnostics import Diagnostic, Severity
+from xbsllint.diagnostics import Diagnostic, Severity, TextEdit
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import linemap, tokens
 
@@ -64,6 +64,9 @@ _ELLIPSIS = "…"  # U+2026
 _CURLY = "“”‘’"  # U+201C..U+2019
 _GUILLEMETS = "«»"  # U+00AB, U+00BB
 
+# Unambiguous replacements for --fix: curly doubles/guillemets → straight ", curly singles → '.
+_STRAIGHT = {"“": '"', "”": '"', "‘": "'", "’": "'", "«": '"', "»": '"'}
+
 
 def _hits(source: SourceFile, kinds: tuple[str, ...], chars: str):
     lm = linemap(source)
@@ -72,8 +75,9 @@ def _hits(source: SourceFile, kinds: tuple[str, ...], chars: str):
             continue
         for idx, ch in enumerate(tok.value):
             if ch in chars:
-                line, col = lm.linecol(tok.start + idx)
-                yield ch, line, col
+                offset = tok.start + idx
+                line, col = lm.linecol(offset)
+                yield ch, line, col, offset
 
 
 # The em dash and guillemets are all over existing comments, so these two rules are off by
@@ -85,10 +89,11 @@ def _hits(source: SourceFile, kinds: tuple[str, ...], chars: str):
 def em_dash(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return
-    for _ch, line, col in _hits(source, ("COMMENT",), _EM_DASH):
+    for _ch, line, col, offset in _hits(source, ("COMMENT",), _EM_DASH):
         yield Diagnostic(
             source.rel, line, col, "typography/em-dash", Severity.INFO,
             i18n.t("typography/em-dash.found"),
+            fix=TextEdit(offset, offset + 1, "–"),  # em dash → en dash
         )
 
 
@@ -96,10 +101,11 @@ def em_dash(source: SourceFile) -> Iterable[Diagnostic]:
 def ellipsis_char(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return
-    for _ch, line, col in _hits(source, ("COMMENT",), _ELLIPSIS):
+    for _ch, line, col, offset in _hits(source, ("COMMENT",), _ELLIPSIS):
         yield Diagnostic(
             source.rel, line, col, "typography/ellipsis", Severity.WARNING,
             i18n.t("typography/ellipsis.found"),
+            fix=TextEdit(offset, offset + 1, "..."),  # … → three dots
         )
 
 
@@ -107,10 +113,11 @@ def ellipsis_char(source: SourceFile) -> Iterable[Diagnostic]:
 def curly_quotes(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return
-    for ch, line, col in _hits(source, ("COMMENT", "STRING"), _CURLY):
+    for ch, line, col, offset in _hits(source, ("COMMENT", "STRING"), _CURLY):
         yield Diagnostic(
             source.rel, line, col, "typography/curly-quotes", Severity.WARNING,
             i18n.t("typography/curly-quotes.found", code=f"{ord(ch):04X}"),
+            fix=TextEdit(offset, offset + 1, _STRAIGHT[ch]),  # curly → straight " or '
         )
 
 
@@ -121,8 +128,9 @@ def curly_quotes(source: SourceFile) -> Iterable[Diagnostic]:
 def guillemets_in_comment(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl":
         return
-    for ch, line, col in _hits(source, ("COMMENT",), _GUILLEMETS):
+    for ch, line, col, offset in _hits(source, ("COMMENT",), _GUILLEMETS):
         yield Diagnostic(
             source.rel, line, col, "typography/guillemets-comment", Severity.INFO,
             i18n.t("typography/guillemets-comment.found", code=f"{ord(ch):04X}"),
+            fix=TextEdit(offset, offset + 1, _STRAIGHT[ch]),  # «» → straight " in a comment
         )

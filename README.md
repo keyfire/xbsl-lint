@@ -45,8 +45,14 @@ xbsllint path/to/sources        # or: python -m xbsllint path/to/sources
 The extractors from step 1 ship with the repository, not with the PyPI package — clone the
 repository to generate the data.
 
-Flags: `--list-rules`, `--select`/`--ignore` (by rule id, rule group — the part of the id before
-`/` — or tier letter), `--element-version`, `--data-dir`, `--lang`, `--format text|json|codeclimate`.
+Flags: `--list-rules`, `--select`/`--enable`/`--ignore` (by rule id, rule group — the part of the id
+before `/` — or tier letter), `--fix`, `--baseline`/`--write-baseline`, `--element-version`,
+`--data-dir`, `--lang`, `--format text|json|codeclimate`.
+`--fix` repairs the mechanical findings in place — trailing whitespace, typography characters
+(em dash → en dash, `…` → `...`, curly quotes and comment guillemets → straight), and mixed
+newlines (normalized to the dominant style) — then reports whatever is left. It only applies
+unambiguous edits and only for rules active in the run (so `--fix --enable typography` also pays
+down the em-dash/guillemets debt); anything needing judgment is never touched.
 For editor integration, `--stdin --filename NAME` checks a single buffer read from stdin (per-file
 rules only); the JSON payload (`{diagnostics, summary}`) is the same one the MCP server returns.
 `xbsllint --index PATH` dumps a JSON index of the project to stdout instead of linting – the

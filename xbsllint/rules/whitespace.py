@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterable
 
 from xbsllint import i18n
-from xbsllint.diagnostics import Diagnostic, Severity
+from xbsllint.diagnostics import Diagnostic, Severity, TextEdit
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import linemap
 
@@ -49,12 +49,15 @@ def trailing_whitespace(source: SourceFile) -> Iterable[Diagnostic]:
         yield Diagnostic(
             source.rel, line, col, "whitespace/trailing", Severity.WARNING,
             i18n.t("whitespace/trailing.msg"),
+            fix=TextEdit(m.start(), m.end(), ""),  # delete the trailing run
         )
 
 
 @rule("whitespace/mixed-newline", "whitespace/mixed-newline.title", "B", severity=Severity.WARNING)
 def mixed_newline(source: SourceFile) -> Iterable[Diagnostic]:
     if source.newline == "mixed":
+        # A whole-file fix (normalize every newline to the dominant style), not a span edit –
+        # the fixer applies it by rule id, so no TextEdit is attached here.
         yield Diagnostic(
             source.rel, 1, 1, "whitespace/mixed-newline", Severity.WARNING,
             i18n.t("whitespace/mixed-newline.msg"),

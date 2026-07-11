@@ -71,6 +71,12 @@ def build_parser() -> argparse.ArgumentParser:
              "(заморозить долг; пути в файле – относительно его каталога)",
     )
     parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="исправить механические находки на месте (хвостовые пробелы, типографские "
+             "символы, переводы строк) и вывести оставшиеся; правит только однозначно",
+    )
+    parser.add_argument(
         "--list-rules", action="store_true", help="вывести список правил и выйти"
     )
     parser.add_argument(
@@ -132,6 +138,37 @@ def _parse_set(values: list[str] | None) -> set[str] | None:
     return parts or None
 
 
+def _apply_fixes(sources, diagnostics, args) -> int:
+    """--fix: rewrite files with the mechanical fixes, then report the remaining findings."""
+    from xbsllint import fixer
+
+    by_path = {d.path: [] for d in diagnostics}
+    for d in diagnostics:
+        by_path[d.path].append(d)
+
+    fixed = files_changed = 0
+    for src in sources:
+        result = fixer.fix_source(src, by_path.get(src.rel, []))
+        if result.changed:
+            src.path.write_bytes(fixer.encode(src, result.text))
+            files_changed += 1
+            fixed += result.applied
+
+    remaining = [d for d in diagnostics if not fixer.is_fixable(d)]
+    if args.format == "json":
+        print(json.dumps(report.report(remaining, len(sources)), ensure_ascii=False))
+    elif args.format == "codeclimate":
+        print(json.dumps(report.codeclimate(remaining), ensure_ascii=False))
+    else:
+        for d in sorted(remaining, key=lambda x: x.sort_key()):
+            print(d.format())
+    print(
+        i18n.t("cli.fix-summary", fixed=fixed, files=files_changed, left=len(remaining)),
+        file=sys.stderr,
+    )
+    return 1 if any(d.severity.value == "error" for d in remaining) else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     # The linter output is always UTF-8, regardless of the console encoding (matters for
     # Cyrillic and for redirection to a file/editor).
@@ -172,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(build_index(root), ensure_ascii=False))
         return 0
 
-    from xbsllint.engine import RULES, make_source, run, run_sources
+    from xbsllint.engine import RULES, load, make_source, run_sources
 
     if args.list_rules:
         for r in sorted(RULES, key=lambda x: (x.tier, x.id)):
@@ -185,6 +222,13 @@ def main(argv: list[str] | None = None) -> int:
     select = _parse_set(args.select)
     ignore = _parse_set(args.ignore)
     enable = _parse_set(args.enable)
+
+    if args.fix and args.stdin:
+        print(i18n.t("cli.fix-needs-files"), file=sys.stderr)
+        return 2
+    if args.fix and (args.baseline or args.write_baseline):
+        print(i18n.t("cli.fix-conflicts-baseline"), file=sys.stderr)
+        return 2
 
     if args.stdin:
         # Editor mode: one buffer from stdin, checked with per-file rules only (cross-file rules
@@ -199,7 +243,10 @@ def main(argv: list[str] | None = None) -> int:
         files = [Path(args.filename)]
     else:
         files = discover(args.paths or ["."])
-        diagnostics = run(files, select=select, ignore=ignore, enable=enable)
+        sources = [load(p) for p in files]
+        diagnostics = run_sources(sources, select=select, ignore=ignore, enable=enable)
+        if args.fix:
+            return _apply_fixes(sources, diagnostics, args)
 
     if args.write_baseline:
         # Freeze mode: the findings become the baseline instead of a report. Deliberate debt –

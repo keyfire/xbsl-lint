@@ -69,6 +69,18 @@ _CORE_MESSAGES = {
         "ru": "Базлайн записан: {path} ({diags} замечаний в {files} файлах)",
         "en": "Baseline written: {path} ({diags} findings in {files} files)",
     },
+    "cli.fix-summary": {
+        "ru": "Исправлено замечаний: {fixed} в {files} файлах; осталось: {left}",
+        "en": "Fixed findings: {fixed} in {files} files; remaining: {left}",
+    },
+    "cli.fix-needs-files": {
+        "ru": "Режим --fix пишет файлы на диске и несовместим с --stdin.",
+        "en": "--fix writes files on disk and is incompatible with --stdin.",
+    },
+    "cli.fix-conflicts-baseline": {
+        "ru": "Режим --fix несовместим с --baseline / --write-baseline.",
+        "en": "--fix is incompatible with --baseline / --write-baseline.",
+    },
 }
 
 
