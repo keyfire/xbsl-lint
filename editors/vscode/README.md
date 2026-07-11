@@ -20,6 +20,10 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
   workspace-wide check on demand.
 - **Go to definition and completion across the project** – powered by a project index built by
   the linter (`xbsllint --index`). See [Navigation and completion](#navigation-and-completion).
+- **Quick Fix for mechanical findings** – a lightbulb on a fixable diagnostic (trailing
+  whitespace, typography characters) applies the exact edit the linter reports; a *fix all*
+  source action (`source.fixAll.xbsl`) fixes the whole file and can run on save via
+  `editor.codeActionsOnSave`. Needs `xbsllint` ≥ 0.7.1. See [Quick Fix](#quick-fix).
 
 `.yaml` element descriptions keep their built-in YAML highlighting.
 
@@ -66,6 +70,24 @@ output channel, no popups.
 Known limits – by design, the index knows declarations, not types: no completion after variables
 or arbitrary expressions, no type inference for dotted chains deeper than one level, no rename.
 When the context is ambiguous the providers return nothing rather than guessing.
+
+## Quick Fix
+
+Findings the linter can repair mechanically carry a fix; the extension turns it into a Quick Fix:
+
+- A **lightbulb on the diagnostic** (`Ctrl+.`) — *Исправить: `<rule>`* — applies the exact edit:
+  trailing whitespace removed, em dash → en dash, `…` → `...`, curly quotes → straight.
+- A **fix-all source action** — *Исправить все (xbsllint)* — repairs every fixable finding in the
+  file in one edit. Run it on save by adding to your settings:
+
+  ```json
+  "editor.codeActionsOnSave": { "source.fixAll.xbsl": "explicit" }
+  ```
+
+Fixes need a linter that emits them in its JSON (`xbsllint` ≥ 0.7.1). Only unambiguous edits are
+offered, and only against the exact text they were computed on — a version-stamped snapshot guards
+against applying an offset to text that changed since the last lint. Whole-file fixes (mixed
+newlines) are left to `xbsllint --fix` on the command line.
 
 ## Settings
 

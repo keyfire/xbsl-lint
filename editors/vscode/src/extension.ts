@@ -1,13 +1,28 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { LinterConfig, RawReport } from "./report";
+import { LinterConfig, RawDiag, RawReport } from "./report";
 import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from "./linter";
 import { registerNavigation } from "./navigation";
+import { FixSnapshot, PROVIDED_KINDS, XbslCodeActionProvider } from "./codeActions";
 
 let collection: vscode.DiagnosticCollection;
 let output: vscode.OutputChannel;
 const debounceTimers = new Map<string, NodeJS.Timeout>();
 let warnedOnce = false;
+
+// The last version-stamped fixable diagnostics per document (uri -> snapshot), for Quick Fix.
+// A stale entry (version mismatch) is ignored by the provider, so a fix offset is never
+// applied to text that has changed since the lint that produced it.
+const fixStore = new Map<string, FixSnapshot>();
+
+function setFixSnapshot(uri: vscode.Uri, version: number, diags: RawDiag[]): void {
+  const fixable = diags.filter((d) => d.fix);
+  if (fixable.length > 0) {
+    fixStore.set(uri.toString(), { version, diags: fixable });
+  } else {
+    fixStore.delete(uri.toString());
+  }
+}
 
 // --- Workspace lint state ---------------------------------------------------------------
 // One diagnostic collection, two producers:
@@ -90,8 +105,9 @@ async function lintDocument(doc: vscode.TextDocument): Promise<void> {
   if (doc.version !== version) {
     return;
   }
-  const diags = (result.report?.diagnostics ?? []).map((d) => toDiagnostic(d, doc));
-  collection.set(doc.uri, diags);
+  const raw = result.report?.diagnostics ?? [];
+  collection.set(doc.uri, raw.map((d) => toDiagnostic(d, doc)));
+  setFixSnapshot(doc.uri, version, raw);
 }
 
 function reportProblem(message: string): void {
@@ -211,6 +227,7 @@ function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport)
     openDocs.set(doc.uri.toString(), doc);
   }
   const fresh = new Map<string, { uri: vscode.Uri; diags: vscode.Diagnostic[] }>();
+  const rawByKey = new Map<string, RawDiag[]>();
   for (const d of report.diagnostics ?? []) {
     // The linter echoes paths as given (we pass the folder absolute, so they come back
     // absolute with OS separators); relative ones are resolved against the folder.
@@ -222,6 +239,7 @@ function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport)
     const entry = fresh.get(key) ?? { uri, diags: [] };
     entry.diags.push(diag);
     fresh.set(key, entry);
+    (rawByKey.get(key) ?? rawByKey.set(key, []).get(key)!).push(d);
   }
   workspaceResults.set(folderKey, fresh);
   for (const [key, entry] of fresh) {
@@ -230,6 +248,10 @@ function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport)
       continue;
     }
     collection.set(entry.uri, entry.diags);
+    // Offsets from a disk run match only a clean open buffer; stamp with that buffer's version.
+    if (doc) {
+      setFixSnapshot(entry.uri, doc.version, rawByKey.get(key) ?? []);
+    }
   }
   // Files whose diagnostics are all gone: everything in this folder that the fresh run
   // did not mention is clean now.
@@ -294,6 +316,7 @@ function resetAndRelint(): void {
   }
   workspaceTimers.clear();
   workspaceResults.clear();
+  fixStore.clear();
   collection.clear();
   lintOpenDocuments();
   scheduleWorkspaceLintAll();
@@ -353,6 +376,7 @@ export function activate(context: vscode.ExtensionContext): void {
         clearTimeout(t);
         debounceTimers.delete(key);
       }
+      fixStore.delete(key);
       // The file is still part of the project: put the last workspace run's diagnostics
       // back (the closed buffer may have been dirty, its `--stdin` results die with it).
       const baseline = workspaceBaseline(doc.uri);
@@ -385,7 +409,12 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand("xbsl.lintProject", () => lintProject()),
-    vscode.commands.registerCommand("xbsl.restartLinter", () => resetAndRelint())
+    vscode.commands.registerCommand("xbsl.restartLinter", () => resetAndRelint()),
+    vscode.languages.registerCodeActionsProvider(
+      { language: "xbsl" },
+      new XbslCodeActionProvider((uri) => fixStore.get(uri.toString())),
+      { providedCodeActionKinds: PROVIDED_KINDS }
+    )
   );
 
   registerNavigation(context, output, (resource) => readSettings(resource).linter);

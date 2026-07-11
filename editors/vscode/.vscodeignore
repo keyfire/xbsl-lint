@@ -1,5 +1,7 @@
 .vscode/**
 src/**
+test/**
+dist/*.test.js
 node_modules/**
 tsconfig.json
 **/*.map

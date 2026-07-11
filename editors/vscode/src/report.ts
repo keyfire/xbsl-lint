@@ -1,6 +1,15 @@
 // Pure helpers (no vscode import) so they can be unit-tested under plain Node:
 // parsing the linter's JSON, mapping severity, building CLI args and computing a range.
 
+// A mechanical fix the linter attached to a finding: replace the file's [start, end) with
+// newText. Offsets are 0-based character offsets into the file text sent to the linter
+// (matches vscode.TextDocument.positionAt for all non-astral characters, which covers XBSL).
+export interface FixEdit {
+  start: number;
+  end: number;
+  newText: string;
+}
+
 export interface RawDiag {
   path: string;
   line: number; // 1-based
@@ -8,6 +17,7 @@ export interface RawDiag {
   rule: string;
   severity: string; // "error" | "warning" | "info"
   message: string;
+  fix?: FixEdit; // present only for mechanically fixable findings (span fixes)
 }
 
 export interface RawReport {
