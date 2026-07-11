@@ -108,6 +108,19 @@ newlines) are left to `xbsllint --fix` on the command line.
 | `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 | `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |
 
+## LSP mode (experimental)
+
+With `"xbsl.lsp.enabled": true` the extension runs everything through a long-living
+`xbsllint-lsp` server instead of spawning the CLI per event: the Element language data and
+the project index stay resident, so as-you-type diagnostics respond in milliseconds, and
+**hover** appears (a card for a project object, method or form component). Definition,
+completion, project-wide diagnostics on save and quick fixes work as before, just faster.
+Requires the linter installed with the `[lsp]` extra (`pip install "xbsllint[lsp]"`); the
+server is found as `xbsllint-lsp` on `PATH`, via `xbsl.linter.pythonPath` (run as a
+module), or by the explicit `xbsl.lsp.command`. If the server fails to start, the
+extension falls back to the regular CLI mode by itself. Toggling the setting needs a
+window reload.
+
 ## Code palette
 
 The command **XBSL: палитра кода** (`xbsl.choosePalette`) recolors XBSL syntax with one of

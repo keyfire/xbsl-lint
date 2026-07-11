@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { LinterConfig, RawDiag, RawReport } from "./report";
 import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from "./linter";
+import { activateLsp } from "./lspClient";
 import { registerNavigation } from "./navigation";
 import { registerPalettePicker } from "./palettes";
 import { FixSnapshot, PROVIDED_KINDS, XbslCodeActionProvider } from "./codeActions";
@@ -342,10 +343,19 @@ function resetAndRelint(): void {
   scheduleWorkspaceLintAll();
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
   collection = vscode.languages.createDiagnosticCollection("xbsl");
   output = vscode.window.createOutputChannel("XBSL");
   context.subscriptions.push(collection, output);
+
+  // Экспериментальный LSP-режим: всё делает долгоживущий сервер xbsllint-lsp.
+  // При неудачном старте сервера тихо продолжаем в обычном режиме (CLI).
+  if (vscode.workspace.getConfiguration("xbsl").get<boolean>("lsp.enabled", false)) {
+    if (await activateLsp(context, output)) {
+      registerPalettePicker(context);
+      return;
+    }
+  }
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((doc) => {

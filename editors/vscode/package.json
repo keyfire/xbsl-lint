@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -146,6 +146,18 @@
           "scope": "resource",
           "description": "Корень исходников для прогонов по проекту и индекса навигации: путь относительно папки воркспейса (или абсолютный). Пусто – вся папка воркспейса. Задайте, если в репозитории кроме проекта лежат примеры или копии: иначе проектные правила (уникальность Ид и др.) дают ложные срабатывания между каталогами."
         },
+        "xbsl.lsp.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Экспериментально: работать через долгоживущий LSP-сервер xbsllint-lsp (нужен линтер с extra [lsp]: pip install \"xbsllint[lsp]\"). Даёт hover и мгновенный отклик диагностики; при недоступности сервера расширение само откатывается в обычный режим. Смена требует перезагрузки окна."
+        },
+        "xbsl.lsp.command": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Команда запуска LSP-сервера. Пусто – xbsllint-lsp из PATH, либо `<xbsl.linter.pythonPath> -m xbsllint.lsp`, если задан интерпретатор. Пример: C:/Python/Scripts/xbsllint-lsp.exe."
+        },
         "xbsl.linter.debounce": {
           "type": "number",
           "default": 300,
@@ -192,5 +204,8 @@
     "esbuild": "^0.23",
     "ovsx": "^0.9",
     "typescript": "^5"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   }
 }
