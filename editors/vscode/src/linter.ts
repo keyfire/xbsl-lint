@@ -15,20 +15,31 @@ export interface RunResult {
   report?: RawReport;
   // A human-readable problem (spawn failure, non-JSON output, data error) — shown to the user once.
   error?: string;
+  // The run was cancelled (a newer one superseded it) – not an error, just ignore the result.
+  canceled?: boolean;
+}
+
+// A running linter process: the eventual result plus a way to cancel it early.
+export interface RunHandle {
+  result: Promise<RunResult>;
+  cancel: () => void;
+}
+
+interface RunOptions {
+  cwd?: string;
+  stdin?: string;
+  // Kill the process after this many milliseconds (0 / undefined – no limit).
+  timeoutMs?: number;
 }
 
 const DECODER_LIMIT = 8 * 1024 * 1024; // guard against a runaway process
 
-function runProcess(
-  command: string,
-  args: string[],
-  cwd: string | undefined,
-  stdin: string | undefined
-): Promise<RunResult> {
-  return new Promise((resolve) => {
+function runProcess(command: string, args: string[], opts: RunOptions): RunHandle {
+  let cancel: () => void = () => undefined;
+  const result = new Promise<RunResult>((resolve) => {
     let child;
     try {
-      child = spawn(command, args, { cwd });
+      child = spawn(command, args, { cwd: opts.cwd });
     } catch (e) {
       resolve({ error: describeSpawnError(command, e) });
       return;
@@ -36,7 +47,25 @@ function runProcess(
     let out = "";
     let err = "";
     let tooBig = false;
-    child.on("error", (e) => resolve({ error: describeSpawnError(command, e) }));
+    let canceled = false;
+    let timedOut = false;
+    let timer: NodeJS.Timeout | undefined;
+    if (opts.timeoutMs && opts.timeoutMs > 0) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        child.kill();
+      }, opts.timeoutMs);
+    }
+    cancel = () => {
+      canceled = true;
+      child.kill();
+    };
+    child.on("error", (e) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      resolve({ error: describeSpawnError(command, e) });
+    });
     child.stdout.on("data", (d: Buffer) => {
       if (out.length < DECODER_LIMIT) {
         out += d.toString("utf8");
@@ -48,6 +77,17 @@ function runProcess(
       err += d.toString("utf8");
     });
     child.on("close", (code) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      if (canceled) {
+        resolve({ canceled: true });
+        return;
+      }
+      if (timedOut) {
+        resolve({ error: `линтер не уложился в ${opts.timeoutMs} мс и был остановлен` });
+        return;
+      }
       if (tooBig) {
         resolve({ error: "linter produced too much output" });
         return;
@@ -65,9 +105,10 @@ function runProcess(
       child.stdin.on("error", () => {
         /* ignore EPIPE if the child exits early */
       });
-      child.stdin.end(stdin !== undefined ? Buffer.from(stdin, "utf8") : undefined);
+      child.stdin.end(opts.stdin !== undefined ? Buffer.from(opts.stdin, "utf8") : undefined);
     }
   });
+  return { result, cancel: () => cancel() };
 }
 
 function describeSpawnError(command: string, e: unknown): string {
@@ -85,12 +126,18 @@ export function lintBuffer(
   cwd: string | undefined,
   cfg: LinterConfig
 ): Promise<RunResult> {
-  return runProcess(cfg.command, buildArgs(filename, cfg), cwd, text);
+  return runProcess(cfg.command, buildArgs(filename, cfg), { cwd, stdin: text }).result;
 }
 
 // Check a whole path on disk via `xbsllint <path>` (includes cross-file rules).
-export function lintPath(target: string, cwd: string | undefined, cfg: LinterConfig): Promise<RunResult> {
-  return runProcess(cfg.command, buildPathArgs(target, cfg), cwd, undefined);
+// Returns a handle so the caller can cancel a run that a newer save has made stale.
+export function lintPath(
+  target: string,
+  cwd: string | undefined,
+  cfg: LinterConfig,
+  timeoutMs?: number
+): RunHandle {
+  return runProcess(cfg.command, buildPathArgs(target, cfg), { cwd, timeoutMs });
 }
 
 // Builds a diagnostic; lineText (when known) lets us widen the anchor to the word under it.

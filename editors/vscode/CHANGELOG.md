@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0
+
+- Workspace diagnostics: saving any `.xbsl`/`.yaml` file triggers a full linter run over the
+  workspace folder (debounced, one at a time, stale runs cancelled), bringing project-scope
+  rules (`code/unknown-type`, `yaml/unknown-type`, ...) into the editor. The workspace result
+  replaces the diagnostics of every file; the fast `--stdin` lint owns only the dirty buffer
+  being edited.
+- New settings: `xbsl.workspaceLint` (on by default) and `xbsl.workspaceLintTimeout`
+  (60000 ms; on expiry the run is stopped and logged to the XBSL output channel).
+- The *XBSL: проверить весь проект* command reuses the same machinery and result store.
+- Activation on `workspaceContains:**/*.xbsl`, so `.yaml`-only editing sessions get
+  workspace diagnostics too.
+
 ## 0.1.0
 
 - Initial release.
