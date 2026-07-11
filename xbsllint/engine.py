@@ -78,6 +78,23 @@ def load_text(name: str, content: str) -> SourceFile:
     return make_source(Path(name), content.encode("utf-8"))
 
 
+def find_sources(root: Path, pattern: str) -> list[Path]:
+    """Files matching the pattern under the root, skipping hidden directories and files.
+
+    Dot-directories hold service copies of the sources (git worktrees under `.claude/`,
+    `.git` itself, caches) that poison project-scope rules with false cross-file findings
+    such as duplicated `Ид`. Components are checked relative to the root, so a root that
+    itself lives inside a hidden directory (an opened worktree) is scanned normally.
+    """
+    result: list[Path] = []
+    for f in root.rglob(pattern):
+        rel = f.relative_to(root)
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        result.append(f)
+    return sorted(result)
+
+
 # --- Rule registry -------------------------------------------------------------------
 
 FileRuleFn = Callable[[SourceFile], Iterable[Diagnostic]]

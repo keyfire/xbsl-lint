@@ -28,7 +28,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 from xbsllint import __version__
-from xbsllint.engine import SourceFile, load
+from xbsllint.engine import SourceFile, find_sources, load
 from xbsllint.lexer import linemap, tokens
 from xbsllint.rules.semantics import _file_local_type_decls, _member_family
 from xbsllint.rules.yaml_schema import _HAVE_YAML, _parsed
@@ -213,7 +213,7 @@ def _discover(root: Path) -> list[Path]:
     """Source files under the root (or the root itself when it is a file), sorted."""
     if root.is_file():
         return [root] if root.suffix in (".xbsl", ".yaml") else []
-    return sorted(root.rglob("*.yaml")) + sorted(root.rglob("*.xbsl"))
+    return find_sources(root, "*.yaml") + find_sources(root, "*.xbsl")
 
 
 def build_index(root: Path) -> dict:

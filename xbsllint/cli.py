@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from xbsllint import __version__, baseline, dataset, i18n, report
+from xbsllint import __version__, baseline, dataset, engine, i18n, report
 
 
 def discover(paths: list[str]) -> list[Path]:
@@ -19,8 +19,8 @@ def discover(paths: list[str]) -> list[Path]:
             if p.suffix in (".xbsl", ".yaml"):
                 out.append(p)
         elif p.is_dir():
-            out.extend(sorted(p.rglob("*.xbsl")))
-            out.extend(sorted(p.rglob("*.yaml")))
+            out.extend(engine.find_sources(p, "*.xbsl"))
+            out.extend(engine.find_sources(p, "*.yaml"))
     # Uniquify, preserving order
     seen: set[Path] = set()
     uniq: list[Path] = []
