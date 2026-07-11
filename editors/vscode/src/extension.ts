@@ -6,6 +6,7 @@ import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from ".
 import { activateLsp } from "./lspClient";
 import { registerNavigation } from "./navigation";
 import { registerPalettePicker } from "./palettes";
+import { mergeOffRules, registerRuleConfig, ruleOverride } from "./ruleConfig";
 import { FixSnapshot, PROVIDED_KINDS, XbslCodeActionProvider } from "./codeActions";
 
 let collection: vscode.DiagnosticCollection;
@@ -66,7 +67,8 @@ function readSettings(resource?: vscode.Uri): Settings {
       dataDir: (c.get<string>("linter.dataDir") || "").trim() || undefined,
       lang: lang || undefined,
       select: (c.get<string>("linter.select") || "").trim() || undefined,
-      ignore: (c.get<string>("linter.ignore") || "").trim() || undefined,
+      // Правила, выключенные в xbsl.rules (off), не запускаются вовсе.
+      ignore: mergeOffRules((c.get<string>("linter.ignore") || "").trim() || undefined, resource),
     },
     run: c.get<"onType" | "onSave" | "off">("linter.run") || "onType",
     debounce: c.get<number>("linter.debounce") ?? 300,
@@ -126,7 +128,7 @@ async function lintDocument(doc: vscode.TextDocument): Promise<void> {
   if (doc.version !== version) {
     return;
   }
-  const raw = result.report?.diagnostics ?? [];
+  const raw = (result.report?.diagnostics ?? []).filter((d) => ruleOverride(d.rule, doc.uri) !== "off");
   collection.set(doc.uri, raw.map((d) => toDiagnostic(d, doc)));
   setFixSnapshot(doc.uri, version, raw);
 }
@@ -250,6 +252,9 @@ function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport)
   const fresh = new Map<string, { uri: vscode.Uri; diags: vscode.Diagnostic[] }>();
   const rawByKey = new Map<string, RawDiag[]>();
   for (const d of report.diagnostics ?? []) {
+    if (ruleOverride(d.rule, folder.uri) === "off") {
+      continue;
+    }
     // The linter echoes paths as given (we pass the folder absolute, so they come back
     // absolute with OS separators); relative ones are resolved against the folder.
     const fsPath = path.isAbsolute(d.path) ? d.path : path.join(folder.uri.fsPath, d.path);
@@ -348,11 +353,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   output = vscode.window.createOutputChannel("XBSL");
   context.subscriptions.push(collection, output);
 
+  // Общие для обоих режимов: палитра и настройка правил с находки.
+  registerPalettePicker(context);
+  registerRuleConfig(context);
+
   // Экспериментальный LSP-режим: всё делает долгоживущий сервер xbsllint-lsp.
   // При неудачном старте сервера тихо продолжаем в обычном режиме (CLI).
   if (vscode.workspace.getConfiguration("xbsl").get<boolean>("lsp.enabled", false)) {
     if (await activateLsp(context, output)) {
-      registerPalettePicker(context);
       return;
     }
   }
@@ -448,7 +456,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   registerNavigation(context, output, (resource) => readSettings(resource).linter, projectRootFor);
-  registerPalettePicker(context);
 
   lintOpenDocuments();
   scheduleWorkspaceLintAll();

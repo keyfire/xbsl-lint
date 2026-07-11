@@ -10,6 +10,7 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
+import { applyOverride, mergeOffRules } from "./ruleConfig";
 
 let client: LanguageClient | undefined;
 
@@ -46,7 +47,6 @@ export async function activateLsp(
   }
   for (const [flag, key] of [
     ["--select", "linter.select"],
-    ["--ignore", "linter.ignore"],
     ["--data-dir", "linter.dataDir"],
     ["--lang", "linter.lang"],
   ] as const) {
@@ -54,6 +54,11 @@ export async function activateLsp(
     if (value) {
       args.push(flag, value);
     }
+  }
+  // Выключенные в xbsl.rules правила дополняют --ignore: сервер их не запускает.
+  const ignore = mergeOffRules((cfg.get<string>("linter.ignore") || "").trim() || undefined);
+  if (ignore) {
+    args.push("--ignore", ignore);
   }
 
   const serverOptions: ServerOptions = {
@@ -67,6 +72,13 @@ export async function activateLsp(
     documentSelector: [{ language: "xbsl" }, { language: "yaml", pattern: yamlPattern }],
     outputChannel: output,
     diagnosticCollectionName: "xbsl-lsp",
+    middleware: {
+      // Пер-правило переопределения xbsl.rules поверх диагностик сервера: скрыть off,
+      // заменить уровень.
+      handleDiagnostics: (uri, diagnostics, next) => {
+        next(uri, diagnostics.map((d) => applyOverride(d, uri)).filter((d): d is vscode.Diagnostic => d !== null));
+      },
+    },
   };
 
   client = new LanguageClient("xbslLsp", "XBSL LSP", serverOptions, clientOptions);

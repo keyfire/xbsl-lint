@@ -33,5 +33,16 @@
   "XBSL: failed to start xbsllint-lsp. Install the linter with the [lsp] extra (pip install \"xbsllint[lsp]\") or set the command in the xbsl.lsp.command setting. The extension keeps working in the regular mode (CLI).": "XBSL: не удалось запустить xbsllint-lsp. Установите линтер с extra [lsp] (pip install \"xbsllint[lsp]\") или укажите команду в настройке xbsl.lsp.command. Расширение продолжает работать в обычном режиме (CLI).",
   "XBSL LSP: server started ({0} {1}).": "XBSL LSP: сервер запущен ({0} {1}).",
   "XBSL LSP: server restarted": "XBSL LSP: сервер перезапущен",
-  "XBSL LSP: project-wide diagnostics run on the server on every save; force them with the \"XBSL: restart the linter\" command.": "XBSL LSP: проектная диагностика выполняется сервером при каждом сохранении; принудительно – командой \"XBSL: перезапустить линтер\"."
+  "XBSL LSP: project-wide diagnostics run on the server on every save; force them with the \"XBSL: restart the linter\" command.": "XBSL LSP: проектная диагностика выполняется сервером при каждом сохранении; принудительно – командой \"XBSL: перезапустить линтер\".",
+  "Configure rule \"{0}\"...": "Настроить правило \"{0}\"...",
+  "Disable the rule": "Отключить правило",
+  "hide the findings and skip the rule": "скрыть находки и не запускать правило",
+  "current override": "текущее переопределение",
+  "Reset the override": "Сбросить переопределение",
+  "back to the rule's own level": "вернуть собственный уровень правила",
+  "Open the XBSL rules settings": "Открыть настройки правил XBSL",
+  "Rule \"{0}\"": "Правило \"{0}\"",
+  "Choose the level or an action": "Выберите уровень или действие",
+  "XBSL: the override of \"{0}\" is removed": "XBSL: переопределение \"{0}\" снято",
+  "XBSL: rule \"{0}\" is set to {1}": "XBSL: правило \"{0}\" переведено в {1}"
 }

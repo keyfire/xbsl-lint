@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { spawn } from "child_process";
+import { ruleOverride, severityFor } from "./ruleConfig";
 import {
   buildArgs,
   buildPathArgs,
@@ -141,10 +142,13 @@ export function lintPath(
 }
 
 // Builds a diagnostic; lineText (when known) lets us widen the anchor to the word under it.
+// The user's per-rule level from xbsl.rules replaces the rule's own severity.
 export function makeDiagnostic(d: RawDiag, lineText: string | undefined): vscode.Diagnostic {
   const span = computeRange(lineText, d.line, d.col);
   const range = new vscode.Range(span.sl, span.sc, span.el, span.ec);
-  const diag = new vscode.Diagnostic(range, d.message, severityCode(d.severity));
+  const over = ruleOverride(d.rule);
+  const severity = over && over !== "off" ? severityFor(over) : severityCode(d.severity);
+  const diag = new vscode.Diagnostic(range, d.message, severity);
   diag.source = "xbsllint";
   diag.code = d.rule;
   return diag;

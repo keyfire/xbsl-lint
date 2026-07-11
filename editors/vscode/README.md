@@ -102,11 +102,21 @@ newlines) are left to `xbsllint --fix` on the command line.
 | `xbsl.linter.lang` | auto | Diagnostic language: ` ` (auto) / `ru` / `en`. |
 | `xbsl.linter.select` | – | Only these rules (ids, groups, or tier letters `A`–`D`). |
 | `xbsl.linter.ignore` | – | Exclude these rules. |
+| `xbsl.rules` | `{}` | Per-rule levels and disabling: `{"style": "off", "code/brackets": "error"}`. See [Rules](#rules-levels-and-disabling). |
 | `xbsl.linter.debounce` | `300` | Delay (ms) before linting while typing. |
 | `xbsl.projectRoot` | – | Sources root for project-wide runs and the navigation index, relative to the workspace folder (or absolute). Empty – the whole folder. Set it when the repository holds examples or copies next to the project: otherwise project-scope rules (`Ид` uniqueness etc.) cross-fire between directories. |
 | `xbsl.workspaceLint` | `true` | Full workspace run on every save of a `.xbsl`/`.yaml` file. |
 | `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 | `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |
+
+## Rules: levels and disabling
+
+Every finding carries a **"Configure rule..."** action in its lightbulb (`Ctrl+.`): disable
+the rule or override its level (error / warning / info / hint) without leaving the line;
+the check reruns right away. The choices land in the `xbsl.rules` setting – a map from a
+rule id (`whitespace/trailing`) or a whole group (`style`) to a level or `off`; an exact id
+beats its group, `off` also excludes the rule from the run. Works in both the CLI and the
+LSP mode.
 
 ## LSP mode (experimental)
 
@@ -125,7 +135,7 @@ window reload.
 
 The command **XBSL: палитра кода** (`xbsl.choosePalette`) recolors XBSL syntax with one of
 the popular palettes: the 1C:Element web IDE style (red keywords, blue strings), One Dark,
-Monokai, Dracula, GitHub Dark - or resets back to the active editor theme. The choice is
+Monokai, Dracula, GitHub Dark – or resets back to the active editor theme. The choice is
 applied via `editor.tokenColorCustomizations` rules addressing only `*.xbsl` scopes, so the
 global theme and other languages stay untouched; the extension manages only its own rules
 (prefixed `xbsl-palette`) and preserves any customizations of yours.
