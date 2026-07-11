@@ -71,6 +71,51 @@ Rule titles and diagnostic messages come in Russian and English. The language is
 and other XBSL text inside a message are never translated — only the wording around them. The MCP
 server and the web panel follow the same setting (the web panel also has an in-page RU/EN toggle).
 
+## Use in CI
+
+`xbsllint` exits non-zero only when a run produces an **error-severity** finding, so it works as a
+pipeline gate as-is — warnings and `info` do not fail the build. The one prerequisite is the
+language data (see [Step 1](#step-1-generate-the-language-data)): generate it in the job (the
+extractors ship with the repository, so check the repo out), or depend on a package that ships the
+data via the `xbsllint.data` entry point (see [Extending](#extending-your-own-rules-and-data)) and
+just `pip install` it.
+
+### GitHub Actions
+
+```yaml
+lint:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.12" }
+    - run: pip install xbsllint
+    # generate the data from your 1C:Element distribution (or install a package that ships it):
+    - run: |
+        python tools/extract_grammar.py  --dist "$ELEMENT_DIST"
+        python tools/extract_stdlib.py   --dist "$ELEMENT_DIST"
+        python tools/extract_metamodel.py --dist "$ELEMENT_DIST"
+    - run: xbsllint e1c/          # fails the job on any error-severity finding
+```
+
+### GitLab CI (Code Quality widget)
+
+`--format codeclimate` writes a Code Climate report that GitLab renders inline on the merge request.
+Run it from the repository root and save the output as the `codequality` report. The command still
+returns non-zero on error-severity findings, so `artifacts.when: always` keeps the report even when
+the job gates the pipeline (drop the gate with a trailing `|| true` if you want the widget only):
+
+```yaml
+lint:
+  script:
+    - pip install xbsllint
+    - xbsllint --format codeclimate e1c/ > gl-code-quality-report.json
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-report.json
+```
+
 ## Rule tiers
 
 - **A. Structure and YAML** — `.xbsl`/`.yaml` pairing, schema validity, `Ид` as a UUID,
