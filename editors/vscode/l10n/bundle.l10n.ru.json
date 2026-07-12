@@ -35,6 +35,7 @@
   "XBSL LSP: server restarted": "XBSL LSP: сервер перезапущен",
   "XBSL LSP: project-wide diagnostics run on the server on every save; force them with the \"XBSL: restart the linter\" command.": "XBSL LSP: проектная диагностика выполняется сервером при каждом сохранении; принудительно – командой \"XBSL: перезапустить линтер\".",
   "Configure rule \"{0}\"...": "Настроить правило \"{0}\"...",
+  "Configure rule groups...": "Настроить группы правил...",
   "Disable the rule": "Отключить правило",
   "hide the findings and skip the rule": "скрыть находки и не запускать правило",
   "current override": "текущее переопределение",

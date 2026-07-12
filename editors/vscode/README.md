@@ -113,6 +113,7 @@ newlines) are left to `xbsllint --fix` on the command line.
 | `xbsl.workspaceLint` | `true` | Full workspace run on every save of a `.xbsl`/`.yaml` file. |
 | `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 | `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |
+| `xbsl.groups.*` | `default` | A dropdown per rule group (code, yaml, style, typography, whitespace, encoding, structure, form): the rules' own levels, one level for the whole group, or `off`. See [Rules](#rules-levels-and-disabling). |
 | `xbsl.deploy.elemctlPath` | `elemctl` | The elemctl executable for the deploy command. |
 | `xbsl.deploy.envFile` | – | A `.env` with the connection and the target, passed as `--env-file` (relative to the workspace folder or absolute). Empty – the workspace folder's own `.env`. |
 | `xbsl.deploy.appId` | – | Target application (`--app-id`); empty – `ELEMENT_APP_ID` from the environment / `.env`. |
@@ -120,12 +121,19 @@ newlines) are left to `xbsllint --fix` on the command line.
 
 ## Rules: levels and disabling
 
-Every finding carries a **"Configure rule..."** action in its lightbulb (`Ctrl+.`): disable
-the rule or override its level (error / warning / info / hint) without leaving the line;
+**By group – in the Settings UI.** The **Rule groups** section (search for `xbsl.groups` in
+the Settings editor, or browse Extensions → XBSL) has a dropdown per finding type – code,
+yaml descriptions, style, typography, whitespace, encoding, structure, forms: keep the
+group's own rule levels, report all its findings at one level (error / warning / info /
+hint), or turn the group off entirely – `off` does not just hide the findings, it excludes
+the rules from the run.
+
+**Per rule – from the finding.** Every finding carries a **"Configure rule..."** action in
+its lightbulb (`Ctrl+.`): disable the rule or override its level without leaving the line;
 the check reruns right away. The choices land in the `xbsl.rules` setting – a map from a
-rule id (`whitespace/trailing`) or a whole group (`style`) to a level or `off`; an exact id
-beats its group, `off` also excludes the rule from the run. Works in both the CLI and the
-LSP mode.
+rule id (`whitespace/trailing`) or a whole group (`style`) to a level or `off`. An exact id
+beats its group, and any `xbsl.rules` key beats the group dropdowns. Works in both the CLI
+and the LSP mode.
 
 ## LSP mode (experimental)
 

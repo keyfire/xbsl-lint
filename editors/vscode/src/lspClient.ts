@@ -56,7 +56,7 @@ export async function activateLsp(
       args.push(flag, value);
     }
   }
-  // Выключенные в xbsl.rules правила дополняют --ignore: сервер их не запускает.
+  // Выключенные в настройках правила и группы дополняют --ignore: сервер их не запускает.
   const ignore = mergeOffRules((cfg.get<string>("linter.ignore") || "").trim() || undefined);
   if (ignore) {
     args.push("--ignore", ignore);

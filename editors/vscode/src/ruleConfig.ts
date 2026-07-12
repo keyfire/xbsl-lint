@@ -1,8 +1,11 @@
-// Пер-правило переопределения из настройки xbsl.rules: ключ – идентификатор правила
-// ("whitespace/trailing") или целая группа ("style"), значение – off | error | warning |
-// info | hint. "off" скрывает находки и исключает правило из прогона, уровень заменяет
-// собственную важность правила. Точное имя сильнее группы. Плюс действие "Настроить
-// правило ..." на каждой находке – управление не отходя от строки.
+// Переопределения уровней находок из двух настроек. xbsl.groups.<группа> – выпадающие
+// списки в UI настроек по типам находок (default = собственные уровни правил, off =
+// выключить группу, иначе единый уровень). xbsl.rules – тонкая надстройка: ключ –
+// идентификатор правила ("whitespace/trailing") или целая группа ("style"), значение –
+// off | error | warning | info | hint. "off" скрывает находки и исключает правило из
+// прогона, уровень заменяет собственную важность правила. Приоритет: точное имя правила >
+// группа в xbsl.rules > xbsl.groups. Плюс действие "Настроить правило ..." на каждой
+// находке – управление не отходя от строки.
 
 import * as vscode from "vscode";
 
@@ -17,7 +20,15 @@ function rulesMap(resource?: vscode.Uri): Record<string, unknown> {
   return vscode.workspace.getConfiguration("xbsl", resource ?? null).get<Record<string, unknown>>("rules") ?? {};
 }
 
-// Переопределение для правила: точный ключ, затем группа (часть до "/").
+// Значения xbsl.groups.* одним объектом {группа: уровень}. Значение "default" не проходит
+// isLevel и потому не считается переопределением. Ключи вне объявленных в манифесте тоже
+// читаются – группа правила-плагина, вписанная в settings.json руками, работает так же.
+function groupsMap(resource?: vscode.Uri): Record<string, unknown> {
+  return vscode.workspace.getConfiguration("xbsl", resource ?? null).get<Record<string, unknown>>("groups") ?? {};
+}
+
+// Переопределение для правила: точный ключ xbsl.rules, затем группа (часть до "/") –
+// сперва в xbsl.rules, затем в настройках групп.
 export function ruleOverride(rule: string, resource?: vscode.Uri): RuleLevel | undefined {
   const map = rulesMap(resource);
   const exact = map[rule];
@@ -26,9 +37,14 @@ export function ruleOverride(rule: string, resource?: vscode.Uri): RuleLevel | u
   }
   const slash = rule.indexOf("/");
   if (slash > 0) {
-    const group = map[rule.slice(0, slash)];
-    if (isLevel(group)) {
-      return group;
+    const group = rule.slice(0, slash);
+    const inRules = map[group];
+    if (isLevel(inRules)) {
+      return inRules;
+    }
+    const inGroups = groupsMap(resource)[group];
+    if (isLevel(inGroups)) {
+      return inGroups;
     }
   }
   return undefined;
@@ -47,11 +63,19 @@ export function severityFor(level: Exclude<RuleLevel, "off">): vscode.Diagnostic
   }
 }
 
-// Правила со значением off дополняют список ignore линтера – выключенное не запускается.
+// Правила и группы со значением off дополняют список ignore линтера – выключенное не
+// запускается. Группа из xbsl.groups не попадает в ignore, если xbsl.rules задал ей
+// явный уровень: та настройка сильнее, находки группы должны остаться.
 export function mergeOffRules(ignore: string | undefined, resource?: vscode.Uri): string | undefined {
-  const off = Object.entries(rulesMap(resource))
+  const rules = rulesMap(resource);
+  const off = Object.entries(rules)
     .filter(([, v]) => v === "off")
     .map(([k]) => k);
+  for (const [group, v] of Object.entries(groupsMap(resource))) {
+    if (v === "off" && !isLevel(rules[group])) {
+      off.push(group);
+    }
+  }
   if (off.length === 0) {
     return ignore;
   }
@@ -121,7 +145,7 @@ class ConfigureRuleProvider implements vscode.CodeActionProvider {
 
 async function configureRule(rule: string, resource?: vscode.Uri): Promise<void> {
   const current = ruleOverride(rule, resource);
-  type Item = vscode.QuickPickItem & { value: RuleLevel | "default" | "settings" };
+  type Item = vscode.QuickPickItem & { value: RuleLevel | "default" | "settings" | "groups" };
   const items: Item[] = [
     {
       label: "$(circle-slash) " + vscode.l10n.t("Disable the rule"),
@@ -141,6 +165,7 @@ async function configureRule(rule: string, resource?: vscode.Uri): Promise<void>
       value: "default",
     });
   }
+  items.push({ label: "$(checklist) " + vscode.l10n.t("Configure rule groups..."), value: "groups" });
   items.push({ label: "$(gear) " + vscode.l10n.t("Open the XBSL rules settings"), value: "settings" });
 
   const picked = await vscode.window.showQuickPick(items, {
@@ -148,6 +173,10 @@ async function configureRule(rule: string, resource?: vscode.Uri): Promise<void>
     placeHolder: vscode.l10n.t("Choose the level or an action"),
   });
   if (!picked) {
+    return;
+  }
+  if (picked.value === "groups") {
+    await vscode.commands.executeCommand("workbench.action.openSettings", "xbsl.groups");
     return;
   }
   if (picked.value === "settings") {

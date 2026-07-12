@@ -69,7 +69,7 @@ function readSettings(resource?: vscode.Uri): Settings {
       dataDir: (c.get<string>("linter.dataDir") || "").trim() || undefined,
       lang: lang || undefined,
       select: (c.get<string>("linter.select") || "").trim() || undefined,
-      // Правила, выключенные в xbsl.rules (off), не запускаются вовсе.
+      // Правила и группы, выключенные в настройках (off), не запускаются вовсе.
       ignore: mergeOffRules((c.get<string>("linter.ignore") || "").trim() || undefined, resource),
     },
     run: c.get<"onType" | "onSave" | "off">("linter.run") || "onType",

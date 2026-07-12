@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0
+
+- New settings section **Rule groups**: a dropdown per finding type (code, yaml, style,
+  typography, whitespace, encoding, structure, form) – keep the rules' own levels, report
+  the whole group at one level, or turn the group off (the rules are then skipped, not just
+  hidden). No more hand-typing ids into `xbsl.rules` for the common cases; `xbsl.rules`
+  stays as the fine-grained override and beats the dropdowns.
+- The "Configure rule..." lightbulb gained a "Configure rule groups..." shortcut into the
+  new section.
+
 ## 0.8.0
 
 - New command *XBSL: deploy the project (elemctl)* (`xbsl.deploy`), also a cloud button in the

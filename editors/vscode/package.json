@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -92,157 +92,348 @@
         }
       ]
     },
-    "configuration": {
-      "title": "XBSL",
-      "properties": {
-        "xbsl.linter.run": {
-          "type": "string",
-          "enum": [
-            "onType",
-            "onSave",
-            "off"
-          ],
-          "enumDescriptions": [
-            "%config.linter.run.enum.0%",
-            "%config.linter.run.enum.1%",
-            "%config.linter.run.enum.2%"
-          ],
-          "default": "onType",
-          "scope": "resource",
-          "description": "%config.linter.run%"
-        },
-        "xbsl.linter.command": {
-          "type": "string",
-          "default": "xbsllint",
-          "scope": "resource",
-          "description": "%config.linter.command%"
-        },
-        "xbsl.linter.pythonPath": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "description": "%config.linter.pythonPath%"
-        },
-        "xbsl.linter.dataDir": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "description": "%config.linter.dataDir%"
-        },
-        "xbsl.linter.lang": {
-          "type": "string",
-          "enum": [
-            "",
-            "ru",
-            "en"
-          ],
-          "enumDescriptions": [
-            "%config.linter.lang.enum.0%",
-            "%config.linter.lang.enum.1%",
-            "%config.linter.lang.enum.2%"
-          ],
-          "default": "",
-          "scope": "resource",
-          "description": "%config.linter.lang%"
-        },
-        "xbsl.linter.select": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "description": "%config.linter.select%"
-        },
-        "xbsl.linter.ignore": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "description": "%config.linter.ignore%"
-        },
-        "xbsl.rules": {
-          "type": "object",
-          "default": {},
-          "scope": "resource",
-          "additionalProperties": {
+    "configuration": [
+      {
+        "title": "XBSL",
+        "properties": {
+          "xbsl.linter.run": {
             "type": "string",
             "enum": [
-              "off",
+              "onType",
+              "onSave",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.linter.run.enum.0%",
+              "%config.linter.run.enum.1%",
+              "%config.linter.run.enum.2%"
+            ],
+            "default": "onType",
+            "scope": "resource",
+            "description": "%config.linter.run%"
+          },
+          "xbsl.linter.command": {
+            "type": "string",
+            "default": "xbsllint",
+            "scope": "resource",
+            "description": "%config.linter.command%"
+          },
+          "xbsl.linter.pythonPath": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "description": "%config.linter.pythonPath%"
+          },
+          "xbsl.linter.dataDir": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "description": "%config.linter.dataDir%"
+          },
+          "xbsl.linter.lang": {
+            "type": "string",
+            "enum": [
+              "",
+              "ru",
+              "en"
+            ],
+            "enumDescriptions": [
+              "%config.linter.lang.enum.0%",
+              "%config.linter.lang.enum.1%",
+              "%config.linter.lang.enum.2%"
+            ],
+            "default": "",
+            "scope": "resource",
+            "description": "%config.linter.lang%"
+          },
+          "xbsl.linter.select": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "description": "%config.linter.select%"
+          },
+          "xbsl.linter.ignore": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "description": "%config.linter.ignore%"
+          },
+          "xbsl.rules": {
+            "type": "object",
+            "default": {},
+            "scope": "resource",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "off",
+                "error",
+                "warning",
+                "info",
+                "hint"
+              ]
+            },
+            "markdownDescription": "%config.rules%"
+          },
+          "xbsl.projectRoot": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "description": "%config.projectRoot%"
+          },
+          "xbsl.lsp.enabled": {
+            "type": "boolean",
+            "default": false,
+            "scope": "resource",
+            "description": "%config.lsp.enabled%"
+          },
+          "xbsl.lsp.command": {
+            "type": "string",
+            "default": "",
+            "scope": "machine-overridable",
+            "description": "%config.lsp.command%"
+          },
+          "xbsl.linter.debounce": {
+            "type": "number",
+            "default": 300,
+            "minimum": 0,
+            "scope": "resource",
+            "description": "%config.linter.debounce%"
+          },
+          "xbsl.workspaceLint": {
+            "type": "boolean",
+            "default": true,
+            "scope": "resource",
+            "description": "%config.workspaceLint%"
+          },
+          "xbsl.workspaceLintTimeout": {
+            "type": "number",
+            "default": 60000,
+            "minimum": 0,
+            "scope": "resource",
+            "description": "%config.workspaceLintTimeout%"
+          },
+          "xbsl.navigation.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "resource",
+            "description": "%config.navigation.enabled%"
+          },
+          "xbsl.deploy.elemctlPath": {
+            "type": "string",
+            "default": "elemctl",
+            "scope": "machine-overridable",
+            "description": "%config.deploy.elemctlPath%"
+          },
+          "xbsl.deploy.envFile": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "description": "%config.deploy.envFile%"
+          },
+          "xbsl.deploy.appId": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "description": "%config.deploy.appId%"
+          },
+          "xbsl.deploy.extraArgs": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "description": "%config.deploy.extraArgs%"
+          }
+        }
+      },
+      {
+        "title": "%config.section.groups%",
+        "properties": {
+          "xbsl.groups.code": {
+            "type": "string",
+            "enum": [
+              "default",
               "error",
               "warning",
               "info",
-              "hint"
-            ]
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 1,
+            "description": "%config.groups.code%"
           },
-          "markdownDescription": "%config.rules%"
-        },
-        "xbsl.projectRoot": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "description": "%config.projectRoot%"
-        },
-        "xbsl.lsp.enabled": {
-          "type": "boolean",
-          "default": false,
-          "scope": "resource",
-          "description": "%config.lsp.enabled%"
-        },
-        "xbsl.lsp.command": {
-          "type": "string",
-          "default": "",
-          "scope": "machine-overridable",
-          "description": "%config.lsp.command%"
-        },
-        "xbsl.linter.debounce": {
-          "type": "number",
-          "default": 300,
-          "minimum": 0,
-          "scope": "resource",
-          "description": "%config.linter.debounce%"
-        },
-        "xbsl.workspaceLint": {
-          "type": "boolean",
-          "default": true,
-          "scope": "resource",
-          "description": "%config.workspaceLint%"
-        },
-        "xbsl.workspaceLintTimeout": {
-          "type": "number",
-          "default": 60000,
-          "minimum": 0,
-          "scope": "resource",
-          "description": "%config.workspaceLintTimeout%"
-        },
-        "xbsl.navigation.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "resource",
-          "description": "%config.navigation.enabled%"
-        },
-        "xbsl.deploy.elemctlPath": {
-          "type": "string",
-          "default": "elemctl",
-          "scope": "machine-overridable",
-          "description": "%config.deploy.elemctlPath%"
-        },
-        "xbsl.deploy.envFile": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "description": "%config.deploy.envFile%"
-        },
-        "xbsl.deploy.appId": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "description": "%config.deploy.appId%"
-        },
-        "xbsl.deploy.extraArgs": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "description": "%config.deploy.extraArgs%"
+          "xbsl.groups.yaml": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 2,
+            "description": "%config.groups.yaml%"
+          },
+          "xbsl.groups.style": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 3,
+            "description": "%config.groups.style%"
+          },
+          "xbsl.groups.typography": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 4,
+            "description": "%config.groups.typography%"
+          },
+          "xbsl.groups.whitespace": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 5,
+            "description": "%config.groups.whitespace%"
+          },
+          "xbsl.groups.encoding": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 6,
+            "description": "%config.groups.encoding%"
+          },
+          "xbsl.groups.structure": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 7,
+            "description": "%config.groups.structure%"
+          },
+          "xbsl.groups.form": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 8,
+            "description": "%config.groups.form%"
+          }
         }
       }
-    }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
