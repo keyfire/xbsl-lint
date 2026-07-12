@@ -3,11 +3,14 @@
 ## 0.11.0
 
 - The form preview gained a **properties panel**, like the platform web editor: a click on an
-  element selects it and shows its properties on the right – enums as dropdowns, `Растягивать*`
-  as Auto / Истина / Ложь toggles, everything else as text; the curated standard set of the
-  component plus every property present in the yaml. Edits are applied to the yaml document as
-  precise text edits (undo works); an empty value / *(auto)* removes the property. Ctrl+click
-  or the *Show in yaml* button reveals the node in the editor (plain click now selects).
+  element selects it and opens a separate *Properties* tab (drag it wherever suits) – enums as
+  dropdowns, `Растягивать*` as Auto / Истина / Ложь toggles, everything else as text; the
+  curated standard set of the component plus every property present in the yaml. Edits are
+  applied to the yaml document as precise text edits (undo works); an empty value / *(auto)*
+  removes the property. Selecting and editing also position the yaml editor on the affected
+  line without stealing focus; Ctrl+click or the *Show in yaml* button jumps into the editor
+  (plain click selects). Long property names wrap – no horizontal scrolling; wide wireframe
+  content scrolls within its own area.
 
 ## 0.10.1
 

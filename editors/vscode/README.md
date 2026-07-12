@@ -175,13 +175,15 @@ The panel follows the active yaml editor and re-renders as you type (debounced).
 has a zoom (−/+, 125% by default) and a theme picker: light (the platform web client look,
 the default), dark, or the editor theme – the choice is remembered.
 
-**Properties panel.** A click on an element selects it and shows its properties on the right,
-like the platform web editor: enums as dropdowns (`Компоновка`, alignments, spacings, widths,
-button kinds), `Растягивать*` as Auto / Истина / Ложь toggles, everything else as text – the
-component's standard set plus every property present in the yaml (object values are shown
-read-only). Edits land in the yaml document as precise text edits, so the regular undo works;
-an empty value / *(auto)* removes the property. Ctrl+click or the *Show in yaml* button
-reveals the node in the editor – handy for navigating large forms.
+**Properties panel.** A click on an element selects it and opens a separate **Properties**
+panel (its own tab – drag it below or aside, wherever suits), like the platform web editor:
+enums as dropdowns (`Компоновка`, alignments, spacings, widths, button kinds), `Растягивать*`
+as Auto / Истина / Ложь toggles, everything else as text – the component's standard set plus
+every property present in the yaml (object values are shown read-only). Edits land in the
+yaml document as precise text edits, so the regular undo works; an empty value / *(auto)*
+removes the property. Selecting an element and every edit also position the yaml editor on
+the affected line (without stealing focus); Ctrl+click or the *Show in yaml* button jumps
+into the editor – handy for navigating large forms.
 
 It is a layout skeleton, not the platform's rendering: composition, nesting and captions are
 faithful, exact sizes and styles are not (explicit label colors and font sizes are applied).
