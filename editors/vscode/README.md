@@ -171,8 +171,10 @@ command bar. Unknown and custom component types render as labeled boxes with the
 inside, so nothing disappears.
 
 The panel follows the active yaml editor and re-renders as you type (debounced). A click on
-any element reveals its yaml node in the editor – handy for navigating large forms. It is a
-layout skeleton, not the platform's rendering: composition, nesting and captions are faithful,
+any element reveals its yaml node in the editor – handy for navigating large forms. The
+toolbar has a zoom (−/+, 125% by default) and a theme picker: light (the platform web client
+look, the default), dark, or the editor theme – the choice is remembered. It is a layout
+skeleton, not the platform's rendering: composition, nesting and captions are faithful,
 exact sizes and styles are not (explicit label colors and font sizes are applied).
 
 ## Deploy
