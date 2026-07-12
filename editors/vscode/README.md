@@ -121,10 +121,7 @@ newlines) are left to `xbsllint --fix` on the command line.
 | `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 | `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |
 | `xbsl.groups.*` | `default` | A dropdown per rule group (code, yaml, style, typography, whitespace, encoding, structure, form): the rules' own levels, one level for the whole group, or `off`. See [Rules](#rules-levels-and-disabling). |
-| `xbsl.deploy.elemctlPath` | `elemctl` | The elemctl executable for the deploy command. |
-| `xbsl.deploy.envFile` | – | A `.env` with the connection and the target, passed as `--env-file` (relative to the workspace folder or absolute). Empty – the workspace folder's own `.env`. |
-| `xbsl.deploy.appId` | – | Target application (`--app-id`); empty – `ELEMENT_APP_ID` from the environment / `.env`. |
-| `xbsl.deploy.extraArgs` | – | Extra `elemctl deploy` arguments, space-separated. |
+| `xbsl.deploy.*` | – | The deploy command settings – documented in the [XBSL Debug README](https://github.com/keyfire/elemctl/tree/main/editors/vscode#deploy-from-vs-code) of the elemctl project. |
 
 ## Rules: levels and disabling
 
@@ -198,18 +195,13 @@ faithful, exact sizes and styles are not (explicit label colors and font sizes a
 ## Deploy
 
 The command **XBSL: deploy the project (elemctl)** (`xbsl.deploy`, also a cloud button in the
-editor title of `.xbsl` files) hands the project to [elemctl](https://github.com/keyfire/elemctl)
-– build, upload, apply, restart and verification that the apply actually took effect – as a
-terminal task, after a confirmation dialog with the exact command line. The target and the
-credentials come from the workspace `.env` or the `xbsl.deploy.*` settings (table above);
-a set `xbsl.projectRoot` is passed as `--project-dir`; a missing elemctl is offered for
-installation.
-
-The deploy cycle, the `ELEMENT_*` configuration and the platform's silent-rollback quirk are
-documented in the [elemctl project](https://github.com/keyfire/elemctl)
-([PyPI](https://pypi.org/project/elemctl/)). See also the companion
-[XBSL Debug](https://marketplace.visualstudio.com/items?itemName=keyfire.xbsl-debug) extension –
-debugging 1C:Element applications from VS Code.
+editor title of `.xbsl` files) runs `elemctl deploy` – build, upload, apply and verification
+that the apply actually took effect – as a terminal task, after a confirmation dialog with
+the exact command line. The `xbsl.deploy.*` settings, the deploy cycle and the `ELEMENT_*`
+configuration are documented in the
+[XBSL Debug README](https://github.com/keyfire/elemctl/tree/main/editors/vscode#deploy-from-vs-code)
+of the [elemctl](https://github.com/keyfire/elemctl) project
+([Marketplace](https://marketplace.visualstudio.com/items?itemName=keyfire.xbsl-debug)).
 
 ## Commands
 

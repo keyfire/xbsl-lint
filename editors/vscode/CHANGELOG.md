@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.4
+
+- README only: the deploy command details and the `xbsl.deploy.*` settings table moved to
+  the XBSL Debug README in the [elemctl](https://github.com/keyfire/elemctl) project; this
+  README keeps a short pointer.
+
 ## 0.11.3
 
 - Fix: a clean file opened after a workspace run showed its diagnostics, but the lightbulb
