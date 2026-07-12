@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.3
+
+- Fix: a clean file opened after a workspace run showed its diagnostics, but the lightbulb
+  offered no Quick Fixes until the first edit. The fix snapshot is now rebuilt from the
+  stored raw report of the last workspace run when such a file is opened.
+
 ## 0.11.2
 
 - README only: animated demos of the diagnostics with Quick Fix, the form preview and the
