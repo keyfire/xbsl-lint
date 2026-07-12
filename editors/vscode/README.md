@@ -5,7 +5,10 @@
 Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`), powered by the
 [xbsllint](https://github.com/keyfire/xbsl-lint) linter.
 
-![XBSL: syntax highlighting and an inline lint diagnostic from xbsllint](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/demo.png)
+![XBSL: live diagnostics, Quick Fix and per-rule configuration](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/lint-quickfix.gif)
+
+> Want to try everything on a toy project? Open the [`demo/`](https://github.com/keyfire/xbsl-lint/tree/main/demo)
+> folder of the repository – a tiny 1C:Element app with a form and a handful of deliberate findings.
 
 ## Features
 
@@ -163,6 +166,8 @@ global theme and other languages stay untouched; the extension manages only its 
 
 ## Form preview
 
+![Form preview: wireframe, themes and live updates](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/form-preview.gif)
+
 The command **XBSL: form preview** (`xbsl.previewForm`, also a preview button in the editor
 title of form yamls – files with `КомпонентИнтерфейса`) renders a wireframe of a 1C:Element
 form from its yaml: nested vertical/horizontal groups, labels, input fields with captions and
@@ -174,6 +179,8 @@ inside, so nothing disappears.
 The panel follows the active yaml editor and re-renders as you type (debounced). The toolbar
 has a zoom (−/+, 125% by default) and a theme picker: light (the platform web client look,
 the default), dark, or the editor theme – the choice is remembered.
+
+![Properties panel: select an element, edit via dropdowns, the yaml follows](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/props-panel.gif)
 
 **Properties panel.** A click on an element selects it and opens a separate **Properties**
 panel (its own tab – drag it below or aside, wherever suits), like the platform web editor:

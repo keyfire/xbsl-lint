@@ -11,3 +11,4 @@ tsconfig.json
 esbuild*
 icon.html
 PUBLISHING.md
+images/*.gif
