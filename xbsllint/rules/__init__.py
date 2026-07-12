@@ -33,6 +33,7 @@ from . import (  # noqa: F401
     handlers,
     local_visibility,
     ns_objects,
+    queries,
     reserved_names,
     semantics,
     size_stretch,

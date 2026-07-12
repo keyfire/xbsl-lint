@@ -43,5 +43,6 @@
   "config.groups.whitespace": "Whitespace: trailing spaces and mixed newlines. Default: warning.",
   "config.groups.encoding": "File encoding (UTF-8). Default: error.",
   "config.groups.structure": "Source structure: the Name.yaml + Name.xbsl pair. Default: warning.",
-  "config.groups.form": "Forms: a yaml Обработчик: must point to an existing method. Default: warning."
+  "config.groups.form": "Forms: a yaml Обработчик: must point to an existing method. Default: warning.",
+  "config.groups.query": "Query DSL checks (the Запрос{...} blocks): tables of ИЗ/СОЕДИНЕНИЕ against the project objects."
 }

@@ -146,7 +146,10 @@ a cross-component `Компоненты.X.Метод()` call to a method without
 environment mismatches (`@НаСервере` called from a client handler without `@ДоступноСКлиента`,
 a client-only module used from an HTTP service), reserved names (`Тип`/`type` as a field or
 parameter, a component property named like a built-in one), methods that nothing references,
-and top-level yaml properties against the configuration metamodel.
+and top-level yaml properties against the configuration metamodel. The `query/` group
+parses `Запрос{ ... }` blocks and verifies the tables of `ИЗ`/`СОЕДИНЕНИЕ` against the
+project objects and their tabular sections; a block with constructs outside the supported
+subset (temporary tables, unions, subqueries) is skipped whole rather than guessed.
 
 ## Code style conventions (the `style/` rules)
 

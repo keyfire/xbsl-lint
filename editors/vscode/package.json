@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.11.0",
+  "version": "0.10.2",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -441,6 +441,29 @@
             "scope": "resource",
             "order": 8,
             "description": "%config.groups.form%"
+          },
+          "xbsl.groups.query": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 9,
+            "description": "%config.groups.query%"
           }
         }
       }
