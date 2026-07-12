@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.1
+
+- New rule group **query** in the settings (needs `xbsllint` with the `query/unknown-table`
+  rule): tables of the `Запрос{...}` blocks (`ИЗ`/`СОЕДИНЕНИЕ`) are checked against the
+  project objects.
+- One release consolidating the 0.8.0–0.11.0 changes below.
+
 ## 0.11.0
 
 - The form preview gained a **properties panel**, like the platform web editor: a click on an
