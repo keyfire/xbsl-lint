@@ -1,6 +1,6 @@
 // Тесты каркасного рендера форм: yaml -> HTML. Запуск обычным node (см. npm test).
 
-import { renderFormPreview } from "../src/formPreviewCore";
+import { describeNode, propertyEdit, renderFormPreview } from "../src/formPreviewCore";
 
 let failures = 0;
 
@@ -95,6 +95,39 @@ check("не-форма распознана", !notForm.ok && notForm.reason === 
 
 const broken = renderFormPreview("Имя: [незакрытый\n  список");
 check("битый yaml: аккуратный отказ без исключения", !broken.ok);
+
+// -- панель свойств: описание узла и точечные правки --------------------------------------
+
+const apply = (text: string, edit: { start: number; end: number; newText: string } | undefined): string =>
+  edit ? text.slice(0, edit.start) + edit.newText + text.slice(edit.end) : text;
+
+const groupOff = FORM.indexOf("Тип: Группа");
+const desc = describeNode(FORM, groupOff);
+check("описание узла: тип", !!desc && desc.typeName === "Группа");
+const layoutRow = desc?.rows.find((r) => r.key === "Компоновка");
+check("описание узла: Компоновка select со значением", layoutRow?.control === "select" && layoutRow?.value === "Вертикальная");
+const stretchRow = desc?.rows.find((r) => r.key === "РастягиватьПоГоризонтали");
+check("описание узла: Растягивать tristate, не задано", stretchRow?.control === "tristate" && stretchRow?.value === "");
+
+const replaced = apply(FORM, propertyEdit(FORM, groupOff, "Компоновка", "Горизонтальная"));
+check("правка: замена значения", replaced.includes("Компоновка: Горизонтальная") && !replaced.includes("Компоновка: Вертикальная"));
+check("правка: результат парсится", renderFormPreview(replaced).ok);
+
+const inserted = apply(FORM, propertyEdit(FORM, groupOff, "РастягиватьПоГоризонтали", "Истина"));
+check("правка: вставка нового свойства", inserted.includes("РастягиватьПоГоризонтали: Истина"));
+const insertedDesc = describeNode(inserted, inserted.indexOf("Тип: Группа"));
+check("правка: вставленное свойство читается назад", insertedDesc?.rows.find((r) => r.key === "РастягиватьПоГоризонтали")?.value === "Истина");
+
+const labelOff = FORM.indexOf("Тип: Надпись");
+const removed = apply(FORM, propertyEdit(FORM, labelOff, "Значение", null));
+check("правка: снятие свойства удаляет строку", !removed.includes("Введите код:"));
+check("правка: после снятия парсится", renderFormPreview(removed).ok);
+
+const quoted = apply(FORM, propertyEdit(FORM, labelOff, "Значение", "Текст: с двоеточием"));
+check("правка: значение с двоеточием в кавычках", quoted.includes('Значение: "Текст: с двоеточием"'));
+check("правка: кавычки парсятся назад", describeNode(quoted, quoted.indexOf("Тип: Надпись"))?.rows.find((r) => r.key === "Значение")?.value === "Текст: с двоеточием");
+
+check("правка: смещение не на узле – undefined", propertyEdit(FORM, 3, "Имя", "Х") === undefined);
 
 if (failures > 0) {
   console.error(`итого: ${failures} FAIL`);

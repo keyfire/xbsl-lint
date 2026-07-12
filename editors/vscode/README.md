@@ -31,8 +31,9 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
   build from sources → upload → apply → restart → verification that the apply actually took
   effect. See [Deploy](#deploy).
 - **Form preview** – a wireframe of a form yaml in a side panel: groups, fields, buttons,
-  tables, tabs, cards; follows the active editor, updates as you type, click-through to the
-  yaml node. See [Form preview](#form-preview).
+  tables, tabs, cards; follows the active editor and updates as you type. A click selects an
+  element and opens its **properties panel** for editing (dropdowns and toggles write back
+  into the yaml); Ctrl+click reveals the yaml node. See [Form preview](#form-preview).
 
 `.yaml` element descriptions keep their built-in YAML highlighting.
 
@@ -170,12 +171,20 @@ switchable tabs (`Страницы`), cards, image and HTML-container placeholde
 command bar. Unknown and custom component types render as labeled boxes with their content
 inside, so nothing disappears.
 
-The panel follows the active yaml editor and re-renders as you type (debounced). A click on
-any element reveals its yaml node in the editor – handy for navigating large forms. The
-toolbar has a zoom (−/+, 125% by default) and a theme picker: light (the platform web client
-look, the default), dark, or the editor theme – the choice is remembered. It is a layout
-skeleton, not the platform's rendering: composition, nesting and captions are faithful,
-exact sizes and styles are not (explicit label colors and font sizes are applied).
+The panel follows the active yaml editor and re-renders as you type (debounced). The toolbar
+has a zoom (−/+, 125% by default) and a theme picker: light (the platform web client look,
+the default), dark, or the editor theme – the choice is remembered.
+
+**Properties panel.** A click on an element selects it and shows its properties on the right,
+like the platform web editor: enums as dropdowns (`Компоновка`, alignments, spacings, widths,
+button kinds), `Растягивать*` as Auto / Истина / Ложь toggles, everything else as text – the
+component's standard set plus every property present in the yaml (object values are shown
+read-only). Edits land in the yaml document as precise text edits, so the regular undo works;
+an empty value / *(auto)* removes the property. Ctrl+click or the *Show in yaml* button
+reveals the node in the editor – handy for navigating large forms.
+
+It is a layout skeleton, not the platform's rendering: composition, nesting and captions are
+faithful, exact sizes and styles are not (explicit label colors and font sizes are applied).
 
 ## Deploy
 

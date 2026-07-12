@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0
+
+- The form preview gained a **properties panel**, like the platform web editor: a click on an
+  element selects it and shows its properties on the right – enums as dropdowns, `Растягивать*`
+  as Auto / Истина / Ложь toggles, everything else as text; the curated standard set of the
+  component plus every property present in the yaml. Edits are applied to the yaml document as
+  precise text edits (undo works); an empty value / *(auto)* removes the property. Ctrl+click
+  or the *Show in yaml* button reveals the node in the editor (plain click now selects).
+
 ## 0.10.1
 
 - New command *XBSL: form preview* (`xbsl.previewForm`) with a preview button on form yamls:

@@ -62,6 +62,12 @@
   "Preview: {0}": "Предпросмотр: {0}",
   "Light": "Светлая",
   "Dark": "Тёмная",
+  "Properties": "Свойства",
+  "Click an element of the wireframe to inspect and edit its properties.": "Кликните элемент каркаса, чтобы посмотреть и изменить его свойства.",
+  "Auto": "Авто",
+  "(auto)": "(авто)",
+  "Show in yaml": "Показать в yaml",
+  "An empty value or (auto) removes the property from the yaml.": "Пустое значение или (авто) снимает свойство из yaml.",
   "The yaml does not parse: {0}": "Yaml не разбирается: {0}",
   "No form content here (Наследует → Содержимое) – open a form yaml.": "Здесь нет содержимого формы (Наследует → Содержимое) – откройте yaml формы.",
   "XBSL: open a form yaml (КомпонентИнтерфейса) to preview it.": "XBSL: для предпросмотра откройте yaml формы (КомпонентИнтерфейса)."

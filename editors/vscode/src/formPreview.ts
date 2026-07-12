@@ -1,12 +1,13 @@
-// Webview-панель "Предпросмотр формы": показывает каркас формы 1С:Элемент по её yaml
-// (рендер – в formPreviewCore.ts). Панель одна, следует за активным yaml-редактором,
-// обновляется по мере правки (с задержкой); клик по элементу каркаса выделяет его
-// yaml-узел в редакторе. В тулбаре панели – масштаб и тема (светлая, как веб-клиент
-// платформы, по умолчанию; тёмная; тема редактора) – выбор сохраняется между сессиями.
-// Кнопка в заголовке редактора видна только у yaml форм – контекст-ключ xbsl.formYaml.
+// Webview-панель "Предпросмотр формы": каркас формы 1С:Элемент по её yaml (рендер и правки –
+// в formPreviewCore.ts) плюс панель свойств выбранного компонента, как в веб-редакторе
+// платформы: клик по элементу каркаса выделяет его, справа – его свойства (выпадающие
+// списки для перечислений, Авто/Истина/Ложь для булевых, текст для остального); правка
+// применяется точечной заменой в yaml-документе (обычный undo работает). Ctrl+клик или
+// кнопка "Показать в yaml" ведут к узлу в редакторе. Панель следует за активным
+// yaml-редактором; масштаб и тема (светлая/тёмная/редактора) запоминаются.
 
 import * as vscode from "vscode";
-import { esc, renderFormPreview } from "./formPreviewCore";
+import { describeNode, esc, propertyEdit, renderFormPreview } from "./formPreviewCore";
 
 const VIEW_TYPE = "xbslFormPreview";
 const DEBOUNCE_MS = 300;
@@ -41,6 +42,14 @@ function shell(body: string, nonce: string): string {
   ]
     .map((o) => `<option value="${o.value}"${o.value === view.theme ? " selected" : ""}>${esc(o.label)}</option>`)
     .join("");
+  const labels = {
+    props: vscode.l10n.t("Properties"),
+    hint: vscode.l10n.t("Click an element of the wireframe to inspect and edit its properties."),
+    auto: vscode.l10n.t("Auto"),
+    autoOption: vscode.l10n.t("(auto)"),
+    toYaml: vscode.l10n.t("Show in yaml"),
+    note: vscode.l10n.t("An empty value or (auto) removes the property from the yaml."),
+  };
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
@@ -70,6 +79,24 @@ function shell(body: string, nonce: string): string {
     border-radius: 3px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
   .bar .zv { min-width: 44px; text-align: center; font-size: 12px; opacity: .8; }
   .bar .sp { flex: 1; }
+  .main { display: flex; gap: 14px; align-items: flex-start; }
+  #canvas { flex: 1; min-width: 0; }
+  .props { width: 280px; min-width: 280px; border-left: 1px solid var(--fp-border); padding: 4px 0 8px 12px;
+    position: sticky; top: 38px; align-self: flex-start; max-height: calc(100vh - 52px); overflow: auto; font-size: 13px; }
+  .ptitle { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .ptype { font-weight: 600; }
+  .plink { background: transparent; border: 1px solid var(--fp-border); color: var(--fp-fg); border-radius: 3px;
+    padding: 2px 8px; cursor: pointer; font-size: 11.5px; white-space: nowrap; }
+  .prow { margin-bottom: 9px; }
+  .pkey { font-size: .85em; opacity: .75; margin-bottom: 2px; }
+  .props input[type=text], .props select { width: 100%; box-sizing: border-box; background: var(--fp-input-bg);
+    color: var(--fp-fg); border: 1px solid var(--fp-input-border); border-radius: 3px; padding: 3px 7px; font-size: 12.5px; }
+  .tri { display: flex; border: 1px solid var(--fp-input-border); border-radius: 3px; overflow: hidden; }
+  .tri button { flex: 1; background: transparent; border: none; color: var(--fp-fg); padding: 3px 0; cursor: pointer; font-size: 12px; opacity: .75; }
+  .tri button.on { background: var(--fp-btn-bg); color: var(--fp-btn-fg); opacity: 1; }
+  .pcomplex { opacity: .6; font-style: italic; }
+  .pnote { opacity: .55; font-size: .85em; margin-top: 12px; }
+  .phint { opacity: .65; font-style: italic; }
   .form-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
   .form-title { font-size: 1.35em; font-weight: 600; }
   .form-type { opacity: .55; font-size: .85em; }
@@ -107,7 +134,8 @@ function shell(body: string, nonce: string): string {
   .tabbtn.act { border-color: var(--fp-border); opacity: 1; font-weight: 600; }
   .tabpage { display: none; padding-top: 10px; }
   .tabpage.act { display: block; }
-  [data-off]:hover { outline: 1px solid var(--fp-focus); outline-offset: 1px; }
+  #canvas [data-off]:hover { outline: 1px solid var(--fp-focus); outline-offset: 1px; }
+  #canvas .sel { outline: 2px solid var(--fp-focus) !important; outline-offset: 1px; }
   .note { opacity: .7; font-style: italic; margin-top: 12px; }
 </style></head>
 <body class="theme-${view.theme}">
@@ -116,35 +144,170 @@ function shell(body: string, nonce: string): string {
   <span class="sp"></span>
   <button id="zo" title="&#8722;">&#8722;</button><span class="zv" id="zv">${view.zoom}%</span><button id="zi" title="+">+</button>
 </div>
-<div id="root" style="zoom:${view.zoom / 100}">${body}</div>
+<div class="main">
+  <div id="canvas"><div id="root" style="zoom:${view.zoom / 100}">${body}</div></div>
+  <div class="props" id="props"></div>
+</div>
 <script nonce="${nonce}">
   const vsapi = acquireVsCodeApi();
+  const L = ${JSON.stringify(labels)};
   let zoom = ${view.zoom};
-  const apply = () => {
+  const state = vsapi.getState() || { tabs: {}, sel: undefined };
+
+  const applyView = () => {
     document.getElementById("root").style.zoom = zoom / 100;
     document.getElementById("zv").textContent = zoom + "%";
     vsapi.postMessage({ type: "view", zoom, theme: document.getElementById("theme").value });
   };
-  document.getElementById("zi").addEventListener("click", () => { zoom = Math.min(300, zoom + 25); apply(); });
-  document.getElementById("zo").addEventListener("click", () => { zoom = Math.max(50, zoom - 25); apply(); });
+  document.getElementById("zi").addEventListener("click", () => { zoom = Math.min(300, zoom + 25); applyView(); });
+  document.getElementById("zo").addEventListener("click", () => { zoom = Math.max(50, zoom - 25); applyView(); });
   document.getElementById("theme").addEventListener("change", (e) => {
     document.body.className = "theme-" + e.target.value;
-    apply();
+    applyView();
   });
+
+  const propsPane = document.getElementById("props");
+
+  function setSelection(off) {
+    for (const el of document.querySelectorAll("#canvas .sel")) { el.classList.remove("sel"); }
+    state.sel = off;
+    vsapi.setState(state);
+    if (off === undefined) {
+      renderProps(null);
+      return;
+    }
+    const el = document.querySelector('#canvas [data-off="' + off + '"]');
+    if (el) { el.classList.add("sel"); }
+    vsapi.postMessage({ type: "select", offset: off });
+  }
+
+  function field(row, off) {
+    if (row.complex) {
+      const s = document.createElement("div");
+      s.className = "pcomplex";
+      s.textContent = row.value;
+      return s;
+    }
+    const send = (value) => vsapi.postMessage({ type: "setProp", offset: off, key: row.key, value });
+    if (row.control === "tristate") {
+      const box = document.createElement("div");
+      box.className = "tri";
+      for (const v of [null, "Истина", "Ложь"]) {
+        const b = document.createElement("button");
+        b.textContent = v === null ? L.auto : v;
+        if ((v === null && !row.value) || v === row.value) { b.classList.add("on"); }
+        b.addEventListener("click", () => send(v));
+        box.appendChild(b);
+      }
+      return box;
+    }
+    if (row.control === "select") {
+      const sel = document.createElement("select");
+      const auto = document.createElement("option");
+      auto.value = "";
+      auto.textContent = L.autoOption;
+      sel.appendChild(auto);
+      for (const o of row.options || []) {
+        const opt = document.createElement("option");
+        opt.value = o;
+        opt.textContent = o;
+        sel.appendChild(opt);
+      }
+      sel.value = row.value || "";
+      sel.addEventListener("change", () => send(sel.value === "" ? null : sel.value));
+      return sel;
+    }
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = row.value;
+    const commit = () => {
+      if (input.value === row.value) { return; }
+      send(input.value === "" ? null : input.value);
+    };
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { commit(); } });
+    input.addEventListener("blur", commit);
+    return input;
+  }
+
+  function renderProps(desc) {
+    propsPane.textContent = "";
+    const title = document.createElement("div");
+    title.className = "ptitle";
+    if (!desc) {
+      title.innerHTML = "<span class='ptype'>" + L.props + "</span>";
+      propsPane.appendChild(title);
+      const hint = document.createElement("div");
+      hint.className = "phint";
+      hint.textContent = L.hint;
+      propsPane.appendChild(hint);
+      return;
+    }
+    const type = document.createElement("span");
+    type.className = "ptype";
+    type.textContent = desc.typeName || "?";
+    const toYaml = document.createElement("button");
+    toYaml.className = "plink";
+    toYaml.textContent = L.toYaml;
+    toYaml.addEventListener("click", () => vsapi.postMessage({ type: "reveal", offset: desc.offset }));
+    title.appendChild(type);
+    title.appendChild(toYaml);
+    propsPane.appendChild(title);
+    for (const row of desc.rows) {
+      const div = document.createElement("div");
+      div.className = "prow";
+      const cap = document.createElement("div");
+      cap.className = "pkey";
+      cap.textContent = row.key;
+      div.appendChild(cap);
+      div.appendChild(field(row, desc.offset));
+      propsPane.appendChild(div);
+    }
+    const note = document.createElement("div");
+    note.className = "pnote";
+    note.textContent = L.note;
+    propsPane.appendChild(note);
+  }
+
+  window.addEventListener("message", (e) => {
+    const m = e.data;
+    if (m && m.type === "props") { renderProps(m.desc); }
+  });
+
   document.addEventListener("click", (e) => {
-    if (e.target.closest(".bar")) { return; }
+    if (e.target.closest(".bar") || e.target.closest(".props")) { return; }
     const tab = e.target.closest(".tabbtn");
     if (tab) {
       const tabs = tab.closest(".tabs");
       for (const b of tabs.querySelectorAll(":scope > .tabbar > .tabbtn")) { b.classList.toggle("act", b === tab); }
       for (const p of tabs.querySelectorAll(":scope > .tabpage")) { p.classList.toggle("act", p.dataset.tab === tab.dataset.tab); }
+      const owner = tabs.getAttribute("data-off");
+      if (owner) { state.tabs[owner] = tab.dataset.tab; vsapi.setState(state); }
     }
     const el = e.target.closest("[data-off]");
     if (el) {
-      vsapi.postMessage({ type: "reveal", offset: Number(el.dataset.off) });
+      if (e.ctrlKey || e.metaKey) {
+        vsapi.postMessage({ type: "reveal", offset: Number(el.dataset.off) });
+      } else {
+        setSelection(Number(el.dataset.off));
+      }
       e.stopPropagation();
+    } else if (e.target.closest("#canvas")) {
+      setSelection(undefined);
     }
   });
+
+  // После перерисовки: вернуть активные вкладки и выделение из сохранённого состояния.
+  for (const [owner, idx] of Object.entries(state.tabs || {})) {
+    const tabs = document.querySelector('#canvas .tabs[data-off="' + owner + '"]');
+    if (!tabs) { continue; }
+    for (const b of tabs.querySelectorAll(":scope > .tabbar > .tabbtn")) { b.classList.toggle("act", b.dataset.tab === idx); }
+    for (const p of tabs.querySelectorAll(":scope > .tabpage")) { p.classList.toggle("act", p.dataset.tab === idx); }
+  }
+  if (state.sel !== undefined && document.querySelector('#canvas [data-off="' + state.sel + '"]')) {
+    setSelection(state.sel);
+  } else {
+    renderProps(null);
+  }
 </script></body></html>`;
 }
 
@@ -157,11 +320,18 @@ function nonce(): string {
   return s;
 }
 
+function targetDocument(): vscode.TextDocument | undefined {
+  if (!target) {
+    return undefined;
+  }
+  return vscode.workspace.textDocuments.find((d) => d.uri.toString() === target!.toString());
+}
+
 function render(): void {
   if (!panel || !target) {
     return;
   }
-  const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === target!.toString());
+  const doc = targetDocument();
   if (!doc) {
     return;
   }
@@ -188,7 +358,7 @@ function scheduleRender(): void {
   }, DEBOUNCE_MS);
 }
 
-// Клик в каркасе: выделить yaml-узел компонента в редакторе.
+// Клик в каркасе (Ctrl) или кнопка "Показать в yaml": выделить узел компонента в редакторе.
 async function revealOffset(offset: number): Promise<void> {
   if (!target) {
     return;
@@ -202,6 +372,32 @@ async function revealOffset(offset: number): Promise<void> {
   });
   editor.selection = new vscode.Selection(pos, pos);
   editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+}
+
+// Панель запросила свойства выбранного узла.
+function sendProps(offset: number): void {
+  const doc = targetDocument();
+  if (!panel || !doc) {
+    return;
+  }
+  const desc = describeNode(doc.getText(), offset) ?? null;
+  void panel.webview.postMessage({ type: "props", desc });
+}
+
+// Правка свойства из панели: точечная замена в документе, undo работает штатно.
+async function applyProp(offset: number, key: string, value: string | null): Promise<void> {
+  const doc = targetDocument();
+  if (!doc) {
+    return;
+  }
+  const edit = propertyEdit(doc.getText(), offset, key, value);
+  if (!edit) {
+    return;
+  }
+  const we = new vscode.WorkspaceEdit();
+  we.replace(doc.uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.newText);
+  await vscode.workspace.applyEdit(we);
+  // Перерисовка придёт через onDidChangeTextDocument; свойства панель перезапросит сама.
 }
 
 function isViewState(v: unknown): v is ViewState {
@@ -225,9 +421,16 @@ function openPreview(context: vscode.ExtensionContext): void {
       panel = undefined;
     }, undefined, context.subscriptions);
     panel.webview.onDidReceiveMessage((m) => {
-      if (m && m.type === "reveal" && typeof m.offset === "number") {
+      if (!m) {
+        return;
+      }
+      if (m.type === "reveal" && typeof m.offset === "number") {
         void revealOffset(m.offset);
-      } else if (m && m.type === "view") {
+      } else if (m.type === "select" && typeof m.offset === "number") {
+        sendProps(m.offset);
+      } else if (m.type === "setProp" && typeof m.offset === "number" && typeof m.key === "string") {
+        void applyProp(m.offset, m.key, typeof m.value === "string" ? m.value : null);
+      } else if (m.type === "view") {
         // Масштаб и тема применяются в самом webview; здесь только запоминаем выбор.
         const next = { zoom: Number(m.zoom), theme: m.theme } as ViewState;
         if (isViewState(next)) {
