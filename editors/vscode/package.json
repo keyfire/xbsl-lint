@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -81,6 +81,12 @@
         "title": "%cmd.deploy%",
         "category": "XBSL",
         "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "xbsl.previewForm",
+        "title": "%cmd.previewForm%",
+        "category": "XBSL",
+        "icon": "$(open-preview)"
       }
     ],
     "menus": {
@@ -88,6 +94,11 @@
         {
           "command": "xbsl.deploy",
           "when": "resourceLangId == xbsl",
+          "group": "navigation"
+        },
+        {
+          "command": "xbsl.previewForm",
+          "when": "xbsl.formYaml && resourceLangId == yaml",
           "group": "navigation"
         }
       ]
@@ -440,7 +451,7 @@
     "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
     "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "check": "tsc --noEmit",
-    "test": "esbuild test/navCore.test.ts --bundle --outfile=dist/navCore.test.js --format=cjs --platform=node && node dist/navCore.test.js && esbuild test/codeActionsCore.test.ts --bundle --outfile=dist/codeActionsCore.test.js --format=cjs --platform=node && node dist/codeActionsCore.test.js",
+    "test": "esbuild test/navCore.test.ts --bundle --outfile=dist/navCore.test.js --format=cjs --platform=node && node dist/navCore.test.js && esbuild test/codeActionsCore.test.ts --bundle --outfile=dist/codeActionsCore.test.js --format=cjs --platform=node && node dist/codeActionsCore.test.js && esbuild test/formPreviewCore.test.ts --bundle --outfile=dist/formPreviewCore.test.js --format=cjs --platform=node && node dist/formPreviewCore.test.js",
     "package": "vsce package --no-dependencies -o xbsl-vscode.vsix",
     "publish:vsce": "vsce publish --no-dependencies",
     "publish:ovsx": "ovsx publish xbsl-vscode.vsix"
@@ -454,7 +465,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^9.0.1",
+    "yaml": "^2.9.0"
   },
   "l10n": "./l10n"
 }

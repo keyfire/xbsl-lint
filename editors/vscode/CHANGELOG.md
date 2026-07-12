@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0
+
+- New command *XBSL: form preview* (`xbsl.previewForm`) with a preview button on form yamls:
+  a wireframe of the 1C:Element form in a webview – nested groups, labels, fields with
+  captions and bindings, buttons, checkboxes, tables with their columns, switchable tabs,
+  cards, image/HTML placeholders, and the form command bar. The panel follows the active
+  editor and re-renders as you type; clicking an element reveals its yaml node. Unknown and
+  custom component types render as labeled boxes with their content.
+
 ## 0.9.0
 
 - New settings section **Rule groups**: a dropdown per finding type (code, yaml, style,

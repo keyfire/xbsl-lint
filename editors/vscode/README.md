@@ -30,6 +30,9 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
   button in the editor title of `.xbsl` files) runs `elemctl deploy` in a terminal task:
   build from sources → upload → apply → restart → verification that the apply actually took
   effect. See [Deploy](#deploy).
+- **Form preview** – a wireframe of a form yaml in a side panel: groups, fields, buttons,
+  tables, tabs, cards; follows the active editor, updates as you type, click-through to the
+  yaml node. See [Form preview](#form-preview).
 
 `.yaml` element descriptions keep their built-in YAML highlighting.
 
@@ -157,6 +160,21 @@ applied via `editor.tokenColorCustomizations` rules addressing only `*.xbsl` sco
 global theme and other languages stay untouched; the extension manages only its own rules
 (prefixed `xbsl-palette`) and preserves any customizations of yours.
 
+## Form preview
+
+The command **XBSL: form preview** (`xbsl.previewForm`, also a preview button in the editor
+title of form yamls – files with `КомпонентИнтерфейса`) renders a wireframe of a 1C:Element
+form from its yaml: nested vertical/horizontal groups, labels, input fields with captions and
+`=bindings`, buttons (the primary one filled), checkboxes, tables with their real columns,
+switchable tabs (`Страницы`), cards, image and HTML-container placeholders, and the form's
+command bar. Unknown and custom component types render as labeled boxes with their content
+inside, so nothing disappears.
+
+The panel follows the active yaml editor and re-renders as you type (debounced). A click on
+any element reveals its yaml node in the editor – handy for navigating large forms. It is a
+layout skeleton, not the platform's rendering: composition, nesting and captions are faithful,
+exact sizes and styles are not (explicit label colors and font sizes are applied).
+
 ## Deploy
 
 The command **XBSL: deploy the project (elemctl)** (`xbsl.deploy`, also a cloud button in the
@@ -181,6 +199,7 @@ is passed as `--project-dir`. Needs elemctl on `PATH` (`pip install elemctl`) or
 - **XBSL: restart the linter** (`xbsl.restartLinter`) – clear and re-lint open files.
 - **XBSL: code palette** (`xbsl.choosePalette`) – pick a syntax palette for XBSL (see above).
 - **XBSL: deploy the project (elemctl)** (`xbsl.deploy`) – deploy to the stand (see above).
+- **XBSL: form preview** (`xbsl.previewForm`) – a wireframe of the active form yaml (see above).
 
 ## How it works
 

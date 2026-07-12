@@ -3,6 +3,7 @@
   "cmd.restartLinter": "XBSL: restart the linter",
   "cmd.choosePalette": "XBSL: code palette",
   "cmd.deploy": "XBSL: deploy the project (elemctl)",
+  "cmd.previewForm": "XBSL: form preview",
   "config.linter.run": "When to run the xbsllint linter for .xbsl.",
   "config.linter.run.enum.0": "Lint as you type (debounced) and on save",
   "config.linter.run.enum.1": "Lint only on save and open",

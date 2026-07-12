@@ -58,5 +58,9 @@
   "Command: {0}\nFolder: {1}": "Команда: {0}\nПапка: {1}",
   "Deploy": "Деплой",
   "XBSL: the deploy finished – the build is applied.": "XBSL: деплой завершён – сборка применена.",
-  "XBSL: the deploy failed (exit code {0}) – see the terminal for details.": "XBSL: деплой не удался (код возврата {0}) – подробности в терминале."
+  "XBSL: the deploy failed (exit code {0}) – see the terminal for details.": "XBSL: деплой не удался (код возврата {0}) – подробности в терминале.",
+  "Preview: {0}": "Предпросмотр: {0}",
+  "The yaml does not parse: {0}": "Yaml не разбирается: {0}",
+  "No form content here (Наследует → Содержимое) – open a form yaml.": "Здесь нет содержимого формы (Наследует → Содержимое) – откройте yaml формы.",
+  "XBSL: open a form yaml (КомпонентИнтерфейса) to preview it.": "XBSL: для предпросмотра откройте yaml формы (КомпонентИнтерфейса)."
 }
