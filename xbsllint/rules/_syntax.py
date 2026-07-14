@@ -1,18 +1,18 @@
-"""Shared syntactic helpers for code rules (tiers B/C).
+"""Общие синтаксические помощники для правил кода (тиры B/C).
 
-Collected here is what several rule modules need and what cannot be expressed with a single
-pass over the tokens:
+Здесь собрано то, что нужно сразу нескольким модулям правил и что нельзя выразить одним
+проходом по токенам:
 
-- `query_ranges` – offsets of `Запрос{ ... }` blocks. Inside them lives the query language,
-  which the XBSL code-writing conventions do not cover (CODE_STYLE, "Область действия"),
-  so code rules skip these ranges;
-- `code_tokens` – the module tokens without comments and without query-block contents;
-- `lines` / `line_span` – access to source lines by number;
-- `type_expr` – the tokens of a type expression and the parsing of its alternatives (`Строка|Число|?`);
-- `declaration_types` / `method_params` – type positions of declarations and method signatures.
+- `query_ranges` – смещения блоков `Запрос{ ... }`. Внутри них живёт язык запросов, который
+  соглашения по написанию кода XBSL не охватывают (CODE_STYLE, "Область действия"),
+  поэтому правила кода эти диапазоны пропускают;
+- `code_tokens` – токены модуля без комментариев и без содержимого блоков запроса;
+- `lines` / `line_span` – доступ к строкам исходника по номеру;
+- `type_expr` – токены выражения типа и разбор его альтернатив (`Строка|Число|?`);
+- `declaration_types` / `method_params` – позиции типов в объявлениях и сигнатурах методов.
 
-Parsing is token-based, without a full AST: rules must yield zero false positives on the
-corpus, so an ambiguous construct is better skipped than guessed.
+Разбор ведётся по токенам, без полного AST: правила обязаны давать ноль ложных срабатываний
+на корпусе, поэтому неоднозначную конструкцию лучше пропустить, чем угадывать.
 """
 
 from __future__ import annotations
@@ -23,25 +23,25 @@ from dataclasses import dataclass
 from xbsllint.engine import SourceFile
 from xbsllint.lexer import Token, tokens
 
-# Keywords that introduce a declaration with a type annotation: `знч/пер/конст/поймать/обз Имя: Тип`.
+# Ключевые слова, вводящие объявление с аннотацией типа: `знч/пер/конст/поймать/обз Имя: Тип`.
 DECL_KEYWORDS = ("VAL", "VAR", "CONST", "CATCH", "REQ")
-# Keywords that carry a signature (parameter list and return type).
+# Ключевые слова, несущие сигнатуру (список параметров и тип возвращаемого значения).
 SIGNATURE_KEYWORDS = ("METHOD", "CONSTRUCTOR")
 
-# The query DSL is a nested language: the lexer sees its words as plain word tokens, so they are
-# matched by value (in both languages) rather than by a canonical keyword.
+# DSL запросов – вложенный язык: его слова лексер видит как обычные словарные токены, поэтому
+# они сопоставляются по значению (на обоих языках), а не по каноническому ключевому слову.
 WORD_KINDS = ("IDENT", "KEYWORD")
-QUERY_TABLE_INTRO = frozenset({"ИЗ", "FROM", "СОЕДИНЕНИЕ", "JOIN"})  # next word is a table
+QUERY_TABLE_INTRO = frozenset({"ИЗ", "FROM", "СОЕДИНЕНИЕ", "JOIN"})  # следующее слово – таблица
 QUERY_ALIAS_INTRO = frozenset({"КАК", "AS"})  # `ИЗ Акция КАК А`
 
 _OPEN_CH = "([{"
 _CLOSE_CH = ")]}"
 
 
-# --- Запрос{ ... } blocks -------------------------------------------------------------
+# --- Блоки Запрос{ ... } --------------------------------------------------------------
 
 def query_ranges(source: SourceFile) -> list[tuple[int, int]]:
-    """Offsets [start, end) of `Запрос{ ... }` blocks, including the curly braces."""
+    """Смещения [начало, конец) блоков `Запрос{ ... }`, включая сами фигурные скобки."""
     cached = source.cache.get("query_ranges")
     if cached is not None:
         return cached
@@ -75,18 +75,18 @@ def query_ranges(source: SourceFile) -> list[tuple[int, int]]:
 
 
 def in_query(source: SourceFile, offset: int) -> bool:
-    """The offset falls inside a query block."""
+    """Смещение попадает внутрь блока запроса."""
     ranges = query_ranges(source)
     idx = bisect.bisect_right([r[0] for r in ranges], offset) - 1
     return idx >= 0 and offset < ranges[idx][1]
 
 
 def query_aliases(source: SourceFile, offset: int) -> dict[str, str]:
-    """Table alias -> table name inside the query block holding `offset` (empty outside a block).
+    """Алиас таблицы -> имя таблицы внутри блока запроса, содержащего `offset` (вне блока – пусто).
 
-    `ИЗ Акция КАК А` gives {"А": "Акция"} - without it, completion after `А.` has nothing to
-    resolve, and aliases are how the project actually writes its queries. Dotted tables (virtual
-    ones like `РегистрСведений.СрезПоследних`) are skipped: their field set is not the object's.
+    `ИЗ Акция КАК А` даёт {"А": "Акция"} – без этого автодополнению после `А.` нечего разрешать,
+    а запросы в проекте пишутся именно через алиасы. Таблицы с точкой (виртуальные вроде
+    `РегистрСведений.СрезПоследних`) пропускаются: их набор полей – не набор полей объекта.
     """
     span = next((r for r in query_ranges(source) if r[0] <= offset < r[1]), None)
     if span is None:
@@ -124,9 +124,9 @@ def query_aliases(source: SourceFile, offset: int) -> dict[str, str]:
 
 
 def _query_columns(toks: list[Token], start: int, end: int) -> list[str]:
-    """Column names of the query block [start, end): the `КАК Имя` alias, or the last segment of a
-    plain field chain (`А.Заголовок` -> `Заголовок`). Computed columns without an alias are skipped -
-    their name is not ours to guess.
+    """Имена колонок блока запроса [start, end): алиас `КАК Имя` либо последний сегмент простой
+    цепочки полей (`А.Заголовок` -> `Заголовок`). Вычисляемые колонки без алиаса пропускаются –
+    угадывать их имя не наша задача.
     """
     block = [t for t in toks if start <= t.start < end and t.kind not in ("COMMENT", "BOM")]
     stop = len(block)
@@ -137,7 +137,7 @@ def _query_columns(toks: list[Token], start: int, end: int) -> list[str]:
 
     items: list[list[Token]] = [[]]
     depth = 0
-    for t in block[1:stop]:  # block[0] - открывающая `{`
+    for t in block[1:stop]:  # block[0] – открывающая `{`
         if t.kind == "OP" and t.value in _OPEN_CH:
             depth += 1
         elif t.kind == "OP" and t.value in _CLOSE_CH:
@@ -155,18 +155,18 @@ def _query_columns(toks: list[Token], start: int, end: int) -> list[str]:
                 name = item[k + 1]
                 break
         if name is None and item and item[-1].kind == "IDENT":
-            name = item[-1]  # поле без алиаса: имя - последний сегмент цепочки
+            name = item[-1]  # поле без алиаса: имя – последний сегмент цепочки
         if name is not None and name.kind == "IDENT" and name.value not in out:
             out.append(name.value)
     return out
 
 
 def query_row_columns(source: SourceFile, offset: int) -> dict[str, list[str]]:
-    """Loop variable -> the columns of the query row it iterates, for the loops above `offset`.
+    """Переменная цикла -> колонки строки запроса, которую она перебирает, для циклов выше `offset`.
 
-    `знч Р = Запрос{...}.Выполнить()` binds the columns of that block to Р, and `для С из Р` carries
-    them over to the loop variable, so `С.` can complete to the column names. Keywords are bilingual
-    (canonical QUERY/FOR/IN), so the scan runs over tokens.
+    `знч Р = Запрос{...}.Выполнить()` связывает колонки этого блока с Р, а `для С из Р` переносит
+    их на переменную цикла, поэтому `С.` дополняется именами колонок. Ключевые слова двуязычные
+    (канонические QUERY/FOR/IN), поэтому обход идёт по токенам.
     """
     toks = tokens(source)
     code = code_tokens(source)
@@ -201,7 +201,7 @@ def query_row_columns(source: SourceFile, offset: int) -> dict[str, list[str]]:
 
 
 def code_tokens(source: SourceFile) -> list[Token]:
-    """Code tokens: without comments, without EOF and without query-block contents."""
+    """Токены кода: без комментариев, без EOF и без содержимого блоков запроса."""
     cached = source.cache.get("code_tokens")
     if cached is not None:
         return cached
@@ -220,10 +220,10 @@ def _skip_comments(toks: list[Token], k: int) -> int:
     return k
 
 
-# --- Source lines ---------------------------------------------------------------------
+# --- Строки исходника -----------------------------------------------------------------
 
 def lines(source: SourceFile) -> list[str]:
-    """Source lines without line breaks (line 1 – index 0)."""
+    """Строки исходника без переводов строки (строка 1 – индекс 0)."""
     cached = source.cache.get("lines")
     if cached is None:
         cached = source.text.splitlines()
@@ -232,7 +232,7 @@ def lines(source: SourceFile) -> list[str]:
 
 
 def line_starts(source: SourceFile) -> list[int]:
-    """Offset of the start of each line (line 1 – index 0)."""
+    """Смещение начала каждой строки (строка 1 – индекс 0)."""
     cached = source.cache.get("line_starts")
     if cached is not None:
         return cached
@@ -250,14 +250,14 @@ def line_starts(source: SourceFile) -> list[int]:
 
 
 def line_span(source: SourceFile, line: int) -> tuple[int, int]:
-    """Offsets [start, end) of the line numbered `line` (1-based), without the line break."""
+    """Смещения [начало, конец) строки с номером `line` (нумерация с 1), без перевода строки."""
     starts = line_starts(source)
     start = starts[line - 1]
     return start, start + len(lines(source)[line - 1])
 
 
 def spans_of(source: SourceFile, kinds: tuple[str, ...]) -> list[tuple[int, int]]:
-    """Offsets of tokens of the given kinds (e.g. STRING/COMMENT) – for text-based checks."""
+    """Смещения токенов заданных видов (например, STRING/COMMENT) – для проверок по тексту."""
     key = "spans_" + "_".join(kinds)
     cached = source.cache.get(key)
     if cached is None:
@@ -267,27 +267,27 @@ def spans_of(source: SourceFile, kinds: tuple[str, ...]) -> list[tuple[int, int]
 
 
 def inside(spans: list[tuple[int, int]], offset: int) -> bool:
-    """The offset lies within one of the ranges (bounds – left-inclusive)."""
+    """Смещение лежит внутри одного из диапазонов (граница – включительно слева)."""
     idx = bisect.bisect_right([s[0] for s in spans], offset) - 1
     return idx >= 0 and offset < spans[idx][1]
 
 
-# --- Type expressions -----------------------------------------------------------------
+# --- Выражения типов ------------------------------------------------------------------
 
 @dataclass
 class TypeExpr:
-    """A type expression: its tokens and top-level alternatives (via `|`)."""
+    """Выражение типа: его токены и альтернативы верхнего уровня (через `|`)."""
 
     toks: list[Token]
     alternatives: list[list[Token]]
-    end: int  # index of the token past the end of the expression
+    end: int  # индекс токена за концом выражения
 
 
 def type_expr(toks: list[Token], start: int) -> TypeExpr | None:
-    """Parse a type expression starting at position start (the first type token).
+    """Разобрать выражение типа, начинающееся в позиции start (первый токен типа).
 
-    Understands FQNs (`Справочник.Товары.Ссылка`), generics (`Массив<Строка>`), the nullable
-    suffix `?` and unions `Строка|Число|?`. Returns None if there is no type at position start.
+    Понимает полные имена (`Справочник.Товары.Ссылка`), обобщения (`Массив<Строка>`), суффикс
+    nullable `?` и объединения `Строка|Число|?`. Возвращает None, если в позиции start типа нет.
     """
     n = len(toks)
     i = _skip_comments(toks, start)
@@ -297,7 +297,7 @@ def type_expr(toks: list[Token], start: int) -> TypeExpr | None:
     collected: list[Token] = []
     alternatives: list[list[Token]] = [[]]
     depth = 0
-    expect_operand = True  # expect a type name (start of the expression, after `|`, `<`, `,`, `.`)
+    expect_operand = True  # ждём имя типа (начало выражения, после `|`, `<`, `,`, `.`)
 
     while i < n:
         t = toks[i]
@@ -340,12 +340,12 @@ def type_expr(toks: list[Token], start: int) -> TypeExpr | None:
                 expect_operand = True
                 i += 1
                 continue
-            if v == "?" and not expect_operand:  # nullable type suffix
+            if v == "?" and not expect_operand:  # суффикс nullable у типа
                 collected.append(t)
                 alternatives[-1].append(t)
                 i += 1
                 continue
-            if v == "?" and expect_operand:  # standalone `|?` alternative
+            if v == "?" and expect_operand:  # самостоятельная альтернатива `|?`
                 collected.append(t)
                 alternatives[-1].append(t)
                 expect_operand = False
@@ -363,7 +363,7 @@ def type_expr(toks: list[Token], start: int) -> TypeExpr | None:
         break
 
     if not collected or expect_operand and depth == 0 and not alternatives[-1]:
-        # the expression broke off at a separator – nothing to parse
+        # выражение оборвалось на разделителе – разбирать нечего
         return None if not collected else TypeExpr(collected, [a for a in alternatives if a], i)
     return TypeExpr(collected, [a for a in alternatives if a], i)
 
@@ -372,22 +372,22 @@ def _is_undefined(tok: Token) -> bool:
     return tok.kind == "KEYWORD" and tok.canonical == "UNDEFINED"
 
 
-# --- Declarations and signatures ------------------------------------------------------
+# --- Объявления и сигнатуры -----------------------------------------------------------
 
 @dataclass
 class Declaration:
-    """A declaration `знч/пер/поймать/обз Имя[, Имя2]: Тип [= инициализация]`."""
+    """Объявление `знч/пер/поймать/обз Имя[, Имя2]: Тип [= инициализация]`."""
 
     keyword: Token
     names: list[Token]
     colon: Token | None
-    type_start: int | None  # index of the token where the type begins
-    assign: Token | None  # the `=` token, if there is an initialization
-    value_start: int | None  # index of the first token of the value
+    type_start: int | None  # индекс токена, с которого начинается тип
+    assign: Token | None  # токен `=`, если есть инициализация
+    value_start: int | None  # индекс первого токена значения
 
 
 def declarations(toks: list[Token]) -> list[Declaration]:
-    """All declarations introduced by знч/пер/поймать/обз in the token list."""
+    """Все объявления, вводимые знч/пер/поймать/обз, в списке токенов."""
     out: list[Declaration] = []
     n = len(toks)
     for i, t in enumerate(toks):
@@ -425,7 +425,7 @@ def declarations(toks: list[Token]) -> list[Declaration]:
 
 @dataclass
 class Param:
-    """A method parameter: name, the type colon (if any) and the default value."""
+    """Параметр метода: имя, двоеточие типа (если есть) и значение по умолчанию."""
 
     name: Token
     colon: Token | None
@@ -435,7 +435,7 @@ class Param:
 
 @dataclass
 class Signature:
-    """A method/constructor signature: name, parameters and the return-type colon."""
+    """Сигнатура метода или конструктора: имя, параметры и двоеточие типа возвращаемого значения."""
 
     keyword: Token
     name: Token
@@ -445,7 +445,7 @@ class Signature:
 
 
 def signatures(toks: list[Token]) -> list[Signature]:
-    """Signatures of all methods and constructors in the token list."""
+    """Сигнатуры всех методов и конструкторов в списке токенов."""
     out: list[Signature] = []
     n = len(toks)
     for i, t in enumerate(toks):
@@ -510,13 +510,13 @@ def signatures(toks: list[Token]) -> list[Signature]:
     return out
 
 
-# --- Types of local variables (completion) --------------------------------------------
+# --- Типы локальных переменных (автодополнение) ---------------------------------------
 
 def _type_head(toks: list[Token], start: int) -> str | None:
-    """The head of a type expression: `Массив<Строка>` -> `Массив`, `Товар.Ссылка?` -> `Товар.Ссылка`.
+    """Голова выражения типа: `Массив<Строка>` -> `Массив`, `Товар.Ссылка?` -> `Товар.Ссылка`.
 
-    Generic arguments and the nullable suffix are dropped on purpose: the members of a type do
-    not depend on them.
+    Аргументы обобщений и суффикс nullable отбрасываются намеренно: члены типа от них не
+    зависят.
     """
     te = type_expr(toks, start)
     if te is None or not te.alternatives:
@@ -528,12 +528,12 @@ def _type_head(toks: list[Token], start: int) -> str | None:
         elif t.kind == "OP" and t.value == ".":
             parts.append(".")
         else:
-            break  # `<`, `?`, `|` - the name ends here
+            break  # `<`, `?`, `|` – здесь имя кончается
     return "".join(parts).strip(".") or None
 
 
 def _constructed_type(toks: list[Token], start: int) -> str | None:
-    """The type of an initializer `новый Массив<Строка>()`, or None when the value is something else."""
+    """Тип инициализатора `новый Массив<Строка>()` либо None, если значение – что-то другое."""
     i = _skip_comments(toks, start)
     if i >= len(toks) or toks[i].kind != "KEYWORD" or toks[i].canonical != "NEW":
         return None
@@ -541,15 +541,15 @@ def _constructed_type(toks: list[Token], start: int) -> str | None:
 
 
 def local_var_types(source: SourceFile, offset: int) -> dict[str, str]:
-    """Variable name -> type head for the names visible at `offset`.
+    """Имя переменной -> голова типа для имён, видимых в точке `offset`.
 
-    Collected are the parameters of the enclosing method and the declarations above the offset
-    inside it; the type comes either from the annotation (`пер Список: Массив<Строка>`) or from
-    the initializer (`пер Список = новый Массив<Строка>()`). Keywords are bilingual, so the scan
-    runs over tokens (canonical VAR/NEW) and never over the raw text.
+    Собираются параметры объемлющего метода и объявления выше смещения внутри него; тип берётся
+    либо из аннотации (`пер Список: Массив<Строка>`), либо из инициализатора
+    (`пер Список = новый Массив<Строка>()`). Ключевые слова двуязычные, поэтому обход идёт по
+    токенам (канонические VAR/NEW), а не по сырому тексту.
 
-    A method spans from its signature to the next one: without an AST the body has no boundary,
-    and for visibility it is enough not to mix the locals of neighbouring methods.
+    Метод считается простирающимся от своей сигнатуры до следующей: без AST у тела нет границы,
+    а для видимости достаточно не смешивать локальные переменные соседних методов.
     """
     toks = code_tokens(source)
     enclosing = None

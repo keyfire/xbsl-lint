@@ -1,8 +1,8 @@
-// VS Code glue for index-based navigation: a per-workspace-folder cache of the project
-// index built by the linter (loaded on activation, refreshed on save with a debounce,
-// one build process at a time), plus definition and completion providers on top of the
-// pure logic in navCore.ts. When the linter cannot produce an index, navigation stays
-// silent: details go to the output channel, no popups.
+// Связка с VS Code для навигации по индексу: свой на каждую папку воркспейса кэш индекса
+// проекта, который строит линтер (загружается при активации, обновляется по сохранению с
+// задержкой, не более одного процесса сборки за раз), плюс провайдеры перехода к определению и
+// дополнения поверх чистой логики из navCore.ts. Если линтер не может построить индекс,
+// навигация молчит: подробности идут в канал вывода, всплывающих окон нет.
 
 import * as vscode from "vscode";
 import { spawn } from "child_process";
@@ -20,8 +20,8 @@ import {
 } from "./navCore";
 import { parseInternals } from "./metadataCore";
 
-const REFRESH_DELAY = 1500; // debounce (ms) for the on-save index rebuild
-const OUTPUT_LIMIT = 64 * 1024 * 1024; // guard against a runaway process
+const REFRESH_DELAY = 1500; // задержка (мс) перед пересборкой индекса по сохранению
+const OUTPUT_LIMIT = 64 * 1024 * 1024; // страховка от вышедшего из-под контроля процесса
 
 const KIND_MAP: Record<CompletionKind, vscode.CompletionItemKind> = {
   object: vscode.CompletionItemKind.Class,
@@ -69,7 +69,7 @@ function runRaw(command: string, args: string[], cwd: string): Promise<RawRun> {
     });
     if (child.stdin) {
       child.stdin.on("error", () => {
-        /* ignore EPIPE if the child exits early */
+        /* игнорируем EPIPE, если дочерний процесс завершился раньше времени */
       });
       child.stdin.end();
     }
@@ -78,7 +78,7 @@ function runRaw(command: string, args: string[], cwd: string): Promise<RawRun> {
 
 class IndexCache {
   lookup: IndexLookup | undefined;
-  rootFsPath: string | undefined; // from meta.root; targets are resolved against it
+  rootFsPath: string | undefined; // из meta.root; относительно него разрешаются цели перехода
   private timer: NodeJS.Timeout | undefined;
   private loading = false;
   private pending = false;
@@ -102,7 +102,7 @@ class IndexCache {
 
   async refresh(): Promise<void> {
     if (this.loading) {
-      this.pending = true; // one build process at a time; rerun after the current one
+      this.pending = true; // по одному процессу сборки за раз; перезапустим после текущего
       return;
     }
     this.loading = true;
@@ -144,7 +144,7 @@ class IndexCache {
         this.output.appendLine(vscode.l10n.t('navigation: "{0}": {1}', shown, reason));
       }
     }
-    // Every variant failed: keep the previous index (if any) and stay silent.
+    // Ни один вариант не сработал: сохраняем прежний индекс (если он был) и молчим.
     this.output.appendLine(
       vscode.l10n.t(
         'navigation: the project index "{0}" is unavailable – index-based navigation and completion stay silent',
@@ -189,7 +189,7 @@ export function registerNavigation(
   const enabled = (resource?: vscode.Uri): boolean =>
     vscode.workspace.getConfiguration("xbsl", resource ?? null).get<boolean>("navigation.enabled", true);
 
-  // Keeps the cache set in sync with workspace folders and the enabled flag.
+  // Держит набор кэшей в соответствии с папками воркспейса и признаком включения.
   const syncCaches = (): void => {
     const alive = new Set<string>();
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -221,7 +221,7 @@ export function registerNavigation(
 
   const fileStem = (uri: vscode.Uri): string => path.basename(uri.fsPath).replace(/\.[^.]*$/, "");
 
-  // POSIX path of the document relative to the index root (undefined when outside).
+  // Путь документа (POSIX) относительно корня индекса (undefined, если документ вне корня).
   const relPath = (cache: IndexCache, uri: vscode.Uri): string | undefined => {
     if (!cache.rootFsPath || uri.scheme !== "file") {
       return undefined;

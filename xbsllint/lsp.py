@@ -1,21 +1,20 @@
-"""The xbsllint LSP server (`xbsllint-lsp`, the [lsp] extra).
+"""LSP-сервер xbsllint (`xbsllint-lsp`, extra [lsp]).
 
-Consolidates what the VS Code extension previously did over CLI calls into one
-long-living process: the language data and the project index are loaded once and stay
-resident, so every keystroke does not pay the interpreter and dataset start-up cost.
+Сводит в один долгоживущий процесс то, что расширение VS Code раньше делало вызовами
+CLI: данные языка и индекс проекта загружаются один раз и остаются в памяти, поэтому
+каждое нажатие клавиши не платит за старт интерпретатора и загрузку датасета.
 
-Capabilities:
-    - live per-file diagnostics on open/change (file-scope rules, debounced);
-    - project-wide diagnostics on save (file + project rules over the sources root);
-    - go to definition, completion and hover over the resident project index;
-    - quick-fix code actions for diagnostics that carry a mechanical fix.
+Возможности:
+    - живая пофайловая диагностика при открытии и изменении (правила области file, с задержкой);
+    - диагностика по всему проекту при сохранении (правила file и project по корню исходников);
+    - переход к определению, дополнение и hover по индексу проекта, который держим в памяти;
+    - quick fix (code action) для замечаний, к которым приложена механическая правка.
 
-The sources root defaults to the workspace folder; pass `--project-root PATH` (absolute
-or relative to the folder) when the repository holds the project deeper inside (the
-analog of the extension's `xbsl.projectRoot` setting). Other flags: `--select`,
-`--ignore`, `--enable` (comma-separated rule sets), `--data-dir` (the Element data
-root). Flags rather than initializationOptions keep the server equally easy to spawn
-from VS Code, Neovim or JetBrains.
+Корень исходников по умолчанию – папка воркспейса; если проект лежит в репозитории глубже,
+передайте `--project-root PATH` (абсолютный или относительно этой папки) – это аналог настройки
+`xbsl.projectRoot` расширения. Прочие ключи: `--select`, `--ignore`, `--enable` (наборы правил
+через запятую), `--data-dir` (корень данных Элемента). Ключи, а не initializationOptions,
+позволяют одинаково просто запускать сервер из VS Code, Neovim или JetBrains.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from typing import Optional
 try:
     from lsprotocol import types as lsp
     from pygls.server import LanguageServer
-except ImportError:  # pragma: no cover - the extra is not installed
+except ImportError:  # pragma: no cover - extra не установлен
     lsp = None
     LanguageServer = None
 
@@ -216,7 +215,7 @@ def _make_server() -> "LanguageServer":
 
     # --- жизненный цикл ---------------------------------------------------------------
     # initialize зарезервирован pygls; параметры сервер берёт из аргументов запуска,
-    # а папку воркспейса - из server.workspace после рукопожатия.
+    # а папку воркспейса – из server.workspace после рукопожатия.
 
     @server.feature(lsp.INITIALIZED)
     def _initialized(_params: lsp.InitializedParams) -> None:

@@ -1,24 +1,26 @@
-"""The project index for editor navigation (the CLI --index flag).
+"""Индекс проекта для навигации в редакторе (флаг CLI --index).
 
-`xbsllint --index <root>` dumps a JSON snapshot of the project to stdout: the objects (kind,
-tabular sections, module-declared local types, the generated member family, enumeration
-values), the method declarations of every module (with their annotations), and the named
-interface components of the forms. Editors consume it for go-to-definition and completion.
+`xbsllint --index <root>` печатает в stdout JSON-снимок проекта: объекты (вид, табличные
+части, локальные типы, объявленные в модулях, порождённое семейство членов, значения
+перечислений), объявления методов каждого модуля (вместе с их аннотациями) и именованные
+компоненты интерфейса форм. Редакторы используют индекс для перехода к определению и
+автодополнения.
 
-The shape is frozen (fields may be added, never renamed):
+Форма индекса зафиксирована (поля можно добавлять, но не переименовывать):
 
-    meta       – {root: absolute POSIX path, version: the linter version};
-    objects    – yaml elements with ВидЭлемента: name/kind/path/line, tabular sections,
-                 local types of the object's modules (`<Имя>.xbsl`, `<Имя>.<Часть>.xbsl`),
-                 the member family for dot completion, enum values (Перечисление only);
-    methods    – method/constructor declarations of all modules, annotations without `@`;
-    components – nodes with both Имя and Тип in the yaml of a КомпонентИнтерфейса.
+    meta       – {root: абсолютный путь в POSIX-виде, version: версия линтера};
+    objects    – элементы yaml с ВидЭлемента: name/kind/path/line, табличные части,
+                 локальные типы модулей объекта (`<Имя>.xbsl`, `<Имя>.<Часть>.xbsl`),
+                 семейство членов для автодополнения по точке, значения перечисления
+                 (только Перечисление);
+    methods    – объявления методов и конструкторов всех модулей, аннотации без `@`;
+    components – узлы yaml для КомпонентИнтерфейса, у которых есть и Имя, и Тип.
 
-Paths are POSIX and relative to meta.root; lines are 1-based (the object's `Имя` key in
-yaml, the declaration of a method or structure, an enumeration element, a component node).
-yaml positions are found by a text search over the original source (the parser keeps no
-positions, see _value_positions in yaml_types.py); a position that cannot be found degrades
-to line 1 – building the index never fails on it.
+Пути записаны в POSIX-виде и относительно meta.root; строки нумеруются с единицы (ключ
+`Имя` объекта в yaml, объявление метода или структуры, элемент перечисления, узел
+компонента). Позиции в yaml находятся текстовым поиском по исходному тексту (парсер
+позиций не хранит, см. _value_positions в yaml_types.py); ненайденная позиция вырождается
+в строку 1 – построение индекса на этом никогда не падает.
 """
 
 from __future__ import annotations
@@ -33,17 +35,18 @@ from xbsllint.lexer import linemap, tokens
 from xbsllint.rules.semantics import _file_local_type_decls, _member_family
 from xbsllint.rules.yaml_schema import _HAVE_YAML, _parsed
 
-# A `Имя:` key line: indent (a list-item dash counts as indent), an optionally quoted value,
-# an optional trailing comment; `\r?` keeps CRLF files matching (`$` anchors before `\n`).
+# Строка с ключом `Имя:`: отступ (дефис элемента списка тоже считается отступом), значение
+# в кавычках или без них, необязательный хвостовой комментарий; `\r?` позволяет совпадать
+# файлам с CRLF (`$` привязан к позиции перед `\n`).
 _NAME_LINE_RE = re.compile(
     r"(?m)^([ \t]*(?:-[ \t]+)?)Имя:[ \t]*(['\"]?)([^\r\n#]*?)\2[ \t]*(?:#.*)?\r?$"
 )
 
 
-# --- yaml positions (text search, mirroring _value_positions in yaml_types.py) ---------
+# --- позиции в yaml (текстовый поиск, как в _value_positions из yaml_types.py) ---------
 
 def _name_entries(s: SourceFile) -> list[tuple[int, int, str]]:
-    """(offset, indent, value) of every `Имя:` key line of the file, in document order."""
+    """(смещение, отступ, значение) каждой строки с ключом `Имя:` файла, в порядке документа."""
     cached = s.cache.get("index-name-entries")
     if cached is None:
         cached = [
@@ -55,7 +58,7 @@ def _name_entries(s: SourceFile) -> list[tuple[int, int, str]]:
 
 
 def _top_name_line(s: SourceFile, name: str) -> int:
-    """The line of the top-level `Имя:` key of the object (1 when not found)."""
+    """Строка ключа `Имя:` верхнего уровня у объекта (1, если ключ не найден)."""
     for off, indent, value in _name_entries(s):
         if indent == 0 and value == name:
             return linemap(s).linecol(off)[0]
@@ -63,7 +66,7 @@ def _top_name_line(s: SourceFile, name: str) -> int:
 
 
 def _section_span(text: str, key: str) -> tuple[int, int] | None:
-    """The offsets of a top-level section body (`ТабличныеЧасти:` ... the next top-level key)."""
+    """Смещения тела секции верхнего уровня (`ТабличныеЧасти:` ... следующий ключ того же уровня)."""
     m = re.search(rf"(?m)^{key}:[ \t]*\r?$", text)
     if m is None:
         return None
@@ -72,11 +75,11 @@ def _section_span(text: str, key: str) -> tuple[int, int] | None:
 
 
 def _section_item_lines(s: SourceFile, key: str) -> dict[str, deque[int]]:
-    """Per item name: the lines of the item-level `Имя:` keys of a top-level section.
+    """По имени элемента: строки ключей `Имя:` уровня элемента в секции верхнего уровня.
 
-    Item-level keys are the ones at the minimal indentation inside the section – the `Имя` of
-    a nested attribute lies deeper and is left out. Queues keep same-named items in document
-    order; the caller pops one line per parsed item.
+    Ключи уровня элемента – это ключи с минимальным отступом внутри секции; `Имя` вложенного
+    реквизита лежит глубже и в выборку не попадает. Очереди хранят одноимённые элементы в
+    порядке документа; вызывающий код забирает по одной строке на каждый разобранный элемент.
     """
     span = _section_span(s.text, key)
     if span is None:
@@ -95,7 +98,7 @@ def _section_item_lines(s: SourceFile, key: str) -> dict[str, deque[int]]:
 
 
 def _named_items(s: SourceFile, data: dict, key: str) -> list[dict]:
-    """{name, line} of the named items of a top-level list section (ТабличныеЧасти/Элементы)."""
+    """{name, line} именованных элементов секции-списка верхнего уровня (ТабличныеЧасти/Элементы)."""
     items = data.get(key)
     if not isinstance(items, list):
         return []
@@ -109,13 +112,13 @@ def _named_items(s: SourceFile, data: dict, key: str) -> list[dict]:
     return out
 
 
-# --- module declarations (over tokens) -------------------------------------------------
+# --- объявления в модулях (по токенам) -------------------------------------------------
 
 def _annotations_before(toks: list, i: int) -> list[str]:
-    """The annotation names above a declaration keyword at index i, in source order, without `@`.
+    """Имена аннотаций над ключевым словом объявления с индексом i, в порядке текста, без `@`.
 
-    Walks backwards over `@Имя` and `@Имя(...)` pairs (comments in between are skipped, the
-    argument parentheses are balanced); the first token that does not fit stops the walk.
+    Обход идёт назад по парам `@Имя` и `@Имя(...)` (комментарии между ними пропускаются,
+    скобки аргументов балансируются); первый не подходящий токен останавливает обход.
     """
     names: list[str] = []
     k = i - 1
@@ -149,7 +152,7 @@ def _annotations_before(toks: list, i: int) -> list[str]:
 
 
 def _method_decls(s: SourceFile) -> list[dict]:
-    """{name, line, annotations} of the method/constructor declarations of one module."""
+    """{name, line, annotations} объявлений методов и конструкторов одного модуля."""
     decls: list[dict] = []
     toks = tokens(s)
     n = len(toks)
@@ -157,7 +160,7 @@ def _method_decls(s: SourceFile) -> list[dict]:
         if t.kind != "KEYWORD" or t.canonical not in ("METHOD", "CONSTRUCTOR"):
             continue
         if not t.value[:1].islower():
-            continue  # a declaration keyword is lowercase (as in the handlers rule)
+            continue  # ключевое слово объявления пишется строчными (как в правиле handlers)
         j = i + 1
         while j < n and toks[j].kind == "COMMENT":
             j += 1
@@ -170,10 +173,10 @@ def _method_decls(s: SourceFile) -> list[dict]:
     return decls
 
 
-# --- form components --------------------------------------------------------------------
+# --- компоненты форм ----------------------------------------------------------------------
 
 def _component_nodes(node) -> list[tuple[str, str]]:
-    """(Имя, Тип) of every yaml node carrying both, depth-first in document order."""
+    """(Имя, Тип) каждого узла yaml, где есть оба ключа; обход в глубину в порядке документа."""
     found: list[tuple[str, str]] = []
     if isinstance(node, dict):
         name, typ = node.get("Имя"), node.get("Тип")
@@ -188,11 +191,11 @@ def _component_nodes(node) -> list[tuple[str, str]]:
 
 
 def _form_components(s: SourceFile, data: dict, form: str, path: str) -> list[dict]:
-    """The named components of one form, with the lines of their `Имя:` keys."""
+    """Именованные компоненты одной формы вместе со строками их ключей `Имя:`."""
     lm = linemap(s)
     queues: dict[str, deque[int]] = defaultdict(deque)
     for off, indent, value in _name_entries(s):
-        if indent > 0:  # the top-level Имя is the form itself, not a component
+        if indent > 0:  # Имя верхнего уровня – это сама форма, а не компонент
             queues[value].append(lm.linecol(off)[0])
     out: list[dict] = []
     for name, typ in _component_nodes(data):
@@ -207,17 +210,17 @@ def _form_components(s: SourceFile, data: dict, form: str, path: str) -> list[di
     return out
 
 
-# --- the index ---------------------------------------------------------------------------
+# --- индекс -------------------------------------------------------------------------------
 
 def _discover(root: Path) -> list[Path]:
-    """Source files under the root (or the root itself when it is a file), sorted."""
+    """Файлы исходников под корнем (или сам корень, если это файл), отсортированные."""
     if root.is_file():
         return [root] if root.suffix in (".xbsl", ".yaml") else []
     return find_sources(root, "*.yaml") + find_sources(root, "*.xbsl")
 
 
 def build_index(root: Path) -> dict:
-    """The JSON-ready index of the project under root (see the module docstring)."""
+    """Готовый к выводу в JSON индекс проекта под корнем root (см. докстринг модуля)."""
     base = (root if root.is_dir() else root.parent).resolve()
     sources = [load(p) for p in _discover(root)]
     yaml_sources = [s for s in sources if s.kind == "yaml"]
@@ -230,8 +233,9 @@ def build_index(root: Path) -> dict:
         except ValueError:
             return rp.as_posix()
 
-    # Local types per owner object: the module files `<Имя>.xbsl` and `<Имя>.<Часть>.xbsl`
-    # (matched by name, per the yaml/name-matches-file invariant – as _project_object_info).
+    # Локальные типы по объекту-владельцу: файлы модулей `<Имя>.xbsl` и `<Имя>.<Часть>.xbsl`
+    # (сопоставление по имени, по инварианту "имя в yaml совпадает с именем файла" – как в
+    # _project_object_info).
     local_types: dict[str, list[dict]] = defaultdict(list)
     for s in xbsl_sources:
         owner = s.path.name[: -len(".xbsl")].split(".", 1)[0]

@@ -1,17 +1,17 @@
-"""Checks of the query DSL (`Запрос{ ... }` blocks).
+"""Проверки DSL запросов (блоки `Запрос{ ... }`).
 
-query/unknown-table – a table referenced in ИЗ/СОЕДИНЕНИЕ (FROM/JOIN) must be a project
-object, and `<Объект>.<Секция>` must name a tabular section of that object. These are the
-errors that otherwise surface only in the database at run time.
+query/unknown-table – таблица, на которую ссылается ИЗ/СОЕДИНЕНИЕ (FROM/JOIN), должна быть
+объектом проекта, а `<Объект>.<Секция>` – называть табличную часть этого объекта. Такие
+ошибки иначе проявляются только в базе во время выполнения.
 
-The parsing is deliberately conservative (the zero-false-positives invariant):
+Разбор намеренно консервативен (инвариант нулевых ложных срабатываний):
 
-- a block that uses constructs outside the supported subset (temporary tables, unions,
-  a subquery or anything but a plain name in the table position) is skipped whole;
-- a dotted table whose root is not a project object is treated as external (a library)
-  and skipped - only a KNOWN root with an unknown section is reported;
-- a dotted section from the virtual-table vocabulary (СрезПоследних, Остатки, ...) is
-  never questioned, and chains deeper than two segments are left alone.
+- блок с конструкциями вне поддержанного подмножества (временные таблицы, объединения,
+  подзапрос или что угодно, кроме простого имени в позиции таблицы) пропускается целиком;
+- таблица с точкой, корень которой не является объектом проекта, считается внешней
+  (библиотечной) и пропускается – сообщается только об ИЗВЕСТНОМ корне с неизвестной секцией;
+- секция после точки из словаря виртуальных таблиц (СрезПоследних, Остатки, ...) под сомнение
+  не ставится, а цепочки глубже двух сегментов не трогаются.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def _query_tables(source: SourceFile) -> Iterable[tuple]:
     """Табличные выражения всех блоков запроса файла: (сегменты-токены,) по одному на таблицу.
 
     Блок, где после ИЗ/СОЕДИНЕНИЕ стоит не имя (подзапрос, интерполяция) или встречается
-    неподдержанное слово, не даёт ни одного выражения - молчание вместо догадок.
+    неподдержанное слово, не даёт ни одного выражения – молчание вместо догадок.
     """
     toks = tokens(source)
     for start, end in query_ranges(source):
@@ -127,7 +127,7 @@ def _tabular_catalog(sources: list[SourceFile]) -> dict[str, dict]:
 def unknown_query_table(sources: list[SourceFile]) -> Iterable[Diagnostic]:
     catalog = _tabular_catalog(sources)
     if not catalog:
-        return []  # yaml не разобран (нет PyYAML) или проект без объектов - молчим
+        return []  # yaml не разобран (нет PyYAML) или проект без объектов – молчим
 
     diags: list[Diagnostic] = []
     for s in sources:
@@ -146,7 +146,7 @@ def unknown_query_table(sources: list[SourceFile]) -> Iterable[Diagnostic]:
                     ))
                 continue
             if len(segs) != 2 or rec is None:
-                continue  # глубокие цепочки и внешние корни - вне охвата
+                continue  # глубокие цепочки и внешние корни – вне охвата
             seg = segs[1]
             if seg.value in rec["tabular"] or seg.value.upper() in _VIRTUAL:
                 continue

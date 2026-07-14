@@ -1,9 +1,10 @@
-"""Pure navigation core for the LSP server: a Python port of the extension's navCore.
+"""Чистое ядро навигации LSP-сервера: перенос на Python навигационного ядра расширения (navCore).
 
-Operates on the project index built by `xbsllint.indexer` (the same frozen schema the
-`--index` CLI dumps): definition, completion and hover resolution plus the dotted-chain
-line parsing. No LSP or editor imports here - the module is unit-tested directly and the
-pygls server (`xbsllint.lsp`) is a thin transport over it.
+Работает с индексом проекта, который строит `xbsllint.indexer` (та же зафиксированная схема,
+что выгружает CLI по ключу `--index`): разрешение definition, completion и hover плюс разбор
+строки на цепочки идентификаторов через точку. Импортов LSP и редактора здесь нет – модуль
+покрыт модульными тестами напрямую, а сервер на pygls (`xbsllint.lsp`) – лишь тонкий транспорт
+над ним.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import re
 from typing import Any, Optional
 
 IDENT = r"[A-Za-zА-Яа-яЁё_][A-Za-z0-9А-Яа-яЁё_]*"
-# A character that may not directly precede an identifier chain we recognize.
+# Символ, который не может стоять непосредственно перед распознаваемой цепочкой идентификаторов.
 NOT_BEFORE = r"[^.0-9A-Za-zА-Яа-яЁё_]"
 
 _CHAIN_RE = re.compile(rf"{IDENT}(?:\.{IDENT})*")
@@ -20,7 +21,7 @@ _HANDLER_RE = re.compile(rf"^(\s*Обработчик\s*:\s*)({IDENT})\s*$")
 
 
 class IndexLookup:
-    """Precomputed lookups over the index dict produced by indexer.build_index."""
+    """Заранее посчитанные выборки по словарю индекса, который строит indexer.build_index."""
 
     def __init__(self, index: dict) -> None:
         self.index = index
@@ -68,7 +69,7 @@ class IndexLookup:
 
 
 def chain_at(line_text: str, character: int) -> Optional[tuple[list[str], int]]:
-    """The dotted identifier chain covering `character` (0-based) and the segment index."""
+    """Цепочка идентификаторов через точку под позицией `character` (с нуля) и индекс сегмента."""
     for m in _CHAIN_RE.finditer(line_text):
         start, end = m.start(), m.end()
         if character < start:
@@ -81,7 +82,7 @@ def chain_at(line_text: str, character: int) -> Optional[tuple[list[str], int]]:
             segment_end = offset + len(part)
             if character <= segment_end:
                 return parts, i
-            offset = segment_end + 1  # skip the dot
+            offset = segment_end + 1  # пропускаем точку
         return parts, len(parts) - 1
     return None
 
@@ -101,7 +102,7 @@ def resolve_definition(
     file_stem: str,
     file_path: Optional[str] = None,
 ) -> Optional[tuple[str, int]]:
-    """The (path, line) target for the position, or None when the context is not recognized."""
+    """Цель (path, line) для позиции или None, если контекст не распознан."""
     if language_id == "yaml":
         handler = _HANDLER_RE.match(line_text)
         if handler:
@@ -137,7 +138,7 @@ def resolve_definition(
         method = lookup.method(parts[1], word)
         return (method["path"], method["line"]) if method else None
     if at != 1:
-        return None  # deeper chains need type inference - out of scope
+        return None  # более глубокие цепочки требуют вывода типов – за рамками модуля
 
     qualifier = parts[at - 1]
     obj = lookup.object_by_name(qualifier)
@@ -254,7 +255,7 @@ def resolve_completions(
     query_tables: Optional[dict] = None,
     query_rows: Optional[dict] = None,
 ) -> Optional[list[dict]]:
-    """Completion entries [{label, kind, detail}] for the context, or None when unknown."""
+    """Элементы дополнения [{label, kind, detail}] для контекста или None, если он неизвестен."""
     m = _match_end(line_prefix, rf"Компоненты\.({IDENT})\.(?:{IDENT})?")
     if m:
         return [_method_entry(x) for x in lookup.methods_by_module(m.group(1))]
@@ -339,7 +340,7 @@ def resolve_hover(
     file_stem: str,
     file_path: Optional[str] = None,
 ) -> Optional[str]:
-    """Markdown hover text for the position, or None. Mirrors the definition contexts."""
+    """Текст hover в Markdown для позиции или None. Контексты те же, что и у definition."""
     hit = chain_at(line_text, character)
     if not hit:
         return None

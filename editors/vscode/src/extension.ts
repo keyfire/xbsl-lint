@@ -21,9 +21,9 @@ let output: vscode.OutputChannel;
 const debounceTimers = new Map<string, NodeJS.Timeout>();
 let warnedOnce = false;
 
-// The last version-stamped fixable diagnostics per document (uri -> snapshot), for Quick Fix.
-// A stale entry (version mismatch) is ignored by the provider, so a fix offset is never
-// applied to text that has changed since the lint that produced it.
+// Последние исправимые находки по каждому документу со штампом версии (uri -> снимок) – для
+// Quick Fix. Устаревшую запись (версия не совпала) провайдер игнорирует, поэтому смещение
+// исправления никогда не применяется к тексту, изменившемуся после породившего его прогона.
 const fixStore = new Map<string, FixSnapshot>();
 
 function setFixSnapshot(uri: vscode.Uri, version: number, diags: RawDiag[]): void {
@@ -35,30 +35,30 @@ function setFixSnapshot(uri: vscode.Uri, version: number, diags: RawDiag[]): voi
   }
 }
 
-// --- Workspace lint state ---------------------------------------------------------------
-// One diagnostic collection, two producers:
-//  * the fast `--stdin` lint owns the diagnostics of the buffer being edited (dirty);
-//  * the whole-workspace run (on save, debounced, one at a time) replaces the diagnostics
-//    of every other file – it sees project-scope rules a single buffer cannot.
+// --- Состояние прогона по воркспейсу -----------------------------------------------------
+// Одна коллекция находок, два поставщика:
+//  * быстрый прогон `--stdin` владеет находками редактируемого (грязного) буфера;
+//  * прогон по всему воркспейсу (при сохранении, с задержкой, по одному за раз) заменяет
+//    находки всех остальных файлов – ему видны проектные правила, недоступные одному буферу.
 
-// One file's share of the last completed workspace run: the diagnostics converted for the
-// collection plus the raw ones they came from – the raw list rebuilds the Quick Fix
-// snapshot when the file is opened after the run.
+// Доля одного файла в последнем завершённом прогоне по воркспейсу: находки, преобразованные
+// для коллекции, и исходные, из которых они получены – по исходным восстанавливается снимок
+// Quick Fix, когда файл открывают уже после прогона.
 interface WorkspaceEntry {
   uri: vscode.Uri;
   diags: vscode.Diagnostic[];
   raw: RawDiag[];
 }
 
-// The last completed workspace run per workspace folder: file uri -> its entry.
+// Последний завершённый прогон по каждой папке воркспейса: uri файла -> его запись.
 const workspaceResults = new Map<string, Map<string, WorkspaceEntry>>();
-// Debounce timers of scheduled workspace runs, per folder.
+// Таймеры задержки запланированных прогонов по воркспейсу, по папкам.
 const workspaceTimers = new Map<string, NodeJS.Timeout>();
-// Runs waiting in the chain (not started yet), per folder – dedupes repeated saves.
+// Прогоны, ожидающие в цепочке (ещё не начатые), по папкам – убирают дубли частых сохранений.
 const queuedRuns = new Map<string, Promise<void>>();
-// The single run in flight; a newer save of the same folder cancels it.
+// Единственный выполняющийся прогон; новое сохранение той же папки его отменяет.
 let activeRun: { folderKey: string; handle: RunHandle } | undefined;
-// Workspace runs execute strictly one after another.
+// Прогоны по воркспейсу выполняются строго один за другим.
 let runChain: Promise<void> = Promise.resolve();
 
 const WORKSPACE_DEBOUNCE_MS = 500;
@@ -119,7 +119,7 @@ function cwdFor(uri: vscode.Uri): string | undefined {
   return uri.scheme === "file" ? path.dirname(uri.fsPath) : undefined;
 }
 
-// Files the linter understands: .xbsl modules and .yaml element descriptions.
+// Файлы, понятные линтеру: модули .xbsl и описания элементов .yaml.
 function isLintableUri(uri: vscode.Uri): boolean {
   if (uri.scheme !== "file") {
     return false;
@@ -140,7 +140,7 @@ async function lintDocument(doc: vscode.TextDocument): Promise<void> {
     reportProblem(result.error, result.notFound);
     return;
   }
-  // Drop a stale result: the buffer changed while the linter was running.
+  // Отбрасываем устаревший результат: буфер изменился, пока работал линтер.
   if (doc.version !== version) {
     return;
   }
@@ -182,10 +182,10 @@ function scheduleLint(doc: vscode.TextDocument, delay: number): void {
   );
 }
 
-// --- Workspace lint ----------------------------------------------------------------------
+// --- Прогон по воркспейсу ----------------------------------------------------------------
 
-// The last completed workspace run's result for a file: an entry (possibly with no
-// diagnostics) when the file's folder has been linted, undefined when no run has finished yet.
+// Результат последнего завершённого прогона для файла: запись (возможно, без находок), если
+// папку файла уже проверяли, и undefined, если ни один прогон ещё не завершился.
 function workspaceBaseline(uri: vscode.Uri): Pick<WorkspaceEntry, "diags" | "raw"> | undefined {
   const folder = vscode.workspace.getWorkspaceFolder(uri);
   if (!folder) {
@@ -198,7 +198,7 @@ function workspaceBaseline(uri: vscode.Uri): Pick<WorkspaceEntry, "diags" | "raw
   return store.get(uri.toString()) ?? { diags: [], raw: [] };
 }
 
-// Debounced entry point: repeated saves within the window collapse into one run.
+// Точка входа с задержкой: повторные сохранения внутри окна схлопываются в один прогон.
 function scheduleWorkspaceLint(folder: vscode.WorkspaceFolder): void {
   const key = folder.uri.toString();
   const prev = workspaceTimers.get(key);
@@ -214,16 +214,16 @@ function scheduleWorkspaceLint(folder: vscode.WorkspaceFolder): void {
   );
 }
 
-// One run at a time: runs chain up, a folder waits in the queue at most once, and a save
-// that arrives while its folder is being linted cancels the now-stale run.
+// По одному прогону за раз: прогоны выстраиваются в цепочку, папка стоит в очереди не более
+// одного раза, а сохранение во время проверки её папки отменяет ставший неактуальным прогон.
 function enqueueWorkspaceRun(folder: vscode.WorkspaceFolder, notify = false): Promise<void> {
   const key = folder.uri.toString();
   const queued = queuedRuns.get(key);
   if (queued) {
-    return queued; // not started yet – it will pick up the fresh files from disk
+    return queued; // ещё не начат – он и так возьмёт с диска свежие файлы
   }
   if (activeRun && activeRun.folderKey === key) {
-    activeRun.handle.cancel(); // the result would describe files that no longer exist as such
+    activeRun.handle.cancel(); // его результат описывал бы файлы, которых в таком виде уже нет
   }
   const run = runChain.then(() => {
     queuedRuns.delete(key);
@@ -246,7 +246,8 @@ async function runWorkspaceLint(folder: vscode.WorkspaceFolder, notify: boolean)
     return;
   }
   if (result.error) {
-    // Graceful failure: a huge workspace or a broken linter must not spam popups on every save.
+    // Мягкий отказ: огромный воркспейс или сломанный линтер не должны при каждом сохранении
+    // сыпать всплывающими окнами.
     if (notify) {
       reportProblem(result.error, result.notFound);
     } else {
@@ -262,9 +263,9 @@ async function runWorkspaceLint(folder: vscode.WorkspaceFolder, notify: boolean)
   }
 }
 
-// Lays the workspace run's diagnostics out over the folder's files, replacing whatever was
-// there before. Dirty buffers are the exception: their diagnostics belong to the live
-// `--stdin` lint until the buffer is saved (a run over files on disk cannot see them).
+// Раскладывает находки прогона по файлам папки, заменяя всё, что было там раньше. Исключение –
+// грязные буферы: их находки принадлежат живому прогону `--stdin`, пока буфер не сохранён
+// (прогон по файлам на диске их попросту не видит).
 function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport): void {
   const folderKey = folder.uri.toString();
   const openDocs = new Map<string, vscode.TextDocument>();
@@ -296,13 +297,13 @@ function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport)
       continue;
     }
     collection.set(entry.uri, entry.diags);
-    // Offsets from a disk run match only a clean open buffer; stamp with that buffer's version.
+    // Смещения дискового прогона годятся только для чистого открытого буфера; штампуем его версией.
     if (doc) {
       setFixSnapshot(entry.uri, doc.version, entry.raw);
     }
   }
-  // Files whose diagnostics are all gone: everything in this folder that the fresh run
-  // did not mention is clean now.
+  // Файлы, у которых находок не осталось: всё в этой папке, чего свежий прогон не упомянул,
+  // теперь чисто.
   const stale: vscode.Uri[] = [];
   collection.forEach((uri) => {
     const key = uri.toString();
@@ -332,7 +333,7 @@ function scheduleWorkspaceLintAll(): void {
   }
 }
 
-// The manual command: lint every workspace folder, with progress and a visible error.
+// Ручная команда: проверить все папки воркспейса, с индикатором хода и видимой ошибкой.
 async function lintProject(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
@@ -355,7 +356,7 @@ function lintOpenDocuments(): void {
   }
 }
 
-// Forget everything and start over: used by the restart command and on configuration changes.
+// Забыть всё и начать заново: используется командой перезапуска и при изменении настроек.
 function resetAndRelint(): void {
   warnedOnce = false;
   activeRun?.handle.cancel();
@@ -409,11 +410,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (settings.run === "off") {
         return;
       }
-      // A clean buffer whose file a workspace run has already covered needs no `--stdin`
-      // pass: it would see only the per-file rules and wipe the project-scope ones. The
-      // Quick Fix snapshot is rebuilt from the stored run instead – the run stamps only
-      // the documents open at the time, and closing a document drops its snapshot. The
-      // buffer is clean, so the run's on-disk offsets are valid for it.
+      // Чистому буферу, чей файл уже покрыт прогоном по воркспейсу, проход `--stdin` не нужен:
+      // он увидел бы только пофайловые правила и стёр бы проектные. Снимок Quick Fix вместо
+      // этого восстанавливается из сохранённого прогона – прогон штампует только те документы,
+      // что были открыты в тот момент, а закрытие документа снимок удаляет. Буфер чист, поэтому
+      // дисковые смещения прогона для него верны.
       if (settings.workspaceLint && !doc.isDirty) {
         const baseline = workspaceBaseline(doc.uri);
         if (baseline !== undefined) {
@@ -440,8 +441,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
       if (settings.workspaceLint && folder && isLintableUri(doc.uri)) {
-        // The file on disk is current now – the whole-workspace run replaces the buffer
-        // diagnostics with the full set (per-file and project-scope rules together).
+        // Файл на диске теперь актуален – прогон по всему воркспейсу заменит находки буфера
+        // полным набором (пофайловые и проектные правила вместе).
         scheduleWorkspaceLint(folder);
         return;
       }
@@ -457,8 +458,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         debounceTimers.delete(key);
       }
       fixStore.delete(key);
-      // The file is still part of the project: put the last workspace run's diagnostics
-      // back (the closed buffer may have been dirty, its `--stdin` results die with it).
+      // Файл по-прежнему часть проекта: возвращаем находки последнего прогона по воркспейсу
+      // (закрытый буфер мог быть грязным, его результаты `--stdin` умирают вместе с ним).
       const baseline = workspaceBaseline(doc.uri);
       if (baseline !== undefined && readSettings(doc.uri).workspaceLint) {
         collection.set(doc.uri, baseline.diags);
