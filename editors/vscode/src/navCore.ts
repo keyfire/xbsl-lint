@@ -262,7 +262,7 @@ export interface DefinitionQuery {
   languageId: string; // "xbsl" | "yaml"
   lineText: string;
   character: number; // 0-based cursor column
-  fileStem: string; // file name without the extension ("ГлавнаяСтраница")
+  fileStem: string; // file name without the extension ("ФормаСписка")
   filePath?: string; // POSIX path of the current file relative to meta.root, when known
 }
 
@@ -371,6 +371,7 @@ export type CompletionKind =
   | "object"
   | "enum"
   | "family"
+  | "field"
   | "tabular"
   | "localType"
   | "enumMember"
@@ -387,6 +388,65 @@ export interface CompletionQuery {
   languageId: string; // "xbsl" | "yaml"
   linePrefix: string; // line text before the cursor
   fileStem: string;
+  textBefore?: string; // текст документа до курсора – для распознавания контекста запроса
+  attributesOf?: (objectName: string) => string[] | undefined; // реквизиты объекта из yaml (инъекция)
+}
+
+// Стандартные (выбираемые в запросе) поля по виду объекта; реквизиты и табличные части добавляются
+// отдельно (реквизиты знает вызывающий – через attributesOf, они не входят в индекс).
+const STANDARD_QUERY_FIELDS: Record<string, string[]> = {
+  Справочник: ["Ссылка", "Код", "Наименование", "ПометкаУдаления", "Предопределённый"],
+  Документ: ["Ссылка", "Номер", "Дата", "Проведён", "ПометкаУдаления"],
+};
+
+// Курсор внутри блока запроса? Берём последнее ключевое слово запроса до курсора и считаем баланс
+// скобок после него. Ключевое слово двуязычно (Запрос / Query); это эвристика для обычного режима
+// (без лексера) – в LSP-режиме контекст запроса определяет лексер линтера (canonical QUERY).
+export function isInQuery(textBefore: string): boolean {
+  const re = /(?:Запрос|Query)\s*\{/g;
+  let open = -1;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(textBefore))) {
+    open = m.index + m[0].length;
+  }
+  if (open < 0) {
+    return false;
+  }
+  let depth = 1;
+  for (let i = open; i < textBefore.length; i++) {
+    if (textBefore[i] === "{") {
+      depth++;
+    } else if (textBefore[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Поля таблицы для дополнения в запросе: стандартные поля вида + реквизиты + табличные части.
+// Дубли по имени убираем (реквизит может дублировать стандартное имя, напр. Наименование).
+export function queryFieldEntries(kind: string, attributes: string[], tabular: string[]): CompletionEntry[] {
+  const seen = new Set<string>();
+  const entries: CompletionEntry[] = [];
+  const add = (label: string, detail: string): void => {
+    if (label && !seen.has(label)) {
+      seen.add(label);
+      entries.push({ label, kind: "field", detail });
+    }
+  };
+  for (const f of STANDARD_QUERY_FIELDS[kind] ?? []) {
+    add(f, "стандартное поле");
+  }
+  for (const a of attributes) {
+    add(a, "реквизит");
+  }
+  for (const t of tabular) {
+    add(t, "табличная часть");
+  }
+  return entries;
 }
 
 function matchEnd(prefix: string, pattern: string): RegExpExecArray | null {
@@ -454,6 +514,15 @@ export function resolveCompletions(lookup: IndexLookup, q: CompletionQuery): Com
   // for an enum – its values.
   m = matchEnd(prefix, `(${IDENT})\\.(?:${IDENT})?`);
   if (m) {
+    // В блоке Запрос{...} после <Таблица>. – поля таблицы (стандартные + реквизиты + ТЧ), а не члены
+    // объекта/менеджера. Реквизиты подаёт вызывающий (attributesOf), их нет в индексе.
+    if (q.textBefore && isInQuery(q.textBefore)) {
+      const table = lookup.objectByName(m[1]);
+      if (!table) {
+        return null; // неизвестная таблица – молчим (не показываем члены объекта)
+      }
+      return queryFieldEntries(table.kind, q.attributesOf?.(m[1]) ?? [], table.tabular.map((t) => t.name));
+    }
     return objectMemberEntries(lookup, m[1]);
   }
   // yaml: `Тип: <...>` -> project object names.

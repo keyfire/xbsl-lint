@@ -7,6 +7,9 @@ import { registerFormPreview } from "./formPreview";
 import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from "./linter";
 import { activateLsp } from "./lspClient";
 import { registerNavigation } from "./navigation";
+import { registerMetadataTree } from "./metadataTree";
+import { registerMetadataProps } from "./metadataProps";
+import { registerStatusBar } from "./statusBar";
 import { registerPalettePicker } from "./palettes";
 import { pipInstallCommand, runInstallTask } from "./installer";
 import { mergeOffRules, registerRuleConfig, ruleOverride } from "./ruleConfig";
@@ -378,11 +381,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerRuleConfig(context);
   registerDeploy(context, projectRootFor);
   registerFormPreview(context);
+  const metadataTree = registerMetadataTree(context, projectRootFor);
+  registerMetadataProps(context, metadataTree.typeCandidates);
+  // Версии расширения/линтера и режим дополнения в статус-баре (до LSP-ветки – виден в обоих режимах).
+  const statusBar = registerStatusBar(context, (resource) => readSettings(resource).linter);
 
-  // Экспериментальный LSP-режим: всё делает долгоживущий сервер xbsllint-lsp.
-  // При неудачном старте сервера тихо продолжаем в обычном режиме (CLI).
-  if (vscode.workspace.getConfiguration("xbsl").get<boolean>("lsp.enabled", false)) {
-    if (await activateLsp(context, output)) {
+  // LSP-режим (по умолчанию): всё делает долгоживущий сервер xbsllint-lsp - он же даёт hover и
+  // дополнение по типам. При неудачном старте продолжаем в обычном режиме (CLI); о неудаче
+  // сообщаем, только если режим выбран явно, иначе у поставивших линтер без extra [lsp] всплывало
+  // бы окно с ошибкой на ровном месте.
+  const lspSetting = vscode.workspace.getConfiguration("xbsl").inspect<boolean>("lsp.enabled");
+  const lspChosen =
+    lspSetting?.workspaceFolderValue ?? lspSetting?.workspaceValue ?? lspSetting?.globalValue;
+  if (lspChosen ?? lspSetting?.defaultValue ?? true) {
+    if (await activateLsp(context, output, lspChosen !== undefined)) {
+      statusBar.setLspMode(true);
       return;
     }
   }

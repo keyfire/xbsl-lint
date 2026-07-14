@@ -1,5 +1,83 @@
 # Changelog
 
+[Русский](https://github.com/keyfire/xbsl-lint/blob/main/editors/vscode/CHANGELOG.ru.md) · **English**
+
+## 0.12.0
+
+- New **1C:Element** container in the Activity Bar (its own icon): the project elements grouped by
+  kind – catalogs, common modules, HTTP services and so on, each group with its own icon (codicon).
+  An object form / list form is nested under its owner object; forms with no owner go to a separate
+  **Common forms** section. The yaml + xbsl pair of an object is one row: the context menu opens the
+  description (yaml), the module (xbsl), the object module or the form preview.
+- The tree root is the **project**; its context menu opens the application module. Objects expand
+  into subtrees – **Attributes / Dimensions / Resources / Tabular sections / Forms**; a new field can
+  be added to Attributes / Dimensions / Resources (the **+** action asks a name and inserts a minimal
+  stub with a fresh id, then reveals it).
+- Click behaviour: a common module opens its xbsl, a form opens the preview, a field is revealed in
+  the yaml.
+- More subtrees: enum **Values** (+ add), client-work **Parameters** (+ add), the HTTP service **URL
+  templates** with their methods (read-only). The project root shows the vendor\name in grey.
+- The tree shows the createable object classes even when the project has none of them yet (catalog,
+  document, enumeration, information/accumulation register, common module, HTTP service, client-work
+  parameters). The category root has a per-kind **Add &lt;class&gt;** action (Add catalog, Add
+  document ...): asks a name and a subsystem (folder), writes a minimal valid yaml (a fresh id; a paired
+  xbsl for module kinds) and opens it. The new object does not deploy until you complete it – a broken
+  one only surfaces on deploy.
+- **Subsystems**: a **Subsystems** branch under the project (open a subsystem, or **Add subsystem** –
+  a folder with a subsystem file). The project root has **Filter by subsystem** (multi-select) and
+  **Clear filter**; the active filter is shown in grey next to the project.
+- More createable classes: **structure, client event, command-interface fragment** and a standalone
+  **common form** (in the Common forms section) now have their own Add action too.
+- Editable **properties panel** on the right: clicking an object or a field opens it (modules and
+  forms via the **Properties** context item). Scalar properties are edited in place (undo works); the
+  id and the element kind are read-only; collections stay in the tree.
+- A **Fields** subtree with add for structures; **Add object form** for a catalog/document (creates
+  the form and registers it in the object when it has none yet); **Delete object** (with confirmation;
+  removes the object files, references are left as is).
+- **Tabular sections** of a catalog/document are now an add group – **Add tabular section** creates
+  the section with a starter attribute; a tabular section itself has **Add attribute to tabular
+  section** to add a requisite to its columns.
+- **Git status** is shown on the tree rows (like the Explorer): objects, forms, subsystems and the
+  project carry the file's SCM decoration (color and badge) while keeping their kind icon.
+- The form preview's primary button now uses the platform's native yellow (`#fd0`, dark text)
+  instead of blue.
+- The **type** of an attribute / dimension / resource / field is edited through a combo in the
+  properties panel: primitives, `<Object>.Ссылка?` references and the project enumerations are
+  offered as suggestions, and any other type can still be typed in.
+- String-only field properties (`Многострочная`) show in the properties panel only for the string type
+  (`Строка` in the yaml) and are dropped when the type is changed to another one.
+- A **Standard attributes** group for catalogs/documents lists the predefined attributes
+  (Наименование/Код, Номер/Дата) even when they are not in the yaml; editing a property in the panel
+  materializes the entry into `Реквизиты` (no id, like a standard attribute).
+- A **status bar** item shows the extension build time, the xbsllint version and the completion mode
+  (CLI index / LSP) – handy for telling which build is actually running.
+- In a `Query{...}` block, completion after `<Table>.` offers the table's **fields** (standard fields,
+  attributes, tabular sections) instead of the object's members – in both the CLI index mode and the
+  LSP server (the `xbsllint` index now carries object attributes).
+- **LSP mode is on by default** (`xbsl.lsp.enabled`): it is what brings hover and type-aware completion.
+  With the linter installed without the `[lsp]` extra the extension quietly keeps working in the former
+  CLI mode – no error popup any more – and the status bar shows the mode actually in use.
+- **Type-aware completion** (LSP mode): a query table can be addressed through its alias (`FROM Product
+  AS P` → `P.` gives the fields of Product); the loop variable of a query result (`for Row in Result` →
+  `Row.`) gives the columns of the selection; a variable of a known type (`var List = new Array<String>()`
+  → `List.`) and stdlib types and globals (`AccessContext.`) give their members. The parsing runs over
+  tokens, so keywords are understood in both languages (`var`/`пер`, `new`/`новый`). Properties and
+  methods are listed apart: a method carries its own icon and is inserted with parentheses. A name in
+  scope beats a type of the same name (with `List` declared, `List.` is about its type, not about the
+  `List` component).
+- The metadata tree labels (categories and subtrees) now follow the UI language – English or Russian
+  – like the rest of the extension.
+- Clicking an object, field, module or form in the tree opens its source on the left (the description
+  yaml, or the `.xbsl` for code kinds) and the properties panel / form preview on the right, reusing
+  the columns and panels already open instead of stacking new ones; the properties panel is brought to
+  the front in its own column when you click around the tree.
+- The tree stays in sync with the editor: the active object / module / form is selected in the tree
+  (while the view is visible), and a freshly added object, field, subsystem or form is revealed and
+  selected right after creation.
+- The tree can be grouped **by object classes** (the default) or **by subsystems** (objects nested
+  under their subsystem folders, subsystems nested by folder) – the tree-grouping button in the view
+  title toggles it; the choice is remembered.
+
 ## 0.11.4
 
 - README only: the deploy command details and the `xbsl.deploy.*` settings table moved to
@@ -24,7 +102,7 @@
 ## 0.11.1
 
 - New rule group **query** in the settings (needs `xbsllint` with the `query/unknown-table`
-  rule): tables of the `Запрос{...}` blocks (`ИЗ`/`СОЕДИНЕНИЕ`) are checked against the
+  rule): tables of the `Query{...}` blocks (`FROM`/`JOIN`) are checked against the
   project objects.
 - One release consolidating the 0.8.0–0.11.0 changes below.
 
@@ -130,7 +208,7 @@
   being edited.
 - New settings: `xbsl.workspaceLint` (on by default) and `xbsl.workspaceLintTimeout`
   (60000 ms; on expiry the run is stopped and logged to the XBSL output channel).
-- The *XBSL: проверить весь проект* command reuses the same machinery and result store.
+- The *XBSL: check the whole project* command reuses the same machinery and result store.
 - Activation on `workspaceContains:**/*.xbsl`, so `.yaml`-only editing sessions get
   workspace diagnostics too.
 
@@ -139,6 +217,6 @@
 - Initial release.
 - Syntax highlighting for `.xbsl` (bilingual keywords, decorators, string interpolation, generics).
 - On-the-fly diagnostics via `xbsllint --stdin --format json` (on type, debounced, and on save).
-- Command *XBSL: проверить весь проект* for a workspace-wide check (including cross-file rules).
+- Command *XBSL: check the whole project* for a workspace-wide check (including cross-file rules).
 - Settings: linter command / Python interpreter, data dir, language, rule select/ignore, run mode,
   debounce.

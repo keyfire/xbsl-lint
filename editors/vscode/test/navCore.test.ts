@@ -8,7 +8,9 @@ import * as path from "path";
 import {
   chainAt,
   IndexLookup,
+  isInQuery,
   parseIndex,
+  queryFieldEntries,
   resolveCompletions,
   resolveDefinition,
 } from "../src/navCore";
@@ -59,13 +61,13 @@ test("parseIndex: минимальный индекс нормализуется
 // --- chainAt ----------------------------------------------------------------
 
 test("chainAt: сегмент цепочки под курсором", () => {
-  const line = "Результат = Программа.ПолучитьДанныеСтраницы(Отбор);";
-  assert.deepStrictEqual(chainAt(line, on(line, "Программа")), {
-    parts: ["Программа", "ПолучитьДанныеСтраницы"],
+  const line = "Результат = Товар.ПолучитьДанные(Отбор);";
+  assert.deepStrictEqual(chainAt(line, on(line, "Товар")), {
+    parts: ["Товар", "ПолучитьДанные"],
     at: 0,
   });
-  assert.deepStrictEqual(chainAt(line, on(line, "ПолучитьДанныеСтраницы")), {
-    parts: ["Программа", "ПолучитьДанныеСтраницы"],
+  assert.deepStrictEqual(chainAt(line, on(line, "ПолучитьДанные")), {
+    parts: ["Товар", "ПолучитьДанные"],
     at: 1,
   });
   assert.strictEqual(chainAt(line, line.indexOf("=")), null);
@@ -73,128 +75,128 @@ test("chainAt: сегмент цепочки под курсором", () => {
 
 // --- resolveDefinition: xbsl ------------------------------------------------
 
-const inMain = { languageId: "xbsl", fileStem: "ГлавнаяСтраница", filePath: "Сайт/ГлавнаяСтраница.xbsl" };
+const inMain = { languageId: "xbsl", fileStem: "ФормаСписка", filePath: "Раздел/ФормаСписка.xbsl" };
 
 test("переход: голое имя объекта / корень цепочки -> yaml объекта", () => {
-  const line = "пер Ссылка: Программа.Ссылка;";
+  const line = "пер Ссылка: Товар.Ссылка;";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "Программа") }),
-    { path: "Сайт/Программа/Программа.yaml", line: 1 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "Товар") }),
+    { path: "Раздел/Товар/Товар.yaml", line: 1 }
   );
 });
 
 test("переход: Объект.ЛокальныйТип -> объявление типа", () => {
-  const line = "пер Данные: Программа.ДанныеКарточки;";
+  const line = "пер Данные: Товар.ДанныеСтроки;";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "ДанныеКарточки") }),
-    { path: "Сайт/Программа/Программа.xbsl", line: 12 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "ДанныеСтроки") }),
+    { path: "Раздел/Товар/Товар.xbsl", line: 12 }
   );
 });
 
 test("переход: Объект.ТабличнаяЧасть -> строка в yaml объекта", () => {
-  const line = "Т = Программа.Возможности;";
+  const line = "Т = Товар.Позиции;";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "Возможности") }),
-    { path: "Сайт/Программа/Программа.yaml", line: 58 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "Позиции") }),
+    { path: "Раздел/Товар/Товар.yaml", line: 58 }
   );
 });
 
 test("переход: Перечисление.Значение -> строка значения в yaml", () => {
-  const line = "Если Категория = КатегорияПрограммы.Зарплата Тогда";
+  const line = "Если Категория = ВидТовара.Розница Тогда";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "Зарплата") }),
-    { path: "Сайт/КатегорияПрограммы/КатегорияПрограммы.yaml", line: 12 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "Розница") }),
+    { path: "Раздел/ВидТовара/ВидТовара.yaml", line: 12 }
   );
 });
 
 test("переход: Модуль.Метод -> объявление метода", () => {
-  const line = "Адрес = ОбщееКлиент.АбсолютныйАдресAPI(Путь);";
+  const line = "Адрес = Общий.АбсолютныйАдрес(Путь);";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "АбсолютныйАдресAPI") }),
-    { path: "Сайт/ОбщееКлиент.xbsl", line: 5 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "АбсолютныйАдрес") }),
+    { path: "Раздел/Общий.xbsl", line: 5 }
   );
 });
 
 test("переход: метод менеджера объекта (модуль = имя объекта)", () => {
-  const line = "Данные = Программа.ПолучитьДанныеСтраницы(Отбор);";
+  const line = "Данные = Товар.ПолучитьДанные(Отбор);";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "ПолучитьДанныеСтраницы") }),
-    { path: "Сайт/Программа/Программа.xbsl", line: 40 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "ПолучитьДанные") }),
+    { path: "Раздел/Товар/Товар.xbsl", line: 40 }
   );
 });
 
 test("переход: голое имя метода в своём модуле", () => {
-  const line = "    ОбновитьСписокПрограмм();";
+  const line = "    ОбновитьСписок();";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "ОбновитьСписокПрограмм") }),
-    { path: "Сайт/ГлавнаяСтраница.xbsl", line: 27 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "ОбновитьСписок") }),
+    { path: "Раздел/ФормаСписка.xbsl", line: 27 }
   );
 });
 
 test("переход: Компоненты.X -> узел компонента в yaml формы", () => {
-  const line = "Компоненты.КнопкаПодробнее.Видимость = Ложь;";
+  const line = "Компоненты.КнопкаОткрыть.Видимость = Ложь;";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "КнопкаПодробнее") }),
-    { path: "Сайт/ГлавнаяСтраница.yaml", line: 61 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "КнопкаОткрыть") }),
+    { path: "Раздел/ФормаСписка.yaml", line: 61 }
   );
 });
 
 test("переход: Компоненты.X.Метод -> метод модуля X", () => {
-  const line = "Компоненты.КарточкаПрограммы.ПриНажатииНазад();";
+  const line = "Компоненты.КарточкаТовара.ПриНажатии();";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "ПриНажатииНазад") }),
-    { path: "Сайт/КарточкаПрограммы.xbsl", line: 15 }
+    resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "ПриНажатии") }),
+    { path: "Раздел/КарточкаТовара.xbsl", line: 15 }
   );
 });
 
 test("переход: неизвестное имя -> null (молчание)", () => {
-  const line = "НеизвестноеИмя = Программа.НетТакогоЧлена;";
+  const line = "НеизвестноеИмя = Товар.НетТакогоЧлена;";
   assert.strictEqual(resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "НеизвестноеИмя") }), null);
   assert.strictEqual(resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "НетТакогоЧлена") }), null);
 });
 
 test("переход: член семейства (Ссылка) не имеет определения -> null", () => {
-  const line = "пер С: Программа.Ссылка;";
+  const line = "пер С: Товар.Ссылка;";
   assert.strictEqual(resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "Ссылка;") }), null);
 });
 
 test("переход: глубокая цепочка без вывода типов -> null", () => {
-  const line = "Имя = Элемент.Программа.Наименование;";
+  const line = "Имя = Элемент.Товар.Наименование;";
   assert.strictEqual(resolveDefinition(lookup, { ...inMain, lineText: line, character: on(line, "Наименование") }), null);
 });
 
 // --- resolveDefinition: yaml ------------------------------------------------
 
-const inMainYaml = { languageId: "yaml", fileStem: "ГлавнаяСтраница", filePath: "Сайт/ГлавнаяСтраница.yaml" };
+const inMainYaml = { languageId: "yaml", fileStem: "ФормаСписка", filePath: "Раздел/ФормаСписка.yaml" };
 
 test("переход yaml: Обработчик: Имя -> метод в парном .xbsl", () => {
   const line = "      Обработчик: ПослеСоздания";
   assert.deepStrictEqual(
     resolveDefinition(lookup, { ...inMainYaml, lineText: line, character: on(line, "ПослеСоздания") }),
-    { path: "Сайт/ГлавнаяСтраница.xbsl", line: 3 }
+    { path: "Раздел/ФормаСписка.xbsl", line: 3 }
   );
 });
 
 test("переход yaml: Обработчик с неизвестным методом -> null, без фоллбека", () => {
-  const line = "      Обработчик: Программа";
+  const line = "      Обработчик: Товар";
   assert.strictEqual(
-    resolveDefinition(lookup, { ...inMainYaml, lineText: line, character: on(line, "Программа") }),
+    resolveDefinition(lookup, { ...inMainYaml, lineText: line, character: on(line, "Товар") }),
     null
   );
 });
 
 test("переход yaml: Тип: Объект.Ссылка -> yaml объекта (корень цепочки)", () => {
-  const line = "    Тип: КэшДанныхСервиса.НаборЗаписей";
+  const line = "    Тип: КешОстатков.НаборЗаписей";
   assert.deepStrictEqual(
-    resolveDefinition(lookup, { ...inMainYaml, lineText: line, character: on(line, "КэшДанныхСервиса") }),
-    { path: "Сайт/КэшДанныхСервиса/КэшДанныхСервиса.yaml", line: 1 }
+    resolveDefinition(lookup, { ...inMainYaml, lineText: line, character: on(line, "КешОстатков") }),
+    { path: "Раздел/КешОстатков/КешОстатков.yaml", line: 1 }
   );
 });
 
 test("переход yaml: голое имя метода не резолвится (только в xbsl)", () => {
-  const line = "  Значение: ОбновитьСписокПрограмм";
+  const line = "  Значение: ОбновитьСписок";
   assert.strictEqual(
-    resolveDefinition(lookup, { ...inMainYaml, lineText: line, character: on(line, "ОбновитьСписокПрограмм") }),
+    resolveDefinition(lookup, { ...inMainYaml, lineText: line, character: on(line, "ОбновитьСписок") }),
     null
   );
 });
@@ -206,53 +208,82 @@ function labels(entries: { label: string }[] | null): string[] {
   return entries.map((e) => e.label).sort();
 }
 
+test("isInQuery: внутри Запрос{...} истина, вне/после закрытия – ложь", () => {
+  assert.strictEqual(isInQuery("исп Р = Запрос{ ВЫБРАТЬ Товар."), true);
+  assert.strictEqual(isInQuery("var R = Query{ SELECT Item."), true); // англ. форма ключевого слова
+  assert.strictEqual(isInQuery("Запрос{ ВЫБРАТЬ Х ИЗ Т }.Выполнить(); Товар."), false);
+  assert.strictEqual(isInQuery("Данные = Товар."), false);
+});
+
+test("queryFieldEntries: стандартные + реквизиты + ТЧ, без дублей, вид field", () => {
+  const e = queryFieldEntries("Справочник", ["Цена", "Наименование"], ["Позиции"]);
+  const l = e.map((x) => x.label);
+  assert.ok(l.includes("Ссылка") && l.includes("Код") && l.includes("Наименование"));
+  assert.ok(l.includes("Цена") && l.includes("Позиции"));
+  assert.strictEqual(l.filter((x) => x === "Наименование").length, 1, "Наименование без дубля");
+  assert.ok(e.every((x) => x.kind === "field"));
+});
+
+test("дополнение: в запросе после Таблица. -> поля таблицы, а не члены объекта", () => {
+  const entries = resolveCompletions(lookup, {
+    ...inMain,
+    linePrefix: "Товар.",
+    textBefore: "исп Р = Запрос{ ВЫБРАТЬ Товар.",
+    attributesOf: (n) => (n === "Товар" ? ["Цена", "Артикул"] : undefined),
+  });
+  const l = labels(entries);
+  assert.ok(l.includes("Наименование") && l.includes("Код") && l.includes("Цена"), "поля таблицы");
+  assert.ok(!l.includes("Объект"), "члена Объект в запросе быть не должно");
+  assert.ok(entries!.every((e) => e.kind === "field"));
+});
+
 test("дополнение: после Объект. -> семейство + ТЧ + локальные типы + методы менеджера", () => {
-  const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Данные = Программа." });
+  const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Данные = Товар." });
   assert.deepStrictEqual(labels(entries), [
-    "Возможности",
     "Выборка",
-    "ДанныеКарточки",
+    "ДанныеСтроки",
     "Объект",
-    "ПолучитьДанныеСтраницы",
+    "Позиции",
+    "ПолучитьДанные",
     "Ссылка",
-    "Тарифы",
+    "Цены",
   ]);
   const kinds = new Map(entries!.map((e) => [e.label, e.kind]));
   assert.strictEqual(kinds.get("Ссылка"), "family");
-  assert.strictEqual(kinds.get("Возможности"), "tabular");
-  assert.strictEqual(kinds.get("ДанныеКарточки"), "localType");
-  assert.strictEqual(kinds.get("ПолучитьДанныеСтраницы"), "method");
+  assert.strictEqual(kinds.get("Позиции"), "tabular");
+  assert.strictEqual(kinds.get("ДанныеСтроки"), "localType");
+  assert.strictEqual(kinds.get("ПолучитьДанные"), "method");
 });
 
 test("дополнение: частично набранный член после точки не меняет список", () => {
-  const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Данные = Программа.Пол" });
-  assert.ok(labels(entries).includes("ПолучитьДанныеСтраницы"));
+  const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Данные = Товар.Пол" });
+  assert.ok(labels(entries).includes("ПолучитьДанные"));
 });
 
 test("дополнение: после Перечисление. -> значения", () => {
-  const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Категория = КатегорияПрограммы." });
-  assert.deepStrictEqual(labels(entries), ["Бухгалтерия", "Зарплата", "Отраслевые"]);
+  const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Категория = ВидТовара." });
+  assert.deepStrictEqual(labels(entries), ["Опт", "Прочее", "Розница"]);
   assert.ok(entries!.every((e) => e.kind === "enumMember"));
 });
 
 test("дополнение: после Компоненты. -> компоненты текущей формы", () => {
   const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Компоненты." });
-  assert.deepStrictEqual(labels(entries), ["КнопкаПодробнее", "СписокПрограмм"]);
+  assert.deepStrictEqual(labels(entries), ["КнопкаОткрыть", "Таблица"]);
   assert.strictEqual(entries![0].kind, "component");
 });
 
 test("дополнение: после Компоненты.X. -> методы модуля X", () => {
-  const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Компоненты.КарточкаПрограммы." });
-  assert.deepStrictEqual(labels(entries), ["ПриНажатииНазад"]);
+  const entries = resolveCompletions(lookup, { ...inMain, linePrefix: "Компоненты.КарточкаТовара." });
+  assert.deepStrictEqual(labels(entries), ["ПриНажатии"]);
   assert.strictEqual(entries![0].kind, "method");
 });
 
 test("дополнение yaml: после Тип: -> имена объектов проекта с видом", () => {
   const entries = resolveCompletions(lookup, { ...inMainYaml, linePrefix: "    Тип: " });
-  assert.deepStrictEqual(labels(entries), ["ВидПолезного", "КатегорияПрограммы", "КэшДанныхСервиса", "Программа"]);
+  assert.deepStrictEqual(labels(entries), ["ВидТовара", "КешОстатков", "Склад", "Товар"]);
   const byLabel = new Map(entries!.map((e) => [e.label, e]));
-  assert.strictEqual(byLabel.get("КатегорияПрограммы")!.kind, "enum");
-  assert.strictEqual(byLabel.get("Программа")!.detail, "Справочник");
+  assert.strictEqual(byLabel.get("ВидТовара")!.kind, "enum");
+  assert.strictEqual(byLabel.get("Товар")!.detail, "Справочник");
 });
 
 test("дополнение: Тип: в xbsl не срабатывает", () => {

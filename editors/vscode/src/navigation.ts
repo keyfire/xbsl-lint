@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { spawn } from "child_process";
+import * as fs from "fs";
 import * as path from "path";
 import { LinterConfig } from "./report";
 import {
@@ -17,6 +18,7 @@ import {
   resolveDefinition,
   Target,
 } from "./navCore";
+import { parseInternals } from "./metadataCore";
 
 const REFRESH_DELAY = 1500; // debounce (ms) for the on-save index rebuild
 const OUTPUT_LIMIT = 64 * 1024 * 1024; // guard against a runaway process
@@ -25,6 +27,7 @@ const KIND_MAP: Record<CompletionKind, vscode.CompletionItemKind> = {
   object: vscode.CompletionItemKind.Class,
   enum: vscode.CompletionItemKind.Enum,
   family: vscode.CompletionItemKind.Class,
+  field: vscode.CompletionItemKind.Field,
   tabular: vscode.CompletionItemKind.Field,
   localType: vscode.CompletionItemKind.Struct,
   enumMember: vscode.CompletionItemKind.EnumMember,
@@ -158,6 +161,23 @@ class IndexCache {
   }
 }
 
+// Реквизиты объекта из его yaml (для дополнения полей в запросе): реквизитов нет в индексе, читаем
+// файл по пути из индекса и разбираем. Тихо возвращаем undefined при любой неудаче.
+function objectAttributes(cache: IndexCache, name: string): string[] | undefined {
+  const obj = cache.lookup?.objectByName(name);
+  if (!obj || !cache.rootFsPath || !obj.path) {
+    return undefined;
+  }
+  try {
+    const fsPath = path.join(cache.rootFsPath, ...obj.path.split("/"));
+    const raw = fs.readFileSync(fsPath, "utf8");
+    const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    return parseInternals(text)?.attributes.map((a) => a.name);
+  } catch {
+    return undefined;
+  }
+}
+
 export function registerNavigation(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
@@ -250,10 +270,15 @@ export function registerNavigation(
       if (!cache || !cache.lookup) {
         return undefined;
       }
+      const linePrefix = doc.lineAt(position.line).text.slice(0, position.character);
+      // textBefore считаем только при дополнении члена (после точки) – для распознавания блока Запрос{...}.
+      const memberDot = /[A-Za-zА-Яа-яЁё_][A-Za-z0-9А-Яа-яЁё_]*\.[A-Za-z0-9А-Яа-яЁё_]*$/.test(linePrefix);
       const entries = resolveCompletions(cache.lookup, {
         languageId: doc.languageId,
-        linePrefix: doc.lineAt(position.line).text.slice(0, position.character),
+        linePrefix,
         fileStem: fileStem(doc.uri),
+        textBefore: memberDot ? doc.getText(new vscode.Range(new vscode.Position(0, 0), position)) : undefined,
+        attributesOf: (name) => objectAttributes(cache, name),
       });
       if (!entries || entries.length === 0) {
         return undefined;

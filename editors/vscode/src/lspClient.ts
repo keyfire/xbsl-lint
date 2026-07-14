@@ -36,7 +36,8 @@ function spawnPlan(cfg: vscode.WorkspaceConfiguration): SpawnPlan {
 
 export async function activateLsp(
   context: vscode.ExtensionContext,
-  output: vscode.OutputChannel
+  output: vscode.OutputChannel,
+  chosenExplicitly = true
 ): Promise<boolean> {
   const cfg = vscode.workspace.getConfiguration("xbsl");
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -88,6 +89,10 @@ export async function activateLsp(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     output.appendLine(vscode.l10n.t('XBSL LSP: the server failed to start ({0}): {1}', plan.command, msg));
+    client = undefined;
+    if (!chosenExplicitly) {
+      return false;  // режим не выбирали - молча работаем как раньше (CLI), подробности в панели вывода
+    }
     const install = vscode.l10n.t("Install xbsllint[lsp]");
     void vscode.window
       .showErrorMessage(
@@ -101,7 +106,6 @@ export async function activateLsp(
           runInstallTask("xbsllint[lsp]", pipInstallCommand("xbsllint[lsp]"), "workbench.action.reloadWindow");
         }
       });
-    client = undefined;
     return false;
   }
   output.appendLine(vscode.l10n.t('XBSL LSP: server started ({0} {1}).', plan.command, args.join(" ")));

@@ -65,12 +65,12 @@ function shell(body: string, nonce: string): string {
   body.theme-light {
     --fp-bg: #ffffff; --fp-fg: #1f2328; --fp-border: #d5d9de; --fp-soft: rgba(31,35,40,.07);
     --fp-input-bg: #ffffff; --fp-input-border: #c3c9d0;
-    --fp-btn-bg: #1668dc; --fp-btn-fg: #ffffff; --fp-link: #1668dc; --fp-focus: #1668dc;
+    --fp-btn-bg: #ffdd00; --fp-btn-fg: #1c1c1f; --fp-link: #1668dc; --fp-focus: #1668dc;
   }
   body.theme-dark {
     --fp-bg: #1e1e1e; --fp-fg: #e6e6e6; --fp-border: #474747; --fp-soft: rgba(230,230,230,.09);
     --fp-input-bg: #2b2b2b; --fp-input-border: #5a5a5a;
-    --fp-btn-bg: #2f81f7; --fp-btn-fg: #ffffff; --fp-link: #58a6ff; --fp-focus: #2f81f7;
+    --fp-btn-bg: #ffdd00; --fp-btn-fg: #1c1c1f; --fp-link: #58a6ff; --fp-focus: #2f81f7;
   }
   body { background: var(--fp-bg); color: var(--fp-fg); font-family: var(--vscode-font-family, "Segoe UI", sans-serif);
     font-size: 14px; padding: 0 14px 14px; margin: 0; }
@@ -102,7 +102,8 @@ function shell(body: string, nonce: string): string {
   .inp { border: 1px solid var(--fp-input-border); background: var(--fp-input-bg); border-radius: 4px; padding: 5px 9px; display: flex; justify-content: space-between; gap: 8px; }
   .dd { opacity: .6; }
   .chk { display: inline-block; }
-  .btn { border: 1px solid var(--fp-btn-bg); background: transparent; color: var(--fp-fg); border-radius: 4px; padding: 5px 14px; font-size: inherit; cursor: pointer; }
+  .btn { border: 1px solid var(--fp-border); background: transparent; color: var(--fp-fg); border-radius: 4px; padding: 5px 14px; font-size: inherit; cursor: pointer; }
+  /* Основная кнопка – нативный жёлтый Элемента (--themeColorPrimaryBtnBg #fd0, текст #1c1c1f). */
   .btn.primary { background: var(--fp-btn-bg); color: var(--fp-btn-fg); border-color: var(--fp-btn-bg); }
   .btn.link { border-color: transparent; color: var(--fp-link); padding-left: 4px; padding-right: 4px; }
   .img { width: 110px; height: 74px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--fp-border); border-radius: 4px; font-size: 24px; background: var(--fp-soft); }
@@ -476,13 +477,19 @@ function isViewState(v: unknown): v is ViewState {
   return !!s && typeof s.zoom === "number" && (s.theme === "light" || s.theme === "dark" || s.theme === "editor");
 }
 
-function openPreview(context: vscode.ExtensionContext): void {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor || editor.document.languageId !== "yaml") {
-    void vscode.window.showInformationMessage(vscode.l10n.t("XBSL: open a form yaml (КомпонентИнтерфейса) to preview it."));
-    return;
+// uri задаётся при вызове из дерева (форма уже открыта слева) – тогда цель берём из него, а не из
+// активного редактора; из кнопки заголовка uri нет, цель – активный yaml.
+function openPreview(context: vscode.ExtensionContext, uri?: vscode.Uri): void {
+  let docUri = uri;
+  if (!docUri) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== "yaml") {
+      void vscode.window.showInformationMessage(vscode.l10n.t("XBSL: open a form yaml (КомпонентИнтерфейса) to preview it."));
+      return;
+    }
+    docUri = editor.document.uri;
   }
-  target = editor.document.uri;
+  target = docUri;
   if (!panel) {
     panel = vscode.window.createWebviewPanel(VIEW_TYPE, "XBSL", vscode.ViewColumn.Beside, {
       enableScripts: true,
@@ -528,7 +535,9 @@ export function registerFormPreview(context: vscode.ExtensionContext): void {
     view = saved;
   }
   context.subscriptions.push(
-    vscode.commands.registerCommand("xbsl.previewForm", () => openPreview(context)),
+    vscode.commands.registerCommand("xbsl.previewForm", (arg?: unknown) =>
+      openPreview(context, arg instanceof vscode.Uri ? arg : undefined)
+    ),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       updateContext(editor);
       // Панель следует за активным yaml формы – как предпросмотр Markdown.
