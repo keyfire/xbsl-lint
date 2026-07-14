@@ -2,6 +2,10 @@
 
 [Русский](https://github.com/keyfire/xbsl-lint/blob/main/editors/vscode/CHANGELOG.ru.md) · **English**
 
+> Metadata names (yaml keys such as `Реквизиты` or `Многострочная`) exist in Russian only – the platform
+> documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
+> types use their English forms. See the [note on names](README.md#navigation-and-completion).
+
 ## 0.12.0
 
 - New **1C:Element** container in the Activity Bar (its own icon): the project elements grouped by
@@ -42,13 +46,14 @@
 - The form preview's primary button now uses the platform's native yellow (`#fd0`, dark text)
   instead of blue.
 - The **type** of an attribute / dimension / resource / field is edited through a combo in the
-  properties panel: primitives, `<Object>.Ссылка?` references and the project enumerations are
+  properties panel: primitives, reference types (`<Object>.Ссылка?`) and the project enumerations are
   offered as suggestions, and any other type can still be typed in.
-- String-only field properties (`Многострочная`) show in the properties panel only for the string type
-  (`Строка` in the yaml) and are dropped when the type is changed to another one.
-- A **Standard attributes** group for catalogs/documents lists the predefined attributes
-  (Наименование/Код, Номер/Дата) even when they are not in the yaml; editing a property in the panel
-  materializes the entry into `Реквизиты` (no id, like a standard attribute).
+- The multiline flag (`Многострочная`) shows in the properties panel only for the string type
+  (`Строка`) and is dropped when the type is changed to another one.
+- A **Standard attributes** group for catalogs/documents lists the predefined attributes – name and
+  code for a catalog, number and date for a document (`Наименование`/`Код`, `Номер`/`Дата`) – even when
+  they are not in the yaml; editing a property in the panel materializes the entry into the attributes
+  section (`Реквизиты`), without an id, as a standard attribute.
 - A **status bar** item shows the extension build time, the xbsllint version and the completion mode
   (CLI index / LSP) – handy for telling which build is actually running.
 - In a `Query{...}` block, completion after `<Table>.` offers the table's **fields** (standard fields,
@@ -110,7 +115,8 @@
 
 - The form preview gained a **properties panel**, like the platform web editor: a click on an
   element selects it and opens a separate *Properties* tab (drag it wherever suits) – enums as
-  dropdowns, `Растягивать*` as Auto / Истина / Ложь toggles, everything else as text; the
+  dropdowns, the stretch flags (`Растягивать*`) as Auto / `Истина` / `Ложь` toggles, everything
+  else as text; the
   curated standard set of the component plus every property present in the yaml. Edits are
   applied to the yaml document as precise text edits (undo works); an empty value / *(auto)*
   removes the property. Selecting and editing also position the yaml editor on the affected
@@ -195,8 +201,8 @@
 
 - Go to definition and completion powered by the project index (`xbsllint index`, with the
   `--index` spelling probed as a fallback): objects, tabular sections, local types, enum values,
-  methods, form components, yaml `Обработчик:` / `Тип:`. Silent when the installed linter has no
-  index command.
+  methods, form components, the yaml handler and type keys (`Обработчик:` / `Тип:`). Silent when
+  the installed linter has no index command.
 - New setting `xbsl.navigation.enabled` (default `true`).
 
 ## 0.2.0

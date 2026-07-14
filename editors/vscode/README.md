@@ -19,7 +19,7 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
   carry the rule id (e.g. `code/brackets`) and severity.
 - **Workspace diagnostics** – saving any `.xbsl`/`.yaml` file runs the linter over the whole
   workspace folder in the background, so project-scope rules (`code/unknown-type`,
-  `yaml/unknown-type`, `Ид` uniqueness) show up right in the editor, across all files.
+  `yaml/unknown-type`, id (`Ид`) uniqueness) show up right in the editor, across all files.
   Controlled by `xbsl.workspaceLint` (on by default).
 - **Whole-project check** – the command *XBSL: check the whole project* runs the same
   workspace-wide check on demand.
@@ -79,8 +79,17 @@ output channel, no popups.
 
 > **A note on names.** Code keywords, literals and the names of stdlib types are bilingual, and this
 > README spells them in English (`var`, `new`, `Query{}`, `Array<String>`, `True`). Metadata names are
-> not: the platform documents them in Russian only, so yaml keys, type families and component
-> properties keep their Russian spelling here as well (`Реквизиты`, `Тип:`, `Ссылка`, `Компоненты`).
+> not – the platform documents them in Russian only – so yaml keys and type members appear here exactly
+> as they are written in the yaml. The ones this README uses:
+>
+> | In the yaml | Means |
+> | --- | --- |
+> | `Реквизиты` · `Измерения` · `Ресурсы` · `ТабличныеЧасти` | attributes · dimensions · resources · tabular sections |
+> | `Ид` · `Имя` · `Тип` · `Обработчик` | id · name · type · handler |
+> | `Ссылка` · `Объект` | the reference / the object of a type family |
+> | `Компоненты` | the components of a form |
+> | `Многострочная` · `Компоновка` · `Растягивать*` · `Страницы` | multiline · layout · stretch flags · tabs |
+> | `Истина` · `Ложь` | true · false |
 
 **Completion** (triggered by `.` and `:`):
 
@@ -143,7 +152,7 @@ newlines) are left to `xbsllint --fix` on the command line.
 | `xbsl.linter.ignore` | – | Exclude these rules. |
 | `xbsl.rules` | `{}` | Per-rule levels and disabling: `{"style": "off", "code/brackets": "error"}`. See [Rules](#rules-levels-and-disabling). |
 | `xbsl.linter.debounce` | `300` | Delay (ms) before linting while typing. |
-| `xbsl.projectRoot` | – | Sources root for project-wide runs and the navigation index, relative to the workspace folder (or absolute). Empty – the whole folder. Set it when the repository holds examples or copies next to the project: otherwise project-scope rules (`Ид` uniqueness etc.) cross-fire between directories. |
+| `xbsl.projectRoot` | – | Sources root for project-wide runs and the navigation index, relative to the workspace folder (or absolute). Empty – the whole folder. Set it when the repository holds examples or copies next to the project: otherwise project-scope rules (id (`Ид`) uniqueness etc.) cross-fire between directories. |
 | `xbsl.workspaceLint` | `true` | Full workspace run on every save of a `.xbsl`/`.yaml` file. |
 | `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 | `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |
@@ -197,7 +206,8 @@ global theme and other languages stay untouched; the extension manages only its 
 ![Form preview: wireframe, themes and live updates](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/form-preview.gif)
 
 The command **XBSL: form preview** (`xbsl.previewForm`, also a preview button in the editor
-title of form yamls – files with `КомпонентИнтерфейса`) renders a wireframe of a 1C:Element
+title of form yamls – files whose element kind is an interface component, `КомпонентИнтерфейса`)
+renders a wireframe of a 1C:Element
 form from its yaml: nested vertical/horizontal groups, labels, input fields with captions and
 `=bindings`, buttons (the primary one filled), checkboxes, tables with their real columns,
 switchable tabs (`Страницы`), cards, image and HTML-container placeholders, and the form's
@@ -212,8 +222,9 @@ the default), dark, or the editor theme – the choice is remembered.
 
 **Properties panel.** A click on an element selects it and opens a separate **Properties**
 panel (its own tab – drag it below or aside, wherever suits), like the platform web editor:
-enums as dropdowns (`Компоновка`, alignments, spacings, widths, button kinds), `Растягивать*`
-as Auto / Истина / Ложь toggles, everything else as text – the component's standard set plus
+enums as dropdowns (the layout `Компоновка`, alignments, spacings, widths, button kinds), the
+stretch flags (`Растягивать*`) as Auto / `Истина` / `Ложь` toggles, everything else as text – the
+component's standard set plus
 every property present in the yaml (object values are shown read-only). Edits land in the
 yaml document as precise text edits, so the regular undo works; an empty value / *(auto)*
 removes the property. Selecting an element and every edit also position the yaml editor on
@@ -243,17 +254,17 @@ structure into **Fields**; client-work parameters into **Parameters**; an HTTP s
 templates** with their methods.
 
 **Clicks.** An object or a field opens the **properties panel** on the right (a field's **type** is a
-combo of primitives, `<Object>.Ссылка?` references and the project enumerations, and still accepts a
-typed-in value); a common module opens its `.xbsl`; a form opens the preview. The context menu adds
-*Properties*, open description / module.
+combo of primitives, reference types (`<Object>.Ссылка?`) and the project enumerations, and still
+accepts a typed-in value); a common module opens its `.xbsl`; a form opens the preview. The context
+menu adds *Properties*, open description / module.
 
 **Properties panel** (on the right, like the form preview). Scalar properties are edited in place:
 dropdowns for the visibility and environment, a true/false toggle, text for the rest. The id and the
 element kind are read-only; collections are edited in the tree. Edits are surgical (undo works); save
 the file (Ctrl+S) to refresh the tree.
 
-Composite (nested) properties – `ВыравниваниеСодержимогоПоГоризонтали { ... }` and the like – are
-shown but not editable: edit those in the yaml.
+Composite (nested) properties – a content alignment, say (`ВыравниваниеСодержимогоПоГоризонтали
+{ ... }`) – are shown but not editable: edit those in the yaml.
 
 **Creating objects.** A category root has an **Add &lt;class&gt;** action (Add catalog, Add document,
 Add enumeration, Add information/accumulation register, Add common module, Add HTTP service, Add
