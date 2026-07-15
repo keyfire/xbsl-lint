@@ -154,7 +154,7 @@ class RuleDocActionProvider implements vscode.CodeActionProvider {
         vscode.l10n.t("XBSL: documentation for the rule {0}", rule),
         vscode.CodeActionKind.QuickFix
       );
-      action.command = { command: "xbsl.docs.open", title: "", arguments: [doc.page] };
+      action.command = { command: "xbsl.docs.open", title: "", arguments: [doc.page, doc.anchor] };
       action.diagnostics = [d];
       actions.push(action);
     }
@@ -176,7 +176,7 @@ export function registerDocs(context: vscode.ExtensionContext): void {
       new RuleDocActionProvider(),
       { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
     ),
-    vscode.commands.registerCommand("xbsl.docs.open", (id: string) => openPage(context, id)),
+    vscode.commands.registerCommand("xbsl.docs.open", (id: string, anchor?: string) => openPage(context, id, anchor)),
     vscode.commands.registerCommand("xbsl.docs.search", () => searchDocs(context)),
     vscode.commands.registerCommand("xbsl.docs.showForSymbol", () => openForSymbol(context)),
     vscode.commands.registerCommand("xbsl.docs.refresh", () => provider.refresh())

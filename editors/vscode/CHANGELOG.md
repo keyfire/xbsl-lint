@@ -6,6 +6,12 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.15.2
+
+- Opening a document from a rule or a link now scrolls to the relevant section (anchor) instead of
+  the top of the page: `naming/module-suffix` lands on the general naming rules, `project/version` on
+  the "Версия" section, and so on. Section headings in the documentation keep their anchors.
+
 ## 0.15.1
 
 - The standard's document link from a diagnostic now opens the section **inside VS Code** (the

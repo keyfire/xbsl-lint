@@ -43,7 +43,7 @@ async function inlineImages(html: string): Promise<string> {
   return html;
 }
 
-function shell(bodyHtml: string, sourceUrl: string | undefined, n: string): string {
+function shell(bodyHtml: string, sourceUrl: string | undefined, anchor: string | undefined, n: string): string {
   const source = sourceUrl
     ? `<a class="src" href="ext:${esc(sourceUrl)}">${esc(vscode.l10n.t("Primary source"))}</a>`
     : "";
@@ -87,13 +87,22 @@ function shell(bodyHtml: string, sourceUrl: string | undefined, n: string): stri
     if (!a) { return; }
     const href = a.getAttribute("href") || "";
     if (href.startsWith("#")) {
-      e.preventDefault();
-      vsapi.postMessage({ type: "open", id: href.slice(1).split("#")[0] });
+      const rest = href.slice(1);
+      if (rest.includes("/")) {           // ссылка на другую страницу (возможно с якорем)
+        e.preventDefault();
+        const h = rest.indexOf("#");
+        vsapi.postMessage({ type: "open", id: h < 0 ? rest : rest.slice(0, h), anchor: h < 0 ? undefined : rest.slice(h + 1) });
+      }                                   // иначе – якорь этой же страницы: нативная прокрутка
     } else if (href.startsWith("ext:")) {
       e.preventDefault();
       vsapi.postMessage({ type: "external", url: href.slice(4) });
     }
   });
+  const anchor = ${JSON.stringify(anchor || "")};
+  if (anchor) {
+    const el = document.getElementById(anchor);
+    if (el) { el.scrollIntoView({ block: "start" }); }
+  }
 </script></body></html>`;
 }
 
@@ -114,7 +123,7 @@ function ensurePanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
       return;
     }
     if (m.type === "open" && typeof m.id === "string") {
-      void openPage(context, m.id);
+      void openPage(context, m.id, typeof m.anchor === "string" ? m.anchor : undefined);
     } else if (m.type === "external" && typeof m.url === "string") {
       void vscode.env.openExternal(vscode.Uri.parse(m.url));
     }
@@ -122,21 +131,21 @@ function ensurePanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
   return panel;
 }
 
-async function render(context: vscode.ExtensionContext, page: DocPage): Promise<void> {
+async function render(context: vscode.ExtensionContext, page: DocPage, anchor?: string): Promise<void> {
   const p = ensurePanel(context);
   p.title = page.title || vscode.l10n.t("Documentation");
-  p.webview.html = shell(await inlineImages(page.html), page.url || undefined, nonce());
+  p.webview.html = shell(await inlineImages(page.html), page.url || undefined, anchor, nonce());
   openListener?.(page.id); // спозиционировать дерево "Содержание" на этом документе
 }
 
-export async function openPage(context: vscode.ExtensionContext, id: string): Promise<void> {
+export async function openPage(context: vscode.ExtensionContext, id: string, anchor?: string): Promise<void> {
   const page = await docsPage(id);
   if (!page) {
     const p = ensurePanel(context);
-    p.webview.html = shell(`<p class="empty">${esc(vscode.l10n.t("Page not found."))}</p>`, undefined, nonce());
+    p.webview.html = shell(`<p class="empty">${esc(vscode.l10n.t("Page not found."))}</p>`, undefined, undefined, nonce());
     return;
   }
-  await render(context, page);
+  await render(context, page, anchor);
 }
 
 // Правый клик на переменной/типе в редакторе: спросить сервер, к какой странице ведёт символ.

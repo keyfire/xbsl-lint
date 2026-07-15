@@ -136,9 +136,14 @@ def _clean(raw: str) -> tuple[str, str]:
 
 
 def _strip_attrs(m: re.Match) -> str:
-    """<h2 class=...> -> <h2>, </p> -> </p> (сохраняем только имя тега и слэш закрытия)."""
+    """<h2 class=... id=x> -> <h2 id=x>, прочее -> <тег> (у заголовков сохраняем id-якорь раздела)."""
+    tag = m.group(0)
     slash = m.group(1)
-    name = m.group(0)[1 + len(slash):].split()[0].rstrip(">/")
+    name = tag[1 + len(slash):].split()[0].rstrip(">/")
+    if not slash and name in ("h2", "h3", "h4", "h5"):
+        mid = re.search(r'\bid="([^"]+)"', tag)
+        if mid:
+            return f'<{name} id="{mid.group(1)}">'
     return f"<{slash}{name}>"
 
 

@@ -7,15 +7,27 @@ import * as vscode from "vscode";
 
 const DOCS_ORIGIN = "https://1cmycloud.com/docs/help/";
 
-// Соответствие правило/группа -> страница документации (id как в docs.sqlite / дереве).
-const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string }> = [
-  { match: (r) => r.startsWith("naming/"), page: "topics/project-element-names-standard" },
-  { match: (r) => r.startsWith("project/"), page: "topics/project-properties-standard" },
-  { match: (r) => r === "query/in-subquery-composite", page: "topics/in-expression" },
+const NAMES = "topics/project-element-names-standard";
+const PROPS = "topics/project-properties-standard";
+
+// Соответствие правило/группа -> страница документации + якорь раздела (id заголовка на странице).
+// Конкретные правила раньше групповых. Якоря – id заголовков в docs.sqlite (см. extract_docs).
+const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string; anchor?: string }> = [
+  { match: (r) => r === "naming/presentation", page: NAMES, anchor: "2-представления-элементов-проекта" },
+  { match: (r) => r.startsWith("naming/"), page: NAMES, anchor: "1-общие-правила-наименования" },
+  { match: (r) => r === "project/presentation", page: PROPS, anchor: "представление" },
+  { match: (r) => r === "project/version", page: PROPS, anchor: "версия" },
+  { match: (r) => r.startsWith("project/"), page: PROPS, anchor: "поставщик" }, // Поставщик + Имя
+  {
+    match: (r) => r === "query/in-subquery-composite",
+    page: "topics/in-expression",
+    anchor: "использование-выражения-в-с-подзапросом-для-выражений-составного-типа",
+  },
 ];
 
 export interface RuleDoc {
   page: string; // id страницы для xbsl.docs.open (панель + позиционирование дерева)
+  anchor?: string; // id заголовка раздела на странице (прокрутка к нужному месту)
   url: string; // канонический адрес на сайте документации
 }
 
@@ -24,18 +36,18 @@ export function ruleDoc(rule: string | undefined): RuleDoc | undefined {
     return undefined;
   }
   const hit = RULE_DOCS.find((d) => d.match(rule));
-  return hit ? { page: hit.page, url: DOCS_ORIGIN + hit.page + "/" } : undefined;
+  return hit ? { page: hit.page, anchor: hit.anchor, url: DOCS_ORIGIN + hit.page + "/" } : undefined;
 }
 
 // Код диагностики: у правила со стандартом значок правила в "Проблемах" становится ссылкой,
-// открывающей раздел ВНУТРИ VS Code (панель "Документация" + позиционирование дерева) командой
-// xbsl.docs.open, а не внешний сайт. У прочих правил – просто идентификатор.
+// открывающей нужный РАЗДЕЛ ВНУТРИ VS Code (панель "Документация" + дерево + прокрутка к якорю)
+// командой xbsl.docs.open, а не внешний сайт. У прочих правил – просто идентификатор.
 export function docCode(rule: string): string | { value: string; target: vscode.Uri } {
   const doc = ruleDoc(rule);
   if (!doc) {
     return rule;
   }
-  const args = encodeURIComponent(JSON.stringify([doc.page]));
+  const args = encodeURIComponent(JSON.stringify(doc.anchor ? [doc.page, doc.anchor] : [doc.page]));
   return { value: rule, target: vscode.Uri.parse(`command:xbsl.docs.open?${args}`) };
 }
 
