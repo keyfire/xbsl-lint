@@ -21,15 +21,16 @@ export interface DocPage {
   title: string;
   qualified: string;
   availability: string;
-  parent: string;
   url: string;
   html: string;
 }
 
+// Узел курируемого дерева "Содержание": раздел-вкладка / категория / ссылка на страницу.
 export interface DocNode {
-  id: string;
-  parent: string;
-  title: string;
+  node: number;
+  parent: number | null;
+  label: string;
+  page: string | null;
   kind: string;
 }
 

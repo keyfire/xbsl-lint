@@ -23,16 +23,24 @@ def _has_fts5() -> bool:
 pytestmark = pytest.mark.skipif(not _has_fts5(), reason="в этой сборке SQLite нет FTS5")
 
 _VER = "9.9.9+0"
+_ARRAY = "stdlib/element/xbsl/Std/Collections/Array_ru"
+_QUERY = "stdlib/element/xbsl/Std/Database/Query_ru"
+# id, kind, title, qualified, availability, url, html, text(для FTS)
 _PAGES = [
-    # id, kind, title, qualified, availability, parent, url, html, text
-    ("Collections/Array_ru", "type", "Массив", "Стд::Коллекции::Массив", "КлиентИСервер",
-     "Collections", "https://host/docs/help/stdlib/element/xbsl/Std/Collections/Array_ru/",
+    (_ARRAY, "type", "Массив", "Стд::Коллекции::Массив", "КлиентИСервер",
+     f"https://host/docs/help/{_ARRAY}/",
      '<h1>Массив</h1><p>Динамический массив значений. <img src="assets/i.png"></p>',
      "Массив Динамический массив значений добавить элемент"),
-    ("Database/Query_ru", "type", "Запрос", "Стд::БазаДанных::Запрос", "Сервер",
-     "Database", "https://host/docs/help/stdlib/element/xbsl/Std/Database/Query_ru/",
+    (_QUERY, "type", "Запрос", "Стд::БазаДанных::Запрос", "Сервер",
+     f"https://host/docs/help/{_QUERY}/",
      "<h1>Запрос</h1><p>Выполнение запросов к базе данных.</p>",
      "Запрос Выполнение запросов к базе данных выборка"),
+]
+# node, parent, ord, label, page, kind
+_TREE = [
+    (1, None, 0, "Типы языка", None, "section"),
+    (2, 1, 0, "Массив", _ARRAY, "link"),
+    (3, 1, 1, "Запрос", _QUERY, "link"),
 ]
 
 
@@ -43,22 +51,21 @@ def docs_root(tmp_path):
     ver_dir.mkdir()
     con = sqlite3.connect(ver_dir / "docs.sqlite")
     con.executescript(ex._SCHEMA)
-    for i, p in enumerate(_PAGES):
-        con.execute("INSERT INTO pages VALUES(?,?,?,?,?,?,?,?)", p[:8])  # text – только в FTS
+    for p in _PAGES:
+        con.execute("INSERT INTO pages VALUES(?,?,?,?,?,?,?)", p[:7])  # text – только в FTS
         con.execute("INSERT INTO pages_fts(id,title,qualified,text) VALUES(?,?,?,?)",
-                    (p[0], p[2], p[3], p[8]))
-        con.execute("INSERT INTO tree(id,parent,ord) VALUES(?,?,?)", (p[0], p[5], i))
-    con.execute("INSERT INTO assets VALUES(?,?,?)", ("assets/i.png", "image/png", b"\x89PNG\r\n"))
+                    (p[0], p[2], p[3], p[7]))
+    con.executemany("INSERT INTO tree VALUES(?,?,?,?,?,?)", _TREE)
     con.commit()
     con.close()
+    (ver_dir / "assets").mkdir()
+    (ver_dir / "assets" / "i.png").write_bytes(b"\x89PNG\r\n\x1a\n")  # картинка файлом рядом с базой
     (tmp_path / "index.json").write_text(
         '{"available": ["%s"], "default": "%s"}' % (_VER, _VER), encoding="utf-8"
     )
     dataset.set_data_root(tmp_path)
-    docs._connect.cache_clear()
     yield tmp_path
     dataset.set_data_root(None)
-    docs._connect.cache_clear()
 
 
 def test_available(docs_root):
@@ -67,11 +74,10 @@ def test_available(docs_root):
 
 def test_available_false_without_data(tmp_path):
     dataset.set_data_root(tmp_path)  # пусто, индекса нет
-    docs._connect.cache_clear()
     try:
         assert docs.available() is False
         assert docs.search("массив") == []
-        assert docs.page("Collections/Array_ru") is None
+        assert docs.page(_ARRAY) is None
         assert docs.tree() == []
         assert docs.for_symbol("Массив") is None
     finally:
@@ -80,13 +86,13 @@ def test_available_false_without_data(tmp_path):
 
 def test_search_ranks_and_returns_url(docs_root):
     hits = docs.search("массив")
-    assert hits and hits[0]["id"] == "Collections/Array_ru"
-    assert hits[0]["url"].endswith("Collections/Array_ru/")
+    assert hits and hits[0]["id"] == _ARRAY
+    assert hits[0]["url"].endswith("/Array_ru/")
     assert "title" in hits[0] and "snippet" in hits[0]
 
 
 def test_search_multiword(docs_root):
-    assert docs.search("выполнение запросов")[0]["id"] == "Database/Query_ru"
+    assert docs.search("выполнение запросов")[0]["id"] == _QUERY
 
 
 def test_search_empty_query(docs_root):
@@ -95,26 +101,29 @@ def test_search_empty_query(docs_root):
 
 
 def test_page(docs_root):
-    p = docs.page("Database/Query_ru")
+    p = docs.page(_QUERY)
     assert p["title"] == "Запрос" and p["availability"] == "Сервер"
-    assert p["url"].endswith("Database/Query_ru/") and "<h1>" in p["html"]
+    assert p["url"].endswith("/Query_ru/") and "<h1>" in p["html"]
+    assert "parent" not in p
     assert docs.page("нет") is None
 
 
 def test_for_symbol_exact_then_search(docs_root):
-    assert docs.for_symbol("Массив") == "Collections/Array_ru"      # точный заголовок
-    assert docs.for_symbol("Стд::БазаДанных::Запрос".split("::")[-1]) == "Database/Query_ru"
-    assert docs.for_symbol("выборка") == "Database/Query_ru"        # только полнотекстом
+    assert docs.for_symbol("Массив") == _ARRAY                      # точный заголовок
+    assert docs.for_symbol("Запрос") == _QUERY
+    assert docs.for_symbol("выборка") == _QUERY                     # только полнотекстом
     assert docs.for_symbol("такого-нет-нигде") is None
 
 
 def test_tree(docs_root):
-    t = docs.tree()
-    assert {n["id"] for n in t} == {"Collections/Array_ru", "Database/Query_ru"}
-    assert all("title" in n and "parent" in n for n in t)
+    nodes = {n["node"]: n for n in docs.tree()}
+    assert set(nodes) == {1, 2, 3}
+    assert nodes[1]["parent"] is None and nodes[1]["kind"] == "section" and nodes[1]["page"] is None
+    assert nodes[2]["parent"] == 1 and nodes[2]["label"] == "Массив" and nodes[2]["page"] == _ARRAY
 
 
 def test_asset(docs_root):
     a = docs.asset("assets/i.png")
     assert a["mime"] == "image/png" and a["bytes"].startswith(b"\x89PNG")
     assert docs.asset("assets/нет.png") is None
+    assert docs.asset("../../secret.txt") is None   # выход за каталог запрещён

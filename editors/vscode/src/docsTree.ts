@@ -9,17 +9,18 @@ import { DocNode, docsSearch, docsTree } from "./docsClient";
 import { openForSymbol, openPage } from "./docsPanel";
 
 const KIND_ICON: Record<string, string> = {
-  type: "symbol-class",
-  method: "symbol-method",
-  annotation: "symbol-property",
-  member: "symbol-field",
+  section: "book",
+  category: "symbol-namespace",
+  link: "symbol-file",
 };
 
-class DocsTreeProvider implements vscode.TreeDataProvider<string> {
+const ROOT = -1; // ключ группы разделов-вкладок (у них parent = null)
+
+class DocsTreeProvider implements vscode.TreeDataProvider<number> {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changed.event;
-  private nodes = new Map<string, DocNode>();
-  private children = new Map<string, string[]>();
+  private nodes = new Map<number, DocNode>();
+  private children = new Map<number, number[]>();
   private loaded = false;
 
   refresh(): void {
@@ -34,31 +35,35 @@ class DocsTreeProvider implements vscode.TreeDataProvider<string> {
     this.nodes.clear();
     this.children.clear();
     for (const n of await docsTree()) {
-      this.nodes.set(n.id, n);
-      const bucket = this.children.get(n.parent);
+      this.nodes.set(n.node, n);
+      const key = n.parent ?? ROOT;
+      const bucket = this.children.get(key);
       if (bucket) {
-        bucket.push(n.id);
+        bucket.push(n.node);
       } else {
-        this.children.set(n.parent, [n.id]);
+        this.children.set(key, [n.node]);
       }
     }
     this.loaded = true;
   }
 
-  async getChildren(element?: string): Promise<string[]> {
+  async getChildren(element?: number): Promise<number[]> {
     await this.ensure();
-    return this.children.get(element ?? "") ?? [];
+    return this.children.get(element ?? ROOT) ?? [];
   }
 
-  getTreeItem(id: string): vscode.TreeItem {
+  getTreeItem(id: number): vscode.TreeItem {
     const node = this.nodes.get(id);
     const hasChildren = (this.children.get(id) ?? []).length > 0;
     const item = new vscode.TreeItem(
-      node?.title ?? id,
+      node?.label ?? String(id),
       hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
     );
-    item.iconPath = new vscode.ThemeIcon(KIND_ICON[node?.kind ?? "member"] ?? "symbol-field");
-    item.command = { command: "xbsl.docs.open", title: "", arguments: [id] };
+    item.iconPath = new vscode.ThemeIcon(KIND_ICON[node?.kind ?? "link"] ?? "symbol-file");
+    // Клик открывает страницу только у узлов-ссылок; категория/раздел лишь разворачивается.
+    if (node?.page) {
+      item.command = { command: "xbsl.docs.open", title: "", arguments: [node.page] };
+    }
     return item;
   }
 }

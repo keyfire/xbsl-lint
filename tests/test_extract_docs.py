@@ -1,10 +1,12 @@
-"""Разбор страницы документации в tools/extract_docs.py – на мини-фикстурах (без дистрибутива)."""
+"""Разбор страницы и сайдбара в tools/extract_docs.py – на мини-фикстурах (без дистрибутива)."""
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import extract_docs as ex  # noqa: E402
+
+ORIGIN = "https://1cmycloud.com"
 
 # Мини-страница в разметке Docusaurus: хлебные крошки и футер вне контент-блока, ссылка на Std,
 # якорь-решётка, блок кода Prism, картинка и управляющий символ внутри слова.
@@ -18,7 +20,6 @@ PAGE = (
     '<a href="https://example.org/x">внешнее</a>.</p>'
     '<h2 class="anchor anchorWithStickyNavbar" id="r">Раздел'
     '<a href="#r" class="hash-link" title="ссылка">​</a></h2>'
-    '<p><em>Дочерние типы:</em> <a href="/docs/help/stdlib/element/xbsl/DeveloperName/X/">Шаблон</a></p>'
     '<div class="language-xbsl codeBlockContainer"><div class="codeBlockContent">'
     '<pre class="prism-code"><code class="codeBlockLines">'
     '<span class="token-line"><span class="token xbsl-keyword">знч</span>'
@@ -29,18 +30,20 @@ PAGE = (
     "</article></body></html>"
 )
 
+ENTRY = "data/docs/help/ru/stdlib/element/xbsl/Std/Collections/Array_ru/index.html"
+
 
 def _rec():
-    return ex._record("data/docs/help/ru/stdlib/element/xbsl/Std/Collections/Array_ru/index.html", PAGE)
+    return ex._record(ENTRY, PAGE, ORIGIN)
 
 
 def test_fields_extracted():
     r = _rec()
-    assert r["id"] == "Collections/Array_ru"
-    assert r["title"] == "Массив"           # управляющий символ вычищен
+    assert r["id"] == "stdlib/element/xbsl/Std/Collections/Array_ru"  # id = URL-путь без /docs/help/
+    assert r["title"] == "Массив"                                     # управляющий символ вычищен
     assert r["qualified"] == "Стд::Коллекции::Массив"
     assert r["availability"] == "КлиентИСервер"
-    assert r["parent"] == "Collections"
+    assert r["url"] == ORIGIN + "/docs/help/stdlib/element/xbsl/Std/Collections/Array_ru/"
 
 
 def test_kind_heuristic():
@@ -58,16 +61,10 @@ def test_chrome_stripped():
     assert "hash-link" not in html and "​" not in html
 
 
-def test_std_link_rewritten_external_kept():
+def test_internal_link_rewritten_external_kept():
     html = _rec()["html"]
-    assert '<a href="#Object_ru">Объект</a>' in html
+    assert '<a href="#stdlib/element/xbsl/Std/Object_ru">Объект</a>' in html
     assert '<a href="https://example.org/x">внешнее</a>' in html
-
-
-def test_template_link_becomes_text():
-    html = _rec()["html"]
-    assert "Шаблон" in html                 # текст остался
-    assert "DeveloperName" not in html      # неразрешённая ссылка развёрнута
 
 
 def test_code_flattened():
@@ -88,12 +85,48 @@ def test_text_has_no_tags():
     assert "Массив" in text and "знч Х = 1" in text
 
 
-def test_canonical_url():
-    assert (
-        ex._canonical_url("https://1cmycloud.com", "Collections/Array_ru")
-        == "https://1cmycloud.com/docs/help/stdlib/element/xbsl/Std/Collections/Array_ru/"
-    )
-
-
 def test_no_content_block_returns_none():
-    assert ex._record("x/index.html", "<html><body>нет разметки</body></html>") is None
+    assert ex._record("x/index.html", "<html><body>нет разметки</body></html>", ORIGIN) is None
+
+
+# --- разбор сайдбара ------------------------------------------------------------------
+
+# Мини-бандл: два сайдбара; во втором – метка с лишним экранированием кавычек (как в реальном
+# бандле 'Ключевое слово \\"ничто\\"'), которую обычный json.loads не берёт.
+JS = (
+    'x={"developer":[{"type":"category","label":"Основы","items":['
+    '{"type":"link","label":"Обзор","href":"/docs/help/topics/overview"}]},'
+    '{"type":"link","label":"Тип","href":"/docs/help/stdlib/element/xbsl/Std/String_ru"}],'
+    '"xbslStdlib":[{"type":"link","label":"Ключевое слово \\\\"ничто\\\\"",'
+    '"href":"/docs/help/topics/void"}]}'
+)
+
+
+def test_sidebar_items_parsed():
+    dev = ex._sidebar_items(JS, "developer")
+    assert dev is not None and len(dev) == 2
+    assert dev[0]["label"] == "Основы" and dev[0]["items"][0]["href"].endswith("/overview")
+
+
+def test_sidebar_double_escaped_quote_repaired():
+    std = ex._sidebar_items(JS, "xbslStdlib")   # содержит метку с \\"ничто\\"
+    assert std is not None and len(std) == 1
+    assert "ничто" in std[0]["label"]
+
+
+def test_collect_hrefs_skips_template_ns():
+    items = [
+        {"type": "link", "label": "ok", "href": "/docs/help/topics/x"},
+        {"type": "category", "label": "tpl",
+         "href": "/docs/help/stdlib/element/xbsl/DeveloperName/P/S",
+         "items": [{"type": "link", "label": "y", "href": "/docs/help/stdlib/element/xbsl/DeveloperName/P/S/y"}]},
+    ]
+    out: set[str] = set()
+    ex._collect_hrefs(items, out)
+    assert out == {"topics/x"}                  # шаблонный неймспейс и его поддерево пропущены
+
+
+def test_href_to_page():
+    assert ex._href_to_page("/docs/help/topics/x") == "topics/x"
+    assert ex._href_to_page("https://external/x") is None
+    assert ex._href_to_page("") is None

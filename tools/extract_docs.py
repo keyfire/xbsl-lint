@@ -1,26 +1,29 @@
-"""Извлечение документации 1С:Элемент из дистрибутива в docs.sqlite (страницы + индекс FTS5).
+"""Извлечение документации 1С:Элемент из дистрибутива в docs.sqlite (страницы, индекс, дерево).
 
-Внутри .car сервера-с-IDE документация лежит статическим сайтом (Docusaurus) по пути
-`data/docs/help/ru/stdlib/element/xbsl/Std/**/index.html`. Здесь эти страницы разбираются в
-структурированные записи и складываются в одну базу SQLite:
+Внутри .car сервера-с-IDE документация лежит статическим сайтом (Docusaurus) под
+`data/docs/help/ru/`. Здесь из него собирается одна база SQLite:
 
-- `pages(id, kind, title, qualified, availability, parent, html)` – по странице на символ;
+- `pages(id, kind, title, qualified, availability, url, html)` – страница на каждый документ;
+  id – это путь URL без префикса сайта (`stdlib/element/xbsl/Std/Collections/Array_ru`,
+  `topics/project-element-names-standard`);
 - `pages_fts` – виртуальная таблица FTS5 (title, qualified, text) для полнотекстового поиска;
-- `tree(id, parent, ord)` – оглавление ("Содержание") из иерархии каталогов.
+- `tree(node, parent, ord, label, page, kind)` – курируемое дерево "Содержание", как на сайте:
+  несколько разделов-вкладок (руководства и справочники), внутри – категории и ссылки на страницы.
+- `assets(id, mime, bytes)` – картинки страниц.
 
-Разметка страниц единообразна (генерируется Docusaurus), поэтому чистка идёт набором строковых
-замен: из страницы вырезается контент-блок `theme-doc-markdown` (тема, навигация и футер лежат
-вне его), блоки кода Prism сплющиваются в текст, структурные обёртки разворачиваются, внутренние
-ссылки переписываются в схему doc-id (`#<id>`). HTML хранится очищенным – панель редактора
-рендерит его как есть, MCP отдаёт текстовую выжимку.
+Структуру дерева берём из данных сайдбара Docusaurus (JSON в JS-бандле сайта), а не из путей –
+поэтому она совпадает с сайтом. Разметку страниц (единообразную) чистим строковыми заменами:
+вырезаем контент-блок, сплющиваем код, разворачиваем обёртки, внутренние ссылки переписываем в
+схему `#<id>`. HTML храним очищенным – панель рендерит его как есть, MCP отдаёт текст.
 
-Данные Элемента под копирайтом 1С – база кладётся в приватный бандл (как stdlib.json), на PyPI
-не публикуется. Версия и корень данных определяются так же, как в extract_stdlib.py.
+Справка 1С под копирайтом – база кладётся в приватный бандл (как stdlib.json), на PyPI не идёт.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
+import shutil
 import sqlite3
 import sys
 import zipfile
@@ -30,21 +33,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _distro  # noqa: E402
 
-# Корень справочника stdlib в архиве и префикс внутренних ссылок на него внутри сайта помощи.
-STD_BASE = "data/docs/help/ru/stdlib/element/xbsl/Std/"
-LINK_BASE = "/docs/help/stdlib/element/xbsl/Std/"
-# Корень статического сайта помощи в архиве (относительно него разрешаются ссылки и ассеты).
+# Корень статического сайта помощи в архиве и префикс, которым сайт адресует свой корень.
 SITE_ROOT = "data/docs/help/ru/"
-SITE_PREFIX = "/docs/help/"  # этим префиксом сайт адресует свой корень
+SITE_PREFIX = "/docs/help/"
+STD_BASE = SITE_ROOT + "stdlib/element/xbsl/Std/"  # справочник типов: берём его целиком
+# Шаблонный неймспейс "типы вашего проекта" (ИмяРазработчика::ИмяПроекта::...) – это плейсхолдеры,
+# а не реальный справочник; в дерево и базу его не берём.
+_TEMPLATE_NS = "stdlib/element/xbsl/DeveloperName"
+
+# Разделы-вкладки сайта, которые кладём в дерево (ключ сайдбара -> метка). REST-API управления
+# сервером (console) – 534 эндпоинта, к написанию кода отношения не имеют, поэтому не включаем.
+SIDEBARS = [
+    ("developer", "Руководство разработчика"),
+    ("administrator", "Руководство администратора"),
+    ("xbslStdlib", "Типы языка 1С:Элемент"),
+    ("xbqlStdlib", "Язык запросов"),
+]
+
 # Канонический адрес сайта документации берём из sitemap; запасной – облако Элемента.
 _SITEMAP = SITE_ROOT + "sitemap.xml"
 _DEFAULT_ORIGIN = "https://1cmycloud.com"
 _LOC_RE = re.compile(r"<loc>\s*(https?://[^/\s<]+)")
-
-_MIME = {
-    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-    ".gif": "image/gif", ".svg": "image/svg+xml", ".webp": "image/webp",
-}
 
 _REGION_START = '<div class="theme-doc-markdown markdown">'
 _REGION_END_RE = re.compile(r'<footer class="theme-doc-footer|<nav class="pagination-nav|</article>')
@@ -56,21 +65,17 @@ _COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 _SVG_RE = re.compile(r"<svg\b.*?</svg>", re.S)
 _PRE_RE = re.compile(r"<pre\b[^>]*>(.*?)</pre>", re.S)
 _BR_RE = re.compile(r"<br\s*/?>")
-_HASHLINK_RE = re.compile(r'<a\b[^>]*class="[^"]*hash-link[^"]*"[^>]*>.*?</a>', re.S)
-# Картинку сохраняем: src сайта (`/docs/help/assets/...`) переписываем в id ассета (`assets/...`);
-# картинку без пригодного src убираем. Байты ассетов складываются в таблицу assets при сборке.
 _IMG_RE = re.compile(r'<img\b[^>]*?\bsrc="([^"]*)"[^>]*>')
 _IMG_BARE_RE = re.compile(r'<img\b(?![^>]*\bsrc="assets/)[^>]*>')  # уже переписанные не трогаем
 _ASSET_REF_RE = re.compile(r'<img src="(assets/[^"]+)"')
+_HASHLINK_RE = re.compile(r'<a\b[^>]*class="[^"]*hash-link[^"]*"[^>]*>.*?</a>', re.S)
 _LINK_RE = re.compile(r'<a\b[^>]*?\bhref="([^"]*)"[^>]*>')
-_BARE_A_RE = re.compile(r"<a\b(?![^>]*\bhref=)[^>]*>")  # только ссылки без href (переписанные не трогаем)
-# Ссылки, не разрешённые в нашем наборе (шаблонный неймспейс, ассеты): разворачиваем в текст.
-_DEADLINK_RE = re.compile(r'<a href="/[^"]*">(.*?)</a>', re.S)
+_BARE_A_RE = re.compile(r"<a\b(?![^>]*\bhref=)[^>]*>")  # ссылки без href
 _KEEP_RE = re.compile(rf"<(/?)(?:{_KEEP})\b[^>]*>")
 _UNWRAP_RE = re.compile(r"</?(?:div|header|span|nav|button|time|meta|footer|figure|section)\b[^>]*>", re.S)
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
-# Управляющие символы, нулевые ширины и мягкий перенос – в разметке доков попадаются внутри слов
+# Управляющие символы, нулевые ширины и мягкий перенос – в разметке попадаются внутри слов
 # и молча портят и текст, и индекс (напр. "Аннот\x00ации"); вырезаем на входе.
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f​‌‍﻿­]")
 
@@ -80,10 +85,10 @@ _H1_RE = re.compile(r"<h1>(.*?)</h1>", re.S)
 
 
 def _rewrite_href(href: str) -> str:
-    """Внутреннюю ссылку на Std -> `#<id>[#якорь]`, прочее оставляем как есть."""
-    if not href.startswith(LINK_BASE):
+    """Внутреннюю ссылку сайта `/docs/help/<путь>` -> `#<путь>` (id страницы); прочее не трогаем."""
+    if not href.startswith(SITE_PREFIX):
         return href
-    rest = href[len(LINK_BASE):]
+    rest = href[len(SITE_PREFIX):]
     anchor = ""
     if "#" in rest:
         rest, anchor = rest.split("#", 1)
@@ -99,7 +104,7 @@ def _flatten_pre(m: re.Match) -> str:
 
 
 def _rewrite_img(m: re.Match) -> str:
-    """<img src="/docs/help/assets/X.png" ...> -> <img src="assets/X.png">; без пригодного src -> убираем."""
+    """<img src="/docs/help/assets/X.png"> -> <img src="assets/X.png">; без пригодного src -> убираем."""
     src = unescape(m.group(1))
     if src.startswith(SITE_PREFIX):
         return f'<img src="{escape(src[len(SITE_PREFIX):])}">'  # -> assets/...
@@ -121,7 +126,6 @@ def _clean(raw: str) -> tuple[str, str]:
     region = _IMG_BARE_RE.sub("", region)           # картинку без пригодного src убираем
     region = _HASHLINK_RE.sub("", region)
     region = _LINK_RE.sub(lambda m: f'<a href="{escape(_rewrite_href(unescape(m.group(1))))}">', region)
-    region = _DEADLINK_RE.sub(r"\1", region)        # неразрешённые ссылки -> текст
     region = _BARE_A_RE.sub("<a>", region)          # ссылки без href
     region = _KEEP_RE.sub(_strip_attrs, region)     # атрибуты сохраняемых тегов срезаем
     region = _UNWRAP_RE.sub("", region)             # структурные обёртки разворачиваем
@@ -138,13 +142,23 @@ def _strip_attrs(m: re.Match) -> str:
     return f"<{slash}{name}>"
 
 
-def _record(entry: str, raw: str) -> dict | None:
+def _kind(text: str) -> str:
+    if "Иерархия типа" in text or "Базовые типы" in text:
+        return "type"
+    if "Места применения" in text:
+        return "annotation"
+    if "Синтаксис" in text and "Параметры" in text:
+        return "method"
+    return "member"
+
+
+def _record(entry: str, raw: str, origin: str) -> dict | None:
     """Структурированная запись страницы или None, если контент-блока нет."""
     raw = _CTRL_RE.sub("", raw)  # управляющие символы портят текст, индекс и заголовки
     html, text = _clean(raw)
     if not html:
         return None
-    doc_id = entry[len(STD_BASE):].rsplit("/", 1)[0]  # путь без /index.html
+    doc_id = entry[len(SITE_ROOT):].rsplit("/", 1)[0]  # URL-путь без /index.html
     mh = _H1_RE.search(html)
     title = unescape(_TAG_RE.sub("", mh.group(1)).strip()) if mh else doc_id.rsplit("/", 1)[-1]
     mq = _QUALIFIED_RE.search(raw)
@@ -155,7 +169,7 @@ def _record(entry: str, raw: str) -> dict | None:
         "title": title,
         "qualified": mq.group(1) if mq else "",
         "availability": ma.group(1).strip() if ma else "",
-        "parent": "/".join(doc_id.split("/")[:-1]),
+        "url": f"{origin}{SITE_PREFIX}{doc_id}/",
         "html": html,
         "text": text,
     }
@@ -171,80 +185,203 @@ def _origin(z: zipfile.ZipFile) -> str:
     return m.group(1) if m else _DEFAULT_ORIGIN
 
 
-def _canonical_url(origin: str, doc_id: str) -> str:
-    """Канонический адрес страницы на сайте документации (первоисточник)."""
-    return f"{origin}{LINK_BASE}{doc_id}/"
+# --- курируемое дерево из сайдбара Docusaurus -----------------------------------------
+
+def _sidebar_js(z: zipfile.ZipFile) -> str | None:
+    """Содержимое JS-бандла сайта с данными сайдбаров (ищем по узнаваемому ключу)."""
+    for name in z.namelist():
+        if name.startswith(SITE_ROOT + "assets/js/") and name.endswith(".js"):
+            raw = z.read(name).decode("utf-8", "replace")
+            if '"xbslStdlib":[{"type"' in raw or '"developer":[{"type"' in raw:
+                return raw
+    return None
 
 
-def _kind(text: str) -> str:
-    if "Иерархия типа" in text or "Базовые типы" in text:
-        return "type"
-    if "Места применения" in text:
-        return "annotation"
-    if "Синтаксис" in text and "Параметры" in text:
-        return "method"
-    return "member"
+def _balanced_array(raw: str, start: int) -> str:
+    """Строку-осознающий баланс скобок от '[' до парного ']'."""
+    depth = 0
+    instr = esc = False
+    for i in range(start, len(raw)):
+        c = raw[i]
+        if instr:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                instr = False
+        elif c == '"':
+            instr = True
+        elif c == "[":
+            depth += 1
+        elif c == "]":
+            depth -= 1
+            if depth == 0:
+                return raw[start:i + 1]
+    return raw[start:]
 
+
+def _sidebar_items(js: str, key: str) -> list | None:
+    """Разобранный массив items сайдбара по его ключу, либо None.
+
+    В бандле встречается лишнее экранирование кавычек в метке (`\\"` вместо `\"`, напр. в
+    'Ключевое слово "ничто"') – валидный JSON это ломает, поэтому при ошибке пробуем починку.
+    """
+    anchor = f'"{key}":['
+    i = js.find(anchor)
+    if i < 0:
+        return None
+    arr = _balanced_array(js, i + len(anchor) - 1)  # с позиции '['
+    for candidate in (arr, arr.replace('\\\\"', '\\"')):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def _href_to_page(href: str) -> str | None:
+    """URL ссылки сайдбара -> id страницы (как в pages), либо None для внешней ссылки."""
+    if not href or not href.startswith(SITE_PREFIX):
+        return None
+    return href[len(SITE_PREFIX):].strip("/") or None
+
+
+def _collect_hrefs(items: list, out: set[str]) -> None:
+    """Собрать все href страниц, на которые ссылается поддерево сайдбара (кроме шаблонного неймспейса)."""
+    for it in items:
+        page = _href_to_page(it.get("href", ""))
+        if page and page.startswith(_TEMPLATE_NS):
+            continue  # шаблонные плейсхолдеры пропускаем вместе с их поддеревом
+        if page:
+            out.add(page)
+        kids = it.get("items")
+        if isinstance(kids, list):
+            _collect_hrefs(kids, out)
+
+
+# --- база -----------------------------------------------------------------------------
 
 _SCHEMA = """
 CREATE TABLE pages (
     id TEXT PRIMARY KEY, kind TEXT, title TEXT, qualified TEXT,
-    availability TEXT, parent TEXT, url TEXT, html TEXT
+    availability TEXT, url TEXT, html TEXT
 );
 CREATE VIRTUAL TABLE pages_fts USING fts5(
     id UNINDEXED, title, qualified, text, tokenize='unicode61 remove_diacritics 0'
 );
-CREATE TABLE tree (id TEXT, parent TEXT, ord INTEGER);
-CREATE TABLE assets (id TEXT PRIMARY KEY, mime TEXT, bytes BLOB);
-CREATE INDEX pages_parent ON pages(parent);
+CREATE TABLE tree (node INTEGER PRIMARY KEY, parent INTEGER, ord INTEGER, label TEXT, page TEXT, kind TEXT);
+CREATE INDEX tree_parent ON tree(parent);
 """
 
 
-def build(dist: Path, out: Path) -> int:
+def build(dist: Path, out: Path) -> tuple[int, int]:
     car = _distro.find_car(dist)
     if out.exists():
         out.unlink()
+    assets_dir = out.parent / "assets"  # картинки лежат рядом с базой файлами; старые чистим
+    if assets_dir.exists():
+        shutil.rmtree(assets_dir)
     con = sqlite3.connect(out)
     _assert_fts5(con)
     con.executescript(_SCHEMA)
-    n = 0
     with zipfile.ZipFile(car) as z:
         origin = _origin(z)
+        names = set(z.namelist())
+
+        # Разбираем сайдбары сайта: их структура и станет деревом "Содержание".
+        js = _sidebar_js(z)
+        sidebars: list[tuple[str, list]] = []
+        for key, label in SIDEBARS:
+            items = _sidebar_items(js, key) if js else None
+            if items:
+                sidebars.append((label, items))
+
+        # Страницы к извлечению: всё, на что ссылаются сайдбары, плюс справочник типов целиком
+        # (в сайдбаре только категории и типы, а нужны и страницы членов – для поиска и ссылок).
+        wanted: set[str] = set()
+        for _label, items in sidebars:
+            _collect_hrefs(items, wanted)
+        for e in names:
+            if e.startswith(STD_BASE) and e.endswith("/index.html"):
+                wanted.add(e[len(SITE_ROOT):].rsplit("/", 1)[0])
+
         asset_ids: set[str] = set()
-        pages = sorted(e for e in z.namelist() if e.startswith(STD_BASE) and e.endswith("/index.html"))
-        for entry in pages:
-            rec = _record(entry, z.read(entry).decode("utf-8", "replace"))
+        pages = 0
+        for doc_id in sorted(wanted):
+            entry = SITE_ROOT + doc_id + "/index.html"
+            if entry not in names:
+                continue  # ссылка на отсутствующую страницу (внешний раздел) – пропускаем
+            rec = _record(entry, z.read(entry).decode("utf-8", "replace"), origin)
             if rec is None:
                 continue
             con.execute(
-                "INSERT INTO pages(id, kind, title, qualified, availability, parent, url, html)"
-                " VALUES(?,?,?,?,?,?,?,?)",
-                (rec["id"], rec["kind"], rec["title"], rec["qualified"], rec["availability"],
-                 rec["parent"], _canonical_url(origin, rec["id"]), rec["html"]),
+                "INSERT OR IGNORE INTO pages(id, kind, title, qualified, availability, url, html)"
+                " VALUES(?,?,?,?,?,?,?)",
+                (rec["id"], rec["kind"], rec["title"], rec["qualified"],
+                 rec["availability"], rec["url"], rec["html"]),
             )
             con.execute(
                 "INSERT INTO pages_fts(id, title, qualified, text) VALUES(?,?,?,?)",
                 (rec["id"], rec["title"], rec["qualified"], rec["text"]),
             )
-            con.execute("INSERT INTO tree(id, parent, ord) VALUES(?,?,?)", (rec["id"], rec["parent"], n))
             asset_ids.update(_ASSET_REF_RE.findall(rec["html"]))
-            n += 1
-        _store_assets(con, z, asset_ids)
+            pages += 1
+
+        _write_assets(z, asset_ids, out.parent)
+        nodes = _build_tree(con, sidebars)
     con.execute("INSERT INTO pages_fts(pages_fts) VALUES('optimize')")
     con.commit()
     con.close()
-    return n
+    return pages, nodes
 
 
-def _store_assets(con: sqlite3.Connection, z: zipfile.ZipFile, asset_ids: set[str]) -> None:
-    """Сохранить в таблицу assets байты картинок, на которые ссылаются страницы (id = `assets/...`)."""
+def _build_tree(con: sqlite3.Connection, sidebars: list[tuple[str, list]]) -> int:
+    """Разложить сайдбары в таблицу tree: раздел-вкладка -> категории -> ссылки на страницы."""
+    counter = [0]
+
+    def add(parent: int | None, ordinal: int, label: str, page: str | None, kind: str) -> int:
+        counter[0] += 1
+        node = counter[0]
+        con.execute(
+            "INSERT INTO tree(node, parent, ord, label, page, kind) VALUES(?,?,?,?,?,?)",
+            (node, parent, ordinal, label, page, kind),
+        )
+        return node
+
+    def walk(items: list, parent: int) -> None:
+        for i, it in enumerate(items):
+            page = _href_to_page(it.get("href", ""))
+            if page and page.startswith(_TEMPLATE_NS):
+                continue  # шаблонный неймспейс в дерево не кладём
+            label = (it.get("label") or "").strip()
+            kids = it.get("items")
+            kind = "category" if it.get("type") == "category" else "link"
+            node = add(parent, i, label, page, kind)
+            if isinstance(kids, list):
+                walk(kids, node)
+
+    for i, (label, items) in enumerate(sidebars):
+        root = add(None, i, label, None, "section")
+        walk(items, root)
+    return counter[0]
+
+
+def _write_assets(z: zipfile.ZipFile, asset_ids: set[str], dest_dir: Path) -> None:
+    """Записать картинки страниц файлами рядом с базой (id = путь `assets/...`).
+
+    Файлами, а не блобами в базе: имена контент-хешированы, git-lfs дедуплицирует одинаковые
+    между версиями, а сама docs.sqlite остаётся компактной. Отсутствующий в архиве ассет
+    пропускаем – картинка просто не покажется.
+    """
     for aid in sorted(asset_ids):
         try:
             data = z.read(SITE_ROOT + aid)
         except KeyError:
-            continue  # ссылка на отсутствующий ассет – пропускаем, картинка просто не покажется
-        mime = _MIME.get("." + aid.rsplit(".", 1)[-1].lower(), "application/octet-stream")
-        con.execute("INSERT OR IGNORE INTO assets(id, mime, bytes) VALUES(?,?,?)", (aid, mime, data))
+            continue
+        target = dest_dir / aid
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
 
 
 def _assert_fts5(con: sqlite3.Connection) -> None:
@@ -270,10 +407,10 @@ def main() -> int:
         raise SystemExit(f"Каталог дистрибутива не найден: {dist}")
     version = _distro.detect_version(dist, args.element_version)
     out = Path(args.out) if args.out else _distro.version_dir(version) / "docs.sqlite"
-    n = build(dist, out)
+    pages, nodes = build(dist, out)
     if not args.out:
         _distro.update_index(version, make_default=not args.no_default)
-    print(f"Документация {version}: {n} страниц -> {out}")
+    print(f"Документация {version}: {pages} страниц, {nodes} узлов дерева -> {out}")
     return 0
 
 
