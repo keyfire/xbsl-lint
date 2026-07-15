@@ -6,7 +6,7 @@
 
 import * as vscode from "vscode";
 import { DocNode, docsSearch, docsTree } from "./docsClient";
-import { openForSymbol, openPage } from "./docsPanel";
+import { openForSymbol, openPage, setDocsOpenListener } from "./docsPanel";
 
 const KIND_ICON: Record<string, string> = {
   section: "book",
@@ -21,7 +21,13 @@ class DocsTreeProvider implements vscode.TreeDataProvider<number> {
   readonly onDidChangeTreeData = this.changed.event;
   private nodes = new Map<number, DocNode>();
   private children = new Map<number, number[]>();
+  private byPage = new Map<string, number>();
+  private view: vscode.TreeView<number> | undefined;
   private loaded = false;
+
+  attach(view: vscode.TreeView<number>): void {
+    this.view = view;
+  }
 
   refresh(): void {
     this.loaded = false;
@@ -34,8 +40,12 @@ class DocsTreeProvider implements vscode.TreeDataProvider<number> {
     }
     this.nodes.clear();
     this.children.clear();
+    this.byPage.clear();
     for (const n of await docsTree()) {
       this.nodes.set(n.node, n);
+      if (n.page) {
+        this.byPage.set(n.page, n.node);
+      }
       const key = n.parent ?? ROOT;
       const bucket = this.children.get(key);
       if (bucket) {
@@ -45,6 +55,30 @@ class DocsTreeProvider implements vscode.TreeDataProvider<number> {
       }
     }
     this.loaded = true;
+  }
+
+  // getParent обязателен для reveal: VS Code раскрывает предков по цепочке до узла.
+  async getParent(id: number): Promise<number | undefined> {
+    await this.ensure();
+    const n = this.nodes.get(id);
+    return n && n.parent != null ? n.parent : undefined;
+  }
+
+  // Спозиционировать дерево на странице (если оно открыто и такой узел есть).
+  async revealPage(pageId: string): Promise<void> {
+    if (!this.view || !this.view.visible) {
+      return; // дерево не открыто – не навязываем его
+    }
+    await this.ensure();
+    const node = this.byPage.get(pageId);
+    if (node === undefined) {
+      return; // страницы нет в дереве (напр. член типа) – позиционировать не на что
+    }
+    try {
+      await this.view.reveal(node, { select: true, focus: false, expand: true });
+    } catch {
+      // узел мог исчезнуть при обновлении – молча пропускаем
+    }
   }
 
   async getChildren(element?: number): Promise<number[]> {
@@ -98,8 +132,12 @@ async function searchDocs(context: vscode.ExtensionContext): Promise<void> {
 
 export function registerDocs(context: vscode.ExtensionContext): void {
   const provider = new DocsTreeProvider();
+  const view = vscode.window.createTreeView("xbslDocs", { treeDataProvider: provider });
+  provider.attach(view);
+  // Открытие страницы в панели позиционирует дерево на этом документе.
+  setDocsOpenListener((id) => void provider.revealPage(id));
   context.subscriptions.push(
-    vscode.window.createTreeView("xbslDocs", { treeDataProvider: provider }),
+    view,
     vscode.commands.registerCommand("xbsl.docs.open", (id: string) => openPage(context, id)),
     vscode.commands.registerCommand("xbsl.docs.search", () => searchDocs(context)),
     vscode.commands.registerCommand("xbsl.docs.showForSymbol", () => openForSymbol(context)),

@@ -9,6 +9,12 @@ import { docsAsset, docsForSymbol, docsPage, DocPage } from "./docsClient";
 const VIEW_TYPE = "xbslDocs";
 let panel: vscode.WebviewPanel | undefined;
 
+// Слушатель открытия страницы (дерево "Содержание" по нему позиционируется на документе).
+let openListener: ((id: string) => void) | undefined;
+export function setDocsOpenListener(fn: (id: string) => void): void {
+  openListener = fn;
+}
+
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 }
@@ -120,6 +126,7 @@ async function render(context: vscode.ExtensionContext, page: DocPage): Promise<
   const p = ensurePanel(context);
   p.title = page.title || vscode.l10n.t("Documentation");
   p.webview.html = shell(await inlineImages(page.html), page.url || undefined, nonce());
+  openListener?.(page.id); // спозиционировать дерево "Содержание" на этом документе
 }
 
 export async function openPage(context: vscode.ExtensionContext, id: string): Promise<void> {
