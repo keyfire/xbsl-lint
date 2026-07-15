@@ -75,6 +75,7 @@ _KEEP_RE = re.compile(rf"<(/?)(?:{_KEEP})\b[^>]*>")
 _UNWRAP_RE = re.compile(r"</?(?:div|header|span|nav|button|time|meta|footer|figure|section)\b[^>]*>", re.S)
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
+_CODE_SLOT_RE = re.compile(r"\x00(\d+)\x00")  # плейсхолдер спрятанного блока кода
 # Управляющие символы, нулевые ширины и мягкий перенос – в разметке попадаются внутри слов
 # и молча портят и текст, и индекс (напр. "Аннот\x00ации"); вырезаем на входе.
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f​‌‍﻿­]")
@@ -131,7 +132,15 @@ def _clean(raw: str) -> tuple[str, str]:
     me = _REGION_END_RE.search(raw, start)
     region = raw[start: me.start() if me else len(raw)]
 
-    region = _PRE_RE.sub(_flatten_pre, region)      # код сплющиваем до снятия тегов
+    # Блоки кода прячем в плейсхолдеры до нормализации пробелов – иначе _WS_RE съедает переносы
+    # строк и отступы внутри примеров (важно для YAML). Возвращаем их в самом конце.
+    codes: list[str] = []
+
+    def _stash(m: re.Match) -> str:
+        codes.append(_flatten_pre(m))
+        return f"\x00{len(codes) - 1}\x00"
+
+    region = _PRE_RE.sub(_stash, region)
     region = _COMMENT_RE.sub("", region)
     region = _SVG_RE.sub("", region)
     region = _IMG_RE.sub(_rewrite_img, region)      # картинку сохраняем (src -> id ассета)
@@ -141,7 +150,8 @@ def _clean(raw: str) -> tuple[str, str]:
     region = _BARE_A_RE.sub("<a>", region)          # ссылки без href
     region = _KEEP_RE.sub(_strip_attrs, region)     # атрибуты сохраняемых тегов срезаем
     region = _UNWRAP_RE.sub("", region)             # структурные обёртки разворачиваем
-    html = _WS_RE.sub(" ", region).strip()
+    region = _WS_RE.sub(" ", region).strip()
+    html = _CODE_SLOT_RE.sub(lambda m: codes[int(m.group(1))], region)  # вернуть блоки кода
 
     text = _WS_RE.sub(" ", unescape(_TAG_RE.sub(" ", html))).strip()
     return html, text

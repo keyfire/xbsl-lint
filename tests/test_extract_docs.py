@@ -23,7 +23,8 @@ PAGE = (
     '<div class="language-xbsl codeBlockContainer"><div class="codeBlockContent">'
     '<pre class="prism-code"><code class="codeBlockLines">'
     '<span class="token-line"><span class="token xbsl-keyword">знч</span>'
-    '<span class="token plain"> Х = 1</span><br></span></code></pre></div></div>'
+    '<span class="token plain"> Х = 1</span><br></span>'
+    '<span class="token-line"><span class="token plain">  Х = 2</span><br></span></code></pre></div></div>'
     '<p><img decoding="async" alt="s" src="/docs/help/assets/images/a.png" width="10" class="img_x"></p>'
     "</div></div></div>"
     '<footer class="theme-doc-footer">низ страницы</footer>'
@@ -69,7 +70,8 @@ def test_internal_link_rewritten_external_kept():
 
 def test_code_flattened():
     html = _rec()["html"]
-    assert "<pre><code>знч Х = 1</code></pre>" in html
+    # переносы строк и отступ внутри блока кода сохраняются (не съедаются нормализацией пробелов)
+    assert "<pre><code>знч Х = 1\n  Х = 2</code></pre>" in html
     assert "token" not in html and "<span" not in html
 
 
