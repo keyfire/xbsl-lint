@@ -6,6 +6,11 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.16.1
+
+- Code blocks in the documentation now have a "Copy" button in the top-right corner – it copies the
+  snippet to the clipboard.
+
 ## 0.16.0
 
 - The Contents tree now includes the sections of a page (its h2/h3 headings) – handy for navigating

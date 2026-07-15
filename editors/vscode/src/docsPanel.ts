@@ -67,8 +67,15 @@ function shell(bodyHtml: string, sourceUrl: string | undefined, anchor: string |
   .doc code { font-family: var(--vscode-editor-font-family, monospace); font-size: .9em;
     background: rgba(128,128,128,.16); padding: .1em .35em; border-radius: 3px; }
   .doc pre { background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.12)); border-radius: 6px;
-    padding: 10px 12px; overflow-x: auto; }
+    padding: 10px 12px; overflow-x: auto; margin: 0; }
   .doc pre code { background: none; padding: 0; }
+  .code-wrap { position: relative; margin: 8px 0; }
+  .copy-btn { position: absolute; top: 6px; right: 6px; z-index: 1; cursor: pointer;
+    font-family: var(--vscode-font-family, "Segoe UI", sans-serif); font-size: 11.5px;
+    color: var(--vscode-foreground); background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 2px 8px; opacity: .55; }
+  .code-wrap:hover .copy-btn { opacity: 1; }
+  .copy-btn:hover { background: rgba(128,128,128,.18); }
   .doc a { color: var(--vscode-textLink-foreground); text-decoration: none; }
   .doc a:hover { text-decoration: underline; }
   .doc img { max-width: 100%; height: auto; border-radius: 4px; }
@@ -103,6 +110,24 @@ function shell(bodyHtml: string, sourceUrl: string | undefined, anchor: string |
     const el = document.getElementById(anchor);
     if (el) { el.scrollIntoView({ block: "start" }); }
   }
+  // Кнопка копирования в буфер в правом верхнем углу каждого блока кода.
+  const L = { copy: ${JSON.stringify(vscode.l10n.t("Copy"))}, copied: ${JSON.stringify(vscode.l10n.t("Copied"))} };
+  for (const pre of document.querySelectorAll(".doc pre")) {
+    const wrap = document.createElement("div");
+    wrap.className = "code-wrap";
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.textContent = L.copy;
+    btn.addEventListener("click", () => {
+      const code = pre.querySelector("code");
+      vsapi.postMessage({ type: "copy", text: code ? code.textContent : pre.textContent });
+      btn.textContent = L.copied;
+      setTimeout(() => { btn.textContent = L.copy; }, 1200);
+    });
+    wrap.appendChild(btn);
+  }
 </script></body></html>`;
 }
 
@@ -126,6 +151,8 @@ function ensurePanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
       void openPage(context, m.id, typeof m.anchor === "string" ? m.anchor : undefined);
     } else if (m.type === "external" && typeof m.url === "string") {
       void vscode.env.openExternal(vscode.Uri.parse(m.url));
+    } else if (m.type === "copy" && typeof m.text === "string") {
+      void vscode.env.clipboard.writeText(m.text);
     }
   }, undefined, context.subscriptions);
   return panel;
