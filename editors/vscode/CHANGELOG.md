@@ -6,6 +6,12 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.14.1
+
+- The README now documents the Documentation view (0.14.0 only mentioned it in the changelog): the
+  "Contents" tree, search, the page view with images and the primary-source link, documentation for
+  the symbol on right-click, and the `xbsl.docs.*` commands.
+
 ## 0.14.0
 
 - New **Documentation** view in the 1C:Element container: a "Contents" tree of the Element
