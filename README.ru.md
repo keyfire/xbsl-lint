@@ -203,6 +203,23 @@ Language Server по stdio: живые пофайловые диагностик
 относительно папки воркспейса), `--select`/`--ignore`/`--enable`, `--data-dir`. Подойдёт любому
 редактору с LSP (VS Code, Neovim, JetBrains).
 
+## Документация (поиск по справке Элемента)
+
+`tools/extract_docs.py` извлекает справку Элемента из дистрибутива (`.car` сервера-с-IDE) в базу
+`docs.sqlite` рядом с данными языка: страницы stdlib (тип, его методы, свойства, параметры) с
+очищенным HTML, полнотекстовый индекс (SQLite FTS5, из стандартной библиотеки) и канонические
+ссылки на первоисточник (`https://1cmycloud.com/docs/help/...`, адрес берётся из `sitemap.xml`
+дистрибутива). Картинки страниц сохраняются рядом. Справка 1С под копирайтом, поэтому в пакет базу
+не кладут – её генерируют из своего дистрибутива, как и данные языка (шаг 1).
+
+```sh
+python tools/extract_docs.py --dist "$ELEMENT_DIST"
+```
+
+Рантайм-API `xbsllint.docs` (`search`, `page`, `tree`, `for_symbol`, `asset`) читает `docs.sqlite`;
+если базы нет, поиск просто пуст. На нём работают инструменты MCP (ниже) и – в дальнейшем – панель
+справки в расширении VS Code.
+
 ## MCP-сервер
 
 Тонкий адаптер над тем же ядром – агент (напр. Claude Code) зовёт проверки как инструменты и
@@ -213,8 +230,9 @@ pip install -e ".[mcp]"
 claude mcp add xbsllint -- xbsllint-mcp
 ```
 
-Инструменты: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`. Ядро и CLI
-зависимости `mcp` не требуют – она только в extra `[mcp]`.
+Инструменты: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`; поиск по
+документации – `docs_search(query)`, `docs_page(id)`, `docs_symbol(name)` (нужна база `docs.sqlite`,
+см. выше). Ядро и CLI зависимости `mcp` не требуют – она только в extra `[mcp]`.
 
 ## Веб-интерфейс
 

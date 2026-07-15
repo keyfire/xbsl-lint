@@ -278,6 +278,24 @@ and quick-fix code actions - without paying the interpreter start-up cost per ca
 `--project-root` (the sources root relative to the workspace folder), `--select`/`--ignore`/
 `--enable`, `--data-dir`. Any LSP-capable editor (VS Code, Neovim, JetBrains) can spawn it.
 
+## Documentation (searching the Element reference)
+
+`tools/extract_docs.py` extracts the Element reference from a distribution (the server-with-IDE
+`.car`) into a `docs.sqlite` next to the language data: the stdlib pages (a type, its methods,
+properties, parameters) with cleaned HTML, a full-text index (SQLite FTS5, from the standard
+library) and canonical links back to the primary source (`https://1cmycloud.com/docs/help/...`,
+taken from the distribution's `sitemap.xml`). Page images are stored alongside. The 1C reference is
+copyrighted, so the database is not shipped in the package – you generate it from your own
+distribution, like the language data (step 1).
+
+```sh
+python tools/extract_docs.py --dist "$ELEMENT_DIST"
+```
+
+The runtime API `xbsllint.docs` (`search`, `page`, `tree`, `for_symbol`, `asset`) reads
+`docs.sqlite`; with no database the search is simply empty. It powers the MCP tools (below) and –
+later – the reference panel in the VS Code extension.
+
 ## MCP server
 
 A thin adapter over the same core: an agent (e.g. Claude Code) can call the checks as tools and
@@ -288,8 +306,9 @@ pip install -e ".[mcp]"
 claude mcp add xbsllint -- xbsllint-mcp
 ```
 
-Tools: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`. The core and the CLI
-do not require `mcp` – it lives only in the `[mcp]` extra.
+Tools: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`; documentation search –
+`docs_search(query)`, `docs_page(id)`, `docs_symbol(name)` (needs the `docs.sqlite` database, see
+above). The core and the CLI do not require `mcp` – it lives only in the `[mcp]` extra.
 
 ## Web interface
 

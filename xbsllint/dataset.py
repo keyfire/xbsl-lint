@@ -124,3 +124,20 @@ def _load_cached(root: str, version: str, name: str) -> dict:
 
 def load_json(name: str, version: str | None = None) -> dict:
     return _load_cached(str(data_root()), resolve_version(version), name)
+
+
+def data_file(name: str, version: str | None = None) -> Path:
+    """Путь к файлу данных версии (для не-JSON: docs.sqlite и пр.). Бросает, если файла нет."""
+    ver = resolve_version(version)
+    path = data_root() / ver / name
+    if not path.exists():
+        raise DatasetError(i18n.t("dataset.no-file", name=name, version=ver, path=path))
+    return path
+
+
+def has_data_file(name: str, version: str | None = None) -> bool:
+    """Есть ли файл данных (без исключения) – для необязательных данных вроде документации."""
+    try:
+        return data_file(name, version).exists()
+    except DatasetError:
+        return False
