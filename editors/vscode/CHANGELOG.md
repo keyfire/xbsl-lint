@@ -6,6 +6,11 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.15.1
+
+- The standard's document link from a diagnostic now opens the section **inside VS Code** (the
+  Documentation view and the tree) instead of the external site.
+
 ## 0.15.0
 
 - A link to the standard's document straight from a diagnostic. For the rules that implement

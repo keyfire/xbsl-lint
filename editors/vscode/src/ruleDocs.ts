@@ -27,11 +27,16 @@ export function ruleDoc(rule: string | undefined): RuleDoc | undefined {
   return hit ? { page: hit.page, url: DOCS_ORIGIN + hit.page + "/" } : undefined;
 }
 
-// Код диагностики: у правила со стандартом – ссылка (значок правила кликабелен в "Проблемах"),
-// иначе просто идентификатор правила.
+// Код диагностики: у правила со стандартом значок правила в "Проблемах" становится ссылкой,
+// открывающей раздел ВНУТРИ VS Code (панель "Документация" + позиционирование дерева) командой
+// xbsl.docs.open, а не внешний сайт. У прочих правил – просто идентификатор.
 export function docCode(rule: string): string | { value: string; target: vscode.Uri } {
   const doc = ruleDoc(rule);
-  return doc ? { value: rule, target: vscode.Uri.parse(doc.url) } : rule;
+  if (!doc) {
+    return rule;
+  }
+  const args = encodeURIComponent(JSON.stringify([doc.page]));
+  return { value: rule, target: vscode.Uri.parse(`command:xbsl.docs.open?${args}`) };
 }
 
 // Идентификатор правила из кода диагностики (строка или объект {value, target}).
