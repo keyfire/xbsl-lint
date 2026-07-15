@@ -6,6 +6,15 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.14.0
+
+- New **Documentation** view in the 1C:Element container: a "Contents" tree of the Element
+  reference, documentation search, and a page view (a type, its methods, properties, parameters)
+  with images and a link to the primary source. Right-click a variable or type in `.xbsl` – "XBSL:
+  documentation for the symbol" – to open the matching page. The data comes from the linter's LSP
+  server (needs `xbsllint` >= 0.12.0 with the documentation database built by `extract_docs.py`); in
+  the regular (CLI) mode the panel reports that the documentation is available in LSP mode.
+
 ## 0.13.0
 
 - New **project** rule group in the settings: the project properties per the standard "Filling in the

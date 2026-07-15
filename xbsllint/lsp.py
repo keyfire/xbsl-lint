@@ -20,6 +20,7 @@ CLI: данные языка и индекс проекта загружаютс
 from __future__ import annotations
 
 import argparse
+import base64
 import threading
 from pathlib import Path
 from typing import Optional
@@ -31,10 +32,35 @@ except ImportError:  # pragma: no cover - extra не установлен
     lsp = None
     LanguageServer = None
 
-from xbsllint import __version__, dataset, engine, i18n, indexer
+from xbsllint import __version__, dataset, docs, engine, i18n, indexer
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.lsp_nav import IndexLookup, resolve_completions, resolve_definition, resolve_hover
 from xbsllint.rules._syntax import local_var_types, query_aliases, query_ranges, query_row_columns
+
+
+def _word_at(line_text: str, character: int) -> str:
+    """Идентификатор под курсором в строке (буквы/цифры/подчёркивание), либо пустая строка."""
+    n = len(line_text)
+    if n == 0:
+        return ""
+    c = max(0, min(character, n))
+    is_word = lambda ch: ch.isalnum() or ch == "_"
+    start = c
+    while start > 0 and is_word(line_text[start - 1]):
+        start -= 1
+    end = c
+    while end < n and is_word(line_text[end]):
+        end += 1
+    return line_text[start:end]
+
+
+def _param(params: object, name: str, default: object = None) -> object:
+    """Значение поля из параметров кастомного LSP-запроса (объект pygls или dict)."""
+    if params is None:
+        return default
+    if isinstance(params, dict):
+        return params.get(name, default)
+    return getattr(params, name, default)
 
 FILE_DEBOUNCE_S = 0.3
 PROJECT_DEBOUNCE_S = 0.7
@@ -377,6 +403,65 @@ def _make_server() -> "LanguageServer":
                 )
             )
         return actions or None
+
+    # --- документация (панель справки в расширении – тонкий клиент к этим методам) --------
+
+    def docs_symbol_name(uri: str, line: int, character: int) -> Optional[str]:
+        """Имя для поиска в документации по позиции: тип локальной переменной либо само слово."""
+        path = uri_to_path(uri)
+        if path is None:
+            return None
+        doc = server.workspace.get_text_document(uri)
+        lines = doc.source.split("\n")
+        if line >= len(lines):
+            return None
+        word = _word_at(lines[line].rstrip("\r"), character)
+        if not word:
+            return None
+        offset = sum(len(lines[k]) + 1 for k in range(line)) + character
+        try:
+            src = engine.load_text(path.name, doc.source)
+            var_type = local_var_types(src, offset).get(word)
+        except Exception:  # noqa: BLE001 - разбор не должен ронять запрос
+            var_type = None
+        return var_type or word
+
+    @server.feature("xbsl/docsAvailable")
+    def _docs_available(_params: object = None) -> dict:
+        return {"available": docs.available()}
+
+    @server.feature("xbsl/docsSearch")
+    def _docs_search(params: object) -> dict:
+        query = str(_param(params, "query", "") or "")
+        limit = int(_param(params, "limit", 20) or 20)
+        return {"hits": docs.search(query, limit=limit)}
+
+    @server.feature("xbsl/docsPage")
+    def _docs_page(params: object) -> dict:
+        return docs.page(str(_param(params, "id", "") or "")) or {}
+
+    @server.feature("xbsl/docsTree")
+    def _docs_tree(_params: object = None) -> dict:
+        return {"nodes": docs.tree()}
+
+    @server.feature("xbsl/docsAsset")
+    def _docs_asset(params: object) -> dict:
+        a = docs.asset(str(_param(params, "id", "") or ""))
+        if not a:
+            return {}
+        return {"id": a["id"], "mime": a["mime"], "base64": base64.b64encode(a["bytes"]).decode("ascii")}
+
+    @server.feature("xbsl/docsForSymbol")
+    def _docs_for_symbol(params: object) -> dict:
+        uri = _param(params, "uri")
+        pos = _param(params, "position")
+        if not uri or pos is None:
+            return {}
+        name = docs_symbol_name(uri, int(_param(pos, "line", 0) or 0), int(_param(pos, "character", 0) or 0))
+        if not name:
+            return {}
+        pid = docs.for_symbol(name)
+        return {"name": name, "page": docs.page(pid) if pid else None}
 
     return server
 

@@ -15,6 +15,24 @@ import { applyOverride, mergeOffRules } from "./ruleConfig";
 
 let client: LanguageClient | undefined;
 
+// Активен ли LSP-режим (сервер поднят). Панель документации – тонкий клиент к серверу.
+export function lspActive(): boolean {
+  return client !== undefined;
+}
+
+// Кастомный запрос к серверу (методы xbsl/docs*). Возвращает undefined, если сервер не поднят
+// или запрос упал – потребитель показывает это как "данные недоступны", а не падает.
+export async function lspRequest<T>(method: string, params: unknown): Promise<T | undefined> {
+  if (!client) {
+    return undefined;
+  }
+  try {
+    return await client.sendRequest<T>(method, params);
+  } catch {
+    return undefined;
+  }
+}
+
 interface SpawnPlan {
   command: string;
   args: string[];

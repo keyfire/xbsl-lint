@@ -2,7 +2,7 @@
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
   "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -75,6 +75,10 @@
         {
           "id": "xbslMetadata",
           "name": "%view.metadata%"
+        },
+        {
+          "id": "xbslDocs",
+          "name": "%view.docs%"
         }
       ]
     },
@@ -302,9 +306,44 @@
         "title": "%cmd.previewForm%",
         "category": "XBSL",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "xbsl.docs.search",
+        "title": "%cmd.docs.search%",
+        "category": "XBSL",
+        "icon": "$(search)"
+      },
+      {
+        "command": "xbsl.docs.showForSymbol",
+        "title": "%cmd.docs.showForSymbol%",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.docs.refresh",
+        "title": "%cmd.docs.refresh%",
+        "category": "XBSL",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "xbsl.docs.open",
+        "title": "%cmd.docs.open%",
+        "category": "XBSL"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "xbsl.docs.open",
+          "when": "false"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "xbsl.docs.showForSymbol",
+          "when": "resourceLangId == xbsl",
+          "group": "navigation@9"
+        }
+      ],
       "editor/title": [
         {
           "command": "xbsl.deploy",
@@ -326,6 +365,16 @@
         {
           "command": "xbsl.metadata.refresh",
           "when": "view == xbslMetadata",
+          "group": "navigation@2"
+        },
+        {
+          "command": "xbsl.docs.search",
+          "when": "view == xbslDocs",
+          "group": "navigation@1"
+        },
+        {
+          "command": "xbsl.docs.refresh",
+          "when": "view == xbslDocs",
           "group": "navigation@2"
         }
       ],
