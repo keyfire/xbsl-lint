@@ -41,6 +41,10 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
   kind, with subtrees (attributes, dimensions, forms, enum values ...), an editable properties
   panel, creation of objects/fields/subsystems and filtering by subsystem. See
   [Metadata explorer](#metadata-explorer).
+- **Documentation** – a dedicated Activity Bar view: the 1C:Element reference the way the docs site
+  shows it – a "Contents" tree (the developer and administrator guides, the type and query-language
+  references), full-text search, and a page view with images and a link to the primary source.
+  Right-click a type or variable to open its documentation. See [Documentation](#documentation).
 
 `.yaml` element descriptions keep their built-in YAML highlighting.
 
@@ -327,6 +331,32 @@ verification passed: the build is applied
 catalogs and the `ProductStatus` enumeration built by the tree are then available in the standard UI
 (the demo needs no OIDC/login).
 
+## Documentation
+
+The **1C:Element** container in the Activity Bar hosts, below the metadata explorer, a
+**Documentation** view – the platform reference the way the docs site shows it.
+
+**The tree.** A curated "Contents" that mirrors the site: the developer and administrator guides,
+the type reference (`Стд::Коллекции` → `Массив` → ...) and the query language. It is built from the
+distribution's own sidebar, so the structure matches the site. Clicking a node opens the page.
+
+**Search.** The search button in the view title (command *XBSL: search the documentation*) runs a
+full-text search over the whole reference and guide; pick a hit to open it.
+
+**The page.** Opens in a side panel: the cleaned article with code, tables and images, plus a
+**Primary source** link to the same page on the docs site. Internal links navigate within the panel,
+and opening a page reveals it in the Contents tree.
+
+**Documentation for the symbol.** Right-click a type or variable in an `.xbsl` file – *XBSL:
+documentation for the symbol* – to open its page. For a type its reference page opens directly; for a
+method or an ambiguous name a pick-list of candidates is shown, ranked by the receiver before the dot
+(so `Задание.Настроить` prefers the scheduled-job pages, not a guide topic).
+
+The data comes from the linter's LSP server, so it needs [LSP mode](#lsp-mode-default) and the
+documentation database built from your distribution (`xbsllint` ≥ 0.12.0, see
+[the linter README](https://github.com/keyfire/xbsl-lint#documentation-searching-the-element-reference)).
+In the regular (CLI) mode the view reports that the documentation is available in LSP mode.
+
 ## Deploy
 
 The command **XBSL: deploy the project (elemctl)** (`xbsl.deploy`, also a cloud button in the
@@ -348,6 +378,8 @@ of the [elemctl](https://github.com/keyfire/elemctl) project
   object, refresh. See [Metadata explorer](#metadata-explorer).
 - **XBSL: deploy the project (elemctl)** (`xbsl.deploy`) – deploy to the stand (see above).
 - **XBSL: form preview** (`xbsl.previewForm`) – a wireframe of the active form yaml (see above).
+- **XBSL: search the documentation** (`xbsl.docs.search`) and **documentation for the symbol**
+  (`xbsl.docs.showForSymbol`) – the Documentation view (see above).
 
 ## How it works
 
