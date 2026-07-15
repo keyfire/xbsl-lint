@@ -34,7 +34,13 @@ except ImportError:  # pragma: no cover - extra не установлен
 
 from xbsllint import __version__, dataset, docs, engine, i18n, indexer
 from xbsllint.diagnostics import Diagnostic, Severity
-from xbsllint.lsp_nav import IndexLookup, resolve_completions, resolve_definition, resolve_hover
+from xbsllint.lsp_nav import (
+    IndexLookup,
+    resolve_completions,
+    resolve_definition,
+    resolve_hover,
+    resolve_references,
+)
 from xbsllint.rules._syntax import local_var_types, query_aliases, query_ranges, query_row_columns
 
 
@@ -309,6 +315,26 @@ def _make_server() -> "LanguageServer":
         rel, line = target
         pos = lsp.Position(max(0, line - 1), 0)
         return lsp.Location(uri=path_to_uri(STATE.root / rel), range=lsp.Range(pos, pos))
+
+    @server.feature(lsp.TEXT_DOCUMENT_REFERENCES)
+    def _references(params: lsp.ReferenceParams) -> Optional[list[lsp.Location]]:
+        q = nav_query(params.text_document.uri, params.position)
+        if q is None or STATE.lookup is None or STATE.root is None:
+            return None
+        ctx = getattr(params, "context", None)
+        include_declaration = bool(getattr(ctx, "include_declaration", False)) if ctx else False
+        locs = resolve_references(STATE.lookup, include_declaration=include_declaration, **q)
+        result = [
+            lsp.Location(
+                uri=path_to_uri(STATE.root / rel),
+                range=lsp.Range(
+                    lsp.Position(max(0, line - 1), max(0, col)),
+                    lsp.Position(max(0, line - 1), max(0, col + length)),
+                ),
+            )
+            for rel, line, col, length in locs
+        ]
+        return result or None
 
     @server.feature(
         lsp.TEXT_DOCUMENT_COMPLETION,

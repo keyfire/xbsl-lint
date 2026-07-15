@@ -23,8 +23,8 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
   Controlled by `xbsl.workspaceLint` (on by default).
 - **Whole-project check** – the command *XBSL: check the whole project* runs the same
   workspace-wide check on demand.
-- **Go to definition and completion across the project** – powered by a project index built by
-  the linter (`xbsllint --index`). See [Navigation and completion](#navigation-and-completion).
+- **Go to definition, find all references and completion across the project** – powered by a project
+  index built by the linter (`xbsllint --index`). See [Navigation and completion](#navigation-and-completion).
 - **Quick Fix for mechanical findings** – a lightbulb on a fixable diagnostic (trailing
   whitespace, typography characters) applies the exact edit the linter reports; a *fix all*
   source action (`source.fixAll.xbsl`) fixes the whole file and can run on save via
@@ -80,6 +80,16 @@ output channel, no popups.
 - `Компоненты.<Name>` → the component node in the current form's yaml; `Компоненты.<Name>.<Method>`
   → the method of that module;
 - in yaml, the value of `Обработчик: <Name>` → the handler in the paired `.xbsl`.
+
+**Find all references** (Shift+F12, or *Go to References* / *Find All References* in the context menu),
+for methods, objects and interface components – every usage, from the same index:
+
+- a method → its calls inside the module, `<Module>.<Method>` and `Компоненты.<Module>.<Method>` calls,
+  and `Обработчик: <Name>` handlers in yaml;
+- an object → every place it is the root of a dotted chain;
+- a component → its `Компоненты.<Name>` uses in the form's module.
+
+Deeper chains that would need type inference are out of scope, as they are for go-to-definition.
 
 > **A note on names.** Code keywords, literals and the names of stdlib types are bilingual, and this
 > README spells them in English (`var`, `new`, `Query{}`, `Array<String>`, `True`). Metadata names are

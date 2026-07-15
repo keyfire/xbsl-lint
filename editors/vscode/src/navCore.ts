@@ -50,11 +50,21 @@ export interface IndexComponent {
   line: number;
 }
 
+export interface IndexReference {
+  name: string; // имя используемого символа
+  qualifier: string; // идентификатор перед точкой ("" – корень цепочки или голый вызов)
+  module: string; // модуль, в котором встречено использование (стем файла)
+  path: string; // POSIX, относительно meta.root
+  line: number; // нумерация с единицы
+  col: number; // нумерация с нуля (для диапазона в редакторе)
+}
+
 export interface ProjectIndex {
   meta: { root: string; version?: string };
   objects: IndexObject[];
   methods: IndexMethod[];
   components: IndexComponent[];
+  references: IndexReference[];
 }
 
 // Точное написание команды индексации в CLI со стороны линтера ещё может измениться.
@@ -137,11 +147,26 @@ export function parseIndex(text: string): ProjectIndex {
         line: num(raw.line),
       };
     });
+  // references необязательны: старый линтер их не выдаёт – тогда "найти использования" молчит.
+  const references: IndexReference[] = list((data as { references?: unknown }).references)
+    .filter(named)
+    .map((r) => {
+      const raw = r as Record<string, unknown>;
+      return {
+        name: String(raw.name),
+        qualifier: String(raw.qualifier ?? ""),
+        module: String(raw.module ?? ""),
+        path: String(raw.path ?? ""),
+        line: num(raw.line),
+        col: Math.max(0, Math.trunc(Number(raw.col)) || 0),
+      };
+    });
   return {
     meta: { root: data.meta.root, version: data.meta.version === undefined ? undefined : String(data.meta.version) },
     objects,
     methods,
     components,
+    references,
   };
 }
 
@@ -161,6 +186,7 @@ export class IndexLookup {
   private readonly moduleMethods = new Map<string, IndexMethod[]>();
   private readonly fileMethods = new Map<string, IndexMethod[]>();
   private readonly formComponents = new Map<string, IndexComponent[]>();
+  private readonly refsByName = new Map<string, IndexReference[]>();
 
   constructor(index: ProjectIndex) {
     this.index = index;
@@ -175,6 +201,9 @@ export class IndexLookup {
     }
     for (const c of index.components) {
       push(this.formComponents, c.form, c);
+    }
+    for (const r of index.references) {
+      push(this.refsByName, r.name, r);
     }
   }
 
@@ -206,6 +235,10 @@ export class IndexLookup {
 
   component(form: string, name: string): IndexComponent | undefined {
     return this.componentsByForm(form).find((c) => c.name === name);
+  }
+
+  referencesByName(name: string): IndexReference[] {
+    return this.refsByName.get(name) ?? [];
   }
 }
 
@@ -289,9 +322,22 @@ function pairedModulePath(filePath: string | undefined): string | undefined {
   return filePath.replace(/\.yaml$/i, ".xbsl");
 }
 
-// Определяет цель перехода для заданной позиции или возвращает null, если контекст не распознан –
-// лучше промолчать, чем прыгнуть не туда.
-export function resolveDefinition(lookup: IndexLookup, q: DefinitionQuery): Target | null {
+// Вид разрешённого символа. Использования (resolveReferences) поддержаны для method/object/component.
+export type SymbolKind = "object" | "method" | "component" | "tabular" | "localType" | "enumValue";
+
+export interface SymbolDescriptor {
+  kind: SymbolKind;
+  name: string;
+  module: string; // у метода – его модуль, иначе ""
+  form: string; // у компонента – его форма, иначе ""
+  path: string; // место определения (POSIX относительно meta.root)
+  line: number; // нумерация с единицы
+}
+
+// Разрешает символ под позицией в описатель (что это и где определено) или null, если контекст не
+// распознан – лучше промолчать, чем прыгнуть не туда. Общая основа перехода к определению и поиска
+// использований.
+export function resolveSymbol(lookup: IndexLookup, q: DefinitionQuery): SymbolDescriptor | null {
   // yaml: значение `Обработчик:` – это метод парного модуля .xbsl.
   if (q.languageId === "yaml") {
     const handler = matchHandlerLine(q.lineText);
@@ -302,7 +348,9 @@ export function resolveDefinition(lookup: IndexLookup, q: DefinitionQuery): Targ
       const paired = pairedModulePath(q.filePath);
       const method =
         (paired ? lookup.methodInFile(paired, handler.name) : undefined) ?? lookup.method(q.fileStem, handler.name);
-      return method ? { path: method.path, line: method.line } : null;
+      return method
+        ? { kind: "method", name: handler.name, module: method.module, form: "", path: method.path, line: method.line }
+        : null;
     }
   }
 
@@ -316,14 +364,14 @@ export function resolveDefinition(lookup: IndexLookup, q: DefinitionQuery): Targ
     // Одиночное слово или корень цепочки, называющий объект проекта -> его yaml.
     const obj = lookup.objectByName(word);
     if (obj) {
-      return { path: obj.path, line: obj.line };
+      return { kind: "object", name: word, module: "", form: "", path: obj.path, line: obj.line };
     }
     // Одиночное имя метода внутри его же модуля.
     if (hit.parts.length === 1 && q.languageId === "xbsl") {
       const method =
         (q.filePath ? lookup.methodInFile(q.filePath, word) : undefined) ?? lookup.method(q.fileStem, word);
       if (method) {
-        return { path: method.path, line: method.line };
+        return { kind: "method", name: word, module: method.module, form: "", path: method.path, line: method.line };
       }
     }
     return null;
@@ -332,12 +380,16 @@ export function resolveDefinition(lookup: IndexLookup, q: DefinitionQuery): Targ
   // Компоненты.X -> узел компонента в yaml текущей формы.
   if (hit.at === 1 && hit.parts[0] === "Компоненты") {
     const component = lookup.component(q.fileStem, word);
-    return component ? { path: component.path, line: component.line } : null;
+    return component
+      ? { kind: "component", name: word, module: "", form: q.fileStem, path: component.path, line: component.line }
+      : null;
   }
   // Компоненты.X.Метод -> метод модуля X.
   if (hit.at === 2 && hit.parts[0] === "Компоненты") {
     const method = lookup.method(hit.parts[1], word);
-    return method ? { path: method.path, line: method.line } : null;
+    return method
+      ? { kind: "method", name: word, module: method.module, form: "", path: method.path, line: method.line }
+      : null;
   }
   if (hit.at !== 1) {
     return null; // более глубокие цепочки требуют вывода типов – за рамками этого разбора
@@ -348,20 +400,93 @@ export function resolveDefinition(lookup: IndexLookup, q: DefinitionQuery): Targ
   if (obj) {
     const localType = obj.local_types.find((t) => t.name === word);
     if (localType) {
-      return { path: localType.path, line: localType.line };
+      return { kind: "localType", name: word, module: "", form: "", path: localType.path, line: localType.line };
     }
     const tabular = obj.tabular.find((t) => t.name === word);
     if (tabular) {
-      return { path: obj.path, line: tabular.line };
+      return { kind: "tabular", name: word, module: "", form: "", path: obj.path, line: tabular.line };
     }
     const value = obj.values.find((v) => v.name === word);
     if (value) {
-      return { path: obj.path, line: value.line };
+      return { kind: "enumValue", name: word, module: "", form: "", path: obj.path, line: value.line };
     }
   }
   // Модуль.Метод (покрывает модули менеджера, чьё имя совпадает с именем объекта).
   const method = lookup.method(qualifier, word);
-  return method ? { path: method.path, line: method.line } : null;
+  return method
+    ? { kind: "method", name: word, module: method.module, form: "", path: method.path, line: method.line }
+    : null;
+}
+
+// Определяет цель перехода для заданной позиции или возвращает null, если контекст не распознан.
+export function resolveDefinition(lookup: IndexLookup, q: DefinitionQuery): Target | null {
+  const d = resolveSymbol(lookup, q);
+  return d ? { path: d.path, line: d.line } : null;
+}
+
+export interface RefLocation {
+  path: string; // POSIX, относительно meta.root
+  line: number; // нумерация с единицы
+  col: number; // нумерация с нуля
+  length: number; // длина выделяемого имени (0 – для строки объявления)
+}
+
+export interface ReferencesQuery extends DefinitionQuery {
+  includeDeclaration?: boolean;
+}
+
+// Все использования символа под позицией. Поддержаны методы (вызовы в своём модуле, `Модуль.Метод`,
+// `Компоненты.Модуль.Метод`, yaml-обработчики), объекты (корень цепочки) и компоненты
+// (`Компоненты.Имя`). Сайт объявления исключается; при includeDeclaration добавляется отдельно.
+export function resolveReferences(lookup: IndexLookup, q: ReferencesQuery): RefLocation[] {
+  const d = resolveSymbol(lookup, q);
+  if (!d) {
+    return [];
+  }
+  const length = d.name.length;
+  const hits: RefLocation[] = [];
+  const add = (r: IndexReference): void => {
+    hits.push({ path: r.path, line: r.line, col: r.col, length });
+  };
+  const refs = lookup.referencesByName(d.name);
+  if (d.kind === "method") {
+    for (const r of refs) {
+      if (r.qualifier === d.module || (r.qualifier === "" && r.module === d.module)) {
+        add(r);
+      }
+    }
+  } else if (d.kind === "object") {
+    for (const r of refs) {
+      if (r.qualifier === "") {
+        add(r);
+      }
+    }
+  } else if (d.kind === "component") {
+    for (const r of refs) {
+      if (r.qualifier === "Компоненты" && r.module === d.form) {
+        add(r);
+      }
+    }
+  } else {
+    return [];
+  }
+
+  // Исключаем сайт объявления из использований; при необходимости добавляем его отдельной записью.
+  let out = hits.filter((h) => !(h.path === d.path && h.line === d.line));
+  if (q.includeDeclaration) {
+    out.push({ path: d.path, line: d.line, col: 0, length: 0 });
+  }
+  // Уникализируем и упорядочиваем по (path, line, col).
+  const seen = new Set<string>();
+  const uniq: RefLocation[] = [];
+  for (const h of out.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line || a.col - b.col)) {
+    const key = `${h.path}:${h.line}:${h.col}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniq.push(h);
+    }
+  }
+  return uniq;
 }
 
 // ---------------------------------------------------------------------------

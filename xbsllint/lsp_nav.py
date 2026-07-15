@@ -36,6 +36,9 @@ class IndexLookup:
         self._form_components: dict[str, list[dict]] = {}
         for c in index.get("components", []) or []:
             self._form_components.setdefault(c.get("form", ""), []).append(c)
+        self._refs_by_name: dict[str, list[dict]] = {}
+        for r in index.get("references", []) or []:
+            self._refs_by_name.setdefault(r.get("name", ""), []).append(r)
 
     def objects(self) -> list[dict]:
         return list(self.index.get("objects", []) or [])
@@ -67,6 +70,9 @@ class IndexLookup:
                 return c
         return None
 
+    def references_by_name(self, name: str) -> list[dict]:
+        return self._refs_by_name.get(name, [])
+
 
 def chain_at(line_text: str, character: int) -> Optional[tuple[list[str], int]]:
     """Цепочка идентификаторов через точку под позицией `character` (с нуля) и индекс сегмента."""
@@ -93,7 +99,7 @@ def _paired_module_path(file_path: Optional[str]) -> Optional[str]:
     return file_path[: -len(".yaml")] + ".xbsl"
 
 
-def resolve_definition(
+def _resolve(
     lookup: IndexLookup,
     *,
     language_id: str,
@@ -101,8 +107,13 @@ def resolve_definition(
     character: int,
     file_stem: str,
     file_path: Optional[str] = None,
-) -> Optional[tuple[str, int]]:
-    """Цель (path, line) для позиции или None, если контекст не распознан."""
+) -> Optional[dict]:
+    """Описатель символа под позицией: {kind, name, module, form, path, line} или None.
+
+    kind – "object" | "method" | "component" | "tabular" | "localType" | "enumValue"; module
+    заполнен у методов, form – у компонентов; path/line – место определения. На этом описателе
+    строятся и переход к определению (resolve_definition), и поиск использований (resolve_references).
+    """
     if language_id == "yaml":
         handler = _HANDLER_RE.match(line_text)
         if handler:
@@ -113,7 +124,10 @@ def resolve_definition(
             name = handler.group(2)
             paired = _paired_module_path(file_path)
             method = (lookup.method_in_file(paired, name) if paired else None) or lookup.method(file_stem, name)
-            return (method["path"], method["line"]) if method else None
+            if not method:
+                return None
+            return {"kind": "method", "name": name, "module": method.get("module", ""),
+                    "form": "", "path": method["path"], "line": method["line"]}
 
     hit = chain_at(line_text, character)
     if not hit:
@@ -124,19 +138,27 @@ def resolve_definition(
     if at == 0:
         obj = lookup.object_by_name(word)
         if obj:
-            return obj["path"], obj["line"]
+            return {"kind": "object", "name": word, "module": "", "form": "",
+                    "path": obj["path"], "line": obj["line"]}
         if len(parts) == 1 and language_id == "xbsl":
             method = (lookup.method_in_file(file_path, word) if file_path else None) or lookup.method(file_stem, word)
             if method:
-                return method["path"], method["line"]
+                return {"kind": "method", "name": word, "module": method.get("module", ""),
+                        "form": "", "path": method["path"], "line": method["line"]}
         return None
 
     if at == 1 and parts[0] == "Компоненты":
         component = lookup.component(file_stem, word)
-        return (component["path"], component["line"]) if component else None
+        if not component:
+            return None
+        return {"kind": "component", "name": word, "module": "", "form": file_stem,
+                "path": component["path"], "line": component["line"]}
     if at == 2 and parts[0] == "Компоненты":
         method = lookup.method(parts[1], word)
-        return (method["path"], method["line"]) if method else None
+        if not method:
+            return None
+        return {"kind": "method", "name": word, "module": method.get("module", parts[1]),
+                "form": "", "path": method["path"], "line": method["line"]}
     if at != 1:
         return None  # более глубокие цепочки требуют вывода типов – за рамками модуля
 
@@ -145,15 +167,104 @@ def resolve_definition(
     if obj:
         for t in obj.get("local_types", []):
             if t.get("name") == word:
-                return t["path"], t["line"]
+                return {"kind": "localType", "name": word, "module": "", "form": "",
+                        "path": t["path"], "line": t["line"]}
         for t in obj.get("tabular", []):
             if t.get("name") == word:
-                return obj["path"], t["line"]
+                return {"kind": "tabular", "name": word, "module": "", "form": "",
+                        "path": obj["path"], "line": t["line"]}
         for v in obj.get("values", []):
             if v.get("name") == word:
-                return obj["path"], v["line"]
+                return {"kind": "enumValue", "name": word, "module": "", "form": "",
+                        "path": obj["path"], "line": v["line"]}
     method = lookup.method(qualifier, word)
-    return (method["path"], method["line"]) if method else None
+    if method:
+        return {"kind": "method", "name": word, "module": method.get("module", qualifier),
+                "form": "", "path": method["path"], "line": method["line"]}
+    return None
+
+
+def resolve_definition(
+    lookup: IndexLookup,
+    *,
+    language_id: str,
+    line_text: str,
+    character: int,
+    file_stem: str,
+    file_path: Optional[str] = None,
+) -> Optional[tuple[str, int]]:
+    """Цель (path, line) для позиции или None, если контекст не распознан."""
+    d = _resolve(
+        lookup,
+        language_id=language_id,
+        line_text=line_text,
+        character=character,
+        file_stem=file_stem,
+        file_path=file_path,
+    )
+    return (d["path"], d["line"]) if d else None
+
+
+def resolve_references(
+    lookup: IndexLookup,
+    *,
+    language_id: str,
+    line_text: str,
+    character: int,
+    file_stem: str,
+    file_path: Optional[str] = None,
+    include_declaration: bool = False,
+) -> list[tuple[str, int, int, int]]:
+    """Использования символа под позицией: список (path, line, col, length).
+
+    Поддержаны методы (вызовы в своём модуле, `Модуль.Метод`, `Компоненты.Модуль.Метод`,
+    yaml-обработчики), объекты (корень цепочки) и компоненты (`Компоненты.Имя`). Сайт объявления
+    из списка исключается; при include_declaration добавляется отдельной записью. Прочие виды
+    (табличные части, локальные типы, значения перечисления) в этой версии не разрешаются.
+    """
+    d = _resolve(
+        lookup,
+        language_id=language_id,
+        line_text=line_text,
+        character=character,
+        file_stem=file_stem,
+        file_path=file_path,
+    )
+    if d is None:
+        return []
+    kind, name = d["kind"], d["name"]
+    length = len(name)
+    out: list[tuple[str, int, int, int]] = []
+    if kind == "method":
+        module = d["module"]
+        for r in lookup.references_by_name(name):
+            q = r.get("qualifier", "")
+            if q == module or (q == "" and r.get("module", "") == module):
+                out.append((r.get("path", ""), int(r.get("line", 1)), int(r.get("col", 0)), length))
+    elif kind == "object":
+        for r in lookup.references_by_name(name):
+            if r.get("qualifier", "") == "":
+                out.append((r.get("path", ""), int(r.get("line", 1)), int(r.get("col", 0)), length))
+    elif kind == "component":
+        form = d["form"]
+        for r in lookup.references_by_name(name):
+            if r.get("qualifier", "") == "Компоненты" and r.get("module", "") == form:
+                out.append((r.get("path", ""), int(r.get("line", 1)), int(r.get("col", 0)), length))
+    else:
+        return []
+
+    decl_path, decl_line = d["path"], int(d["line"])
+    out = [loc for loc in out if not (loc[0] == decl_path and loc[1] == decl_line)]
+    if include_declaration:
+        out.append((decl_path, decl_line, 0, 0))
+    # уникализируем, сохраняя устойчивый порядок по (path, line, col)
+    seen: set = set()
+    uniq: list[tuple[str, int, int, int]] = []
+    for loc in sorted(out):
+        if loc not in seen:
+            seen.add(loc)
+            uniq.append(loc)
+    return uniq
 
 
 def _method_entry(m: dict) -> dict:

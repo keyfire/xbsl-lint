@@ -14,8 +14,10 @@ import {
   INDEX_COMMAND_VARIANTS,
   IndexLookup,
   parseIndex,
+  RefLocation,
   resolveCompletions,
   resolveDefinition,
+  resolveReferences,
   Target,
 } from "./navCore";
 import { parseInternals } from "./metadataCore";
@@ -241,6 +243,16 @@ export function registerNavigation(
     return new vscode.Location(vscode.Uri.file(fsPath), new vscode.Position(Math.max(0, target.line - 1), 0));
   };
 
+  const refToLocation = (cache: IndexCache, ref: RefLocation): vscode.Location | undefined => {
+    if (!cache.rootFsPath || !ref.path) {
+      return undefined;
+    }
+    const fsPath = path.join(cache.rootFsPath, ...ref.path.split("/"));
+    const row = Math.max(0, ref.line - 1);
+    const range = new vscode.Range(row, ref.col, row, ref.col + ref.length);
+    return new vscode.Location(vscode.Uri.file(fsPath), range);
+  };
+
   const definitionProvider: vscode.DefinitionProvider = {
     provideDefinition(doc, position) {
       if (!enabled(doc.uri)) {
@@ -258,6 +270,34 @@ export function registerNavigation(
         filePath: relPath(cache, doc.uri),
       });
       return target ? toLocation(cache, target) : undefined;
+    },
+  };
+
+  const referenceProvider: vscode.ReferenceProvider = {
+    provideReferences(doc, position, refContext) {
+      if (!enabled(doc.uri)) {
+        return undefined;
+      }
+      const cache = cacheFor(doc.uri);
+      if (!cache || !cache.lookup) {
+        return undefined;
+      }
+      const refs = resolveReferences(cache.lookup, {
+        languageId: doc.languageId,
+        lineText: doc.lineAt(position.line).text,
+        character: position.character,
+        fileStem: fileStem(doc.uri),
+        filePath: relPath(cache, doc.uri),
+        includeDeclaration: refContext.includeDeclaration,
+      });
+      const out: vscode.Location[] = [];
+      for (const ref of refs) {
+        const loc = refToLocation(cache, ref);
+        if (loc) {
+          out.push(loc);
+        }
+      }
+      return out;
     },
   };
 
@@ -298,6 +338,7 @@ export function registerNavigation(
 
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(selector, definitionProvider),
+    vscode.languages.registerReferenceProvider(selector, referenceProvider),
     vscode.languages.registerCompletionItemProvider(selector, completionProvider, ".", ":"),
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (doc.uri.scheme !== "file") {

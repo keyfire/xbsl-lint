@@ -14,7 +14,10 @@
                  семейство членов для автодополнения по точке, значения перечисления
                  (только Перечисление);
     methods    – объявления методов и конструкторов всех модулей, аннотации без `@`;
-    components – узлы yaml для КомпонентИнтерфейса, у которых есть и Имя, и Тип.
+    components – узлы yaml для КомпонентИнтерфейса, у которых есть и Имя, и Тип;
+    references – использования индексируемых имён (объектов, методов, компонентов) в модулях
+                 и в yaml-обработчиках: name/qualifier/module/path/line/col – для "найти
+                 использования" (разрешение конкретной цели по этому списку – в навигационном ядре).
 
 Пути записаны в POSIX-виде и относительно meta.root; строки нумеруются с единицы (ключ
 `Имя` объекта в yaml, объявление метода или структуры, элемент перечисления, узел
@@ -173,6 +176,91 @@ def _method_decls(s: SourceFile) -> list[dict]:
     return decls
 
 
+# --- ссылки (использования) для навигации "найти использования" ------------------------
+
+def _prev_significant(toks: list, i: int) -> int:
+    """Индекс ближайшего значимого токена слева от i (комментарии пропускаются), или -1."""
+    j = i - 1
+    while j >= 0 and toks[j].kind == "COMMENT":
+        j -= 1
+    return j
+
+
+def _next_significant(toks: list, i: int, n: int) -> int:
+    """Индекс ближайшего значимого токена справа от i (комментарии пропускаются), или n."""
+    j = i + 1
+    while j < n and toks[j].kind == "COMMENT":
+        j += 1
+    return j
+
+
+def _module_references(s: SourceFile, referable: set[str], module: str, path: str) -> list[dict]:
+    """Использования индексируемых имён в модуле .xbsl: вызовы, обращения к члену, корни цепочек.
+
+    Для каждого токена-идентификатора со значением из referable, который является вызовом
+    (перед `(`), обращением к члену (после `.`) или корнем цепочки (перед `.`), пишем
+    {name, qualifier, module, path, line, col}: qualifier – идентификатор перед точкой (иначе "").
+    Имя в объявлении метода/конструктора пропускаем – это определение, а не использование;
+    имя аннотации (после `@`) ссылкой не считаем. Позиции: line 1-based, col 0-based (для редактора).
+    """
+    refs: list[dict] = []
+    toks = tokens(s)
+    n = len(toks)
+    for i, t in enumerate(toks):
+        if t.kind != "IDENT" or t.value not in referable:
+            continue
+        p = _prev_significant(toks, i)
+        f = _next_significant(toks, i, n)
+        prev = toks[p] if p >= 0 else None
+        nxt = toks[f] if f < n else None
+        if prev is not None and prev.kind == "OP" and prev.value == "@":
+            continue  # имя аннотации, не ссылка
+        if prev is not None and prev.kind == "KEYWORD" and prev.canonical in ("METHOD", "CONSTRUCTOR"):
+            continue  # объявление метода/конструктора – это определение
+        after_dot = prev is not None and prev.kind == "OP" and prev.value == "."
+        before_dot = nxt is not None and nxt.kind == "OP" and nxt.value == "."
+        is_call = nxt is not None and nxt.kind == "OP" and nxt.value == "("
+        if not (after_dot or before_dot or is_call):
+            continue
+        qualifier = ""
+        if after_dot:
+            q = _prev_significant(toks, p)
+            if q >= 0 and toks[q].kind == "IDENT":
+                qualifier = toks[q].value
+        refs.append({
+            "name": t.value,
+            "qualifier": qualifier,
+            "module": module,
+            "path": path,
+            "line": t.line,
+            "col": t.col - 1,
+        })
+    return refs
+
+
+# Строка обработчика в yaml: `Обработчик: ИмяМетода` – значение указывает на метод парного модуля.
+_HANDLER_REF_RE = re.compile(
+    r"(?m)^[ \t]*Обработчик:[ \t]*(['\"]?)([A-Za-zА-Яа-яЁё_][A-Za-z0-9А-Яа-яЁё_]*)\1[ \t]*(?:#.*)?\r?$"
+)
+
+
+def _handler_references(s: SourceFile, module: str, path: str) -> list[dict]:
+    """Использования методов через `Обработчик:` в yaml (метод парного модуля формы/объекта)."""
+    refs: list[dict] = []
+    lm = linemap(s)
+    for m in _HANDLER_REF_RE.finditer(s.text):
+        line, col = lm.linecol(m.start(2))
+        refs.append({
+            "name": m.group(2),
+            "qualifier": "",
+            "module": module,
+            "path": path,
+            "line": line,
+            "col": col - 1,
+        })
+    return refs
+
+
 # --- компоненты форм ----------------------------------------------------------------------
 
 def _component_nodes(node) -> list[tuple[str, str]]:
@@ -286,9 +374,25 @@ def build_index(root: Path) -> dict:
                 "annotations": decl["annotations"],
             })
 
+    # Использования (для "найти использования"): имена объектов, компонентов и методов, встреченные
+    # как вызов/член/корень цепочки в модулях, плюс методы в yaml-обработчиках. Разрешение конкретной
+    # цели (метод модуля X, объект, компонент формы) выполняет навигационное ядро по этому списку.
+    referable = (
+        {o["name"] for o in objects}
+        | {c["name"] for c in components}
+        | {m["name"] for m in methods}
+    )
+    references: list[dict] = []
+    for s in xbsl_sources:
+        module = s.path.name[: -len(".xbsl")]
+        references.extend(_module_references(s, referable, module, rel(s.path)))
+    for s in yaml_sources:
+        references.extend(_handler_references(s, s.path.stem, rel(s.path)))
+
     return {
         "meta": {"root": base.as_posix(), "version": __version__},
         "objects": objects,
         "methods": methods,
         "components": components,
+        "references": references,
     }

@@ -83,6 +83,27 @@ _FORM_YAML = "\n".join([
 ])
 
 
+_USAGE_XBSL = "\n".join([
+    "метод Точка()",                              # 1
+    "    ПодготовитьДанные()",                    # 2 – голый вызов в своём модуле
+    "    возврат Товары.ДанныеСтраницы(\"x\")",   # 3 – объект-корень + вызов метода модуля Товары
+    ";",                                          # 4
+    "метод ПодготовитьДанные()",                  # 5 – объявление, не использование
+    ";",                                          # 6
+    "",
+])
+
+_USAGE_YAML = "\n".join([
+    "ВидЭлемента: КомпонентИнтерфейса",           # 1
+    "Ид: 8a6c3d4e-5f7a-4b8c-9d0e-3f4a5b6c7d8e",   # 2
+    "Имя: Использование",                         # 3
+    "Наследует:",                                 # 4
+    "    Тип: ПроизвольныйКомпонент",             # 5
+    "    Обработчик: ПодготовитьДанные",          # 6 – ссылка на метод парного модуля
+    "",
+])
+
+
 @pytest.fixture()
 def project(tmp_path: Path) -> Path:
     sub = tmp_path / "Основное"
@@ -170,6 +191,35 @@ def test_components(project):
     assert card["line"] == 12
 
 
+def test_references(project):
+    sub = project / "Основное"
+    (sub / "Использование.xbsl").write_text(_USAGE_XBSL, encoding="utf-8")
+    (sub / "Использование.yaml").write_text(_USAGE_YAML, encoding="utf-8")
+    refs = build_index(project)["references"]
+
+    for ref in refs:
+        assert set(ref) == {"name", "qualifier", "module", "path", "line", "col"}
+        assert "\\" not in ref["path"]
+
+    def has(name, qualifier, module):
+        return any(r["name"] == name and r["qualifier"] == qualifier and r["module"] == module for r in refs)
+
+    assert has("ПодготовитьДанные", "", "Использование")  # голый вызов и/или yaml-обработчик
+    assert has("ДанныеСтраницы", "Товары", "Использование")  # Товары.ДанныеСтраницы(...)
+    assert has("Товары", "", "Использование")  # объект как корень цепочки
+    # обработчик в yaml – тоже использование метода
+    assert any(r["name"] == "ПодготовитьДанные" and r["path"].endswith("Использование.yaml") for r in refs)
+    # объявление метода использованием не считается (нет записи на строке 5 в .xbsl)
+    assert not any(
+        r["name"] == "ПодготовитьДанные" and r["path"].endswith("Использование.xbsl") and r["line"] == 5 for r in refs
+    )
+    # позиция вызова ДанныеСтраницы: строка 3, col 0-based
+    site = next(r for r in refs if r["name"] == "ДанныеСтраницы")
+    assert site["line"] == 3 and site["path"] == "Основное/Использование.xbsl"
+    assert isinstance(site["col"], int) and site["col"] >= 0
+    json.dumps(refs, ensure_ascii=False)
+
+
 def test_empty_project(tmp_path):
     idx = build_index(tmp_path)
 
@@ -177,6 +227,7 @@ def test_empty_project(tmp_path):
     assert idx["objects"] == []
     assert idx["methods"] == []
     assert idx["components"] == []
+    assert idx["references"] == []
     json.dumps(idx)
 
 

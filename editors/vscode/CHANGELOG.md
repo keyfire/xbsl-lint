@@ -6,6 +6,14 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.17.0
+
+- "Find All References" (Shift+F12, and "Go to References"/"Find All References" in the context menu)
+  for methods, objects and interface components – built over the project index, it lists every usage:
+  calls inside the module, `Module.Method` / `Компоненты.Module.Method` calls, `Обработчик:` handlers in
+  yaml, object chain roots, and `Компоненты.Name`. Needs the linter engine 0.13.0 or newer (the index now
+  carries usage sites); with an older engine references stay silent.
+
 ## 0.16.1
 
 - Code blocks in the documentation now have a "Copy" button in the top-right corner – it copies the

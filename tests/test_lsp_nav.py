@@ -8,7 +8,14 @@ syntactic helpers (types of locals, query aliases and columns) do run the lexer,
 import pytest
 
 from xbsllint import engine
-from xbsllint.lsp_nav import IndexLookup, chain_at, resolve_completions, resolve_definition, resolve_hover
+from xbsllint.lsp_nav import (
+    IndexLookup,
+    chain_at,
+    resolve_completions,
+    resolve_definition,
+    resolve_hover,
+    resolve_references,
+)
 from xbsllint.rules._syntax import local_var_types, query_aliases, query_row_columns
 
 INDEX = {
@@ -43,6 +50,21 @@ INDEX = {
     ],
     "components": [
         {"form": "ГлавнаяФорма", "name": "Кнопка", "type": "Кнопка", "path": "Каталог/ГлавнаяФорма.yaml", "line": 33},
+    ],
+    "references": [
+        # метод Загрузить (модуль Товар): объявление, свой-модульный вызов, вызов Товар.Загрузить(), шум
+        {"name": "Загрузить", "qualifier": "", "module": "Товар", "path": "Каталог/Товар.xbsl", "line": 20, "col": 4},
+        {"name": "Загрузить", "qualifier": "", "module": "Товар", "path": "Каталог/Товар.xbsl", "line": 25, "col": 8},
+        {"name": "Загрузить", "qualifier": "Товар", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 6, "col": 10},
+        {"name": "Загрузить", "qualifier": "Прочее", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 50, "col": 4},
+        # метод Обновить (модуль ГлавнаяФорма): вызов в коде и yaml-обработчик
+        {"name": "Обновить", "qualifier": "", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 12, "col": 4},
+        {"name": "Обновить", "qualifier": "", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.yaml", "line": 33, "col": 20},
+        # объект Товар как корень цепочки
+        {"name": "Товар", "qualifier": "", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 6, "col": 0},
+        # компонент Кнопка формы ГлавнаяФорма (использование в коде) и метод Нажать её модуля
+        {"name": "Кнопка", "qualifier": "Компоненты", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 8, "col": 4},
+        {"name": "Нажать", "qualifier": "Кнопка", "module": "ГлавнаяФорма", "path": "Каталог/Кнопка.xbsl", "line": 9, "col": 4},
     ],
 }
 
@@ -92,6 +114,68 @@ def test_definition_yaml_handler():
 def test_definition_unknown_contexts():
     assert d("Неведомое.Что", 3) is None
     assert d("А.Б.В.Г", 6) is None  # глубокая цепочка без Компоненты – вне охвата
+
+
+def r(line_text, character, include_declaration=False, language_id="xbsl", file_stem="ГлавнаяФорма", file_path=None):
+    return resolve_references(
+        LOOKUP,
+        language_id=language_id,
+        line_text=line_text,
+        character=character,
+        file_stem=file_stem,
+        file_path=file_path,
+        include_declaration=include_declaration,
+    )
+
+
+def _sites(refs):
+    return {(path, line) for path, line, _col, _len in refs}
+
+
+def test_references_method():
+    # курсор на Товар.Загрузить(): использования метода Загрузить модуля Товар
+    got = r("Товар.Загрузить()", 8)
+    sites = _sites(got)
+    assert ("Каталог/ГлавнаяФорма.xbsl", 6) in sites  # Товар.Загрузить() в форме
+    assert ("Каталог/Товар.xbsl", 25) in sites  # голый вызов в своём модуле
+    assert ("Каталог/Товар.xbsl", 20) not in sites  # объявление исключено
+    assert ("Каталог/ГлавнаяФорма.xbsl", 50) not in sites  # чужой qualifier Прочее – не наш метод
+
+
+def test_references_include_declaration():
+    got = r("Товар.Загрузить()", 8, include_declaration=True)
+    assert ("Каталог/Товар.xbsl", 20) in _sites(got)  # объявление добавлено
+
+
+def test_references_method_from_yaml_handler():
+    # обработчик в yaml -> использования метода Обновить (и сам сайт обработчика – тоже использование)
+    got = r("    Обработчик: Обновить", 20, language_id="yaml", file_path="Каталог/ГлавнаяФорма.yaml")
+    sites = _sites(got)
+    assert ("Каталог/ГлавнаяФорма.xbsl", 12) in sites
+    assert ("Каталог/ГлавнаяФорма.yaml", 33) in sites
+
+
+def test_references_object():
+    # объект Товар как корень цепочки
+    got = r("знч Х = Товар.Ссылка", 11)
+    assert _sites(got) == {("Каталог/ГлавнаяФорма.xbsl", 6)}
+
+
+def test_references_component():
+    # компонент Кнопка через Компоненты в форме ГлавнаяФорма (использование в коде, не строка yaml-узла)
+    got = r("Компоненты.Кнопка.Видимость", 13)
+    assert _sites(got) == {("Каталог/ГлавнаяФорма.xbsl", 8)}
+
+
+def test_references_col_and_length():
+    # позиция несёт col (0-based) и длину имени для выделения
+    got = r("Компоненты.Кнопка.Видимость", 13)
+    _path, _line, col, length = got[0]
+    assert col == 4 and length == len("Кнопка")
+
+
+def test_references_unknown_is_empty():
+    assert r("Неведомое.Что", 3) == []
 
 
 def c(prefix, language_id="xbsl", file_stem="ГлавнаяФорма"):
