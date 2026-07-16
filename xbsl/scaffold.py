@@ -1778,6 +1778,7 @@ def report_form_yaml(info: dict, uid: str) -> str:
             lines += [
                 "                        -",
                 f"                            Тип: ПолеВвода<{ptype}>",
+                f"                            Имя: {p['name']}",
                 f"                            Заголовок: {p['name']}",
                 f"                            Значение: =Отчет.Параметры.{p['name']}",
             ]
@@ -1825,6 +1826,19 @@ def _register_forms(text: str, nl: str, kind: str, obj: str, forms: list[str], r
         return text[:anchor] + f"{nl}{rendered}" + text[anchor:]
 
     # Секция есть – дописываем недостающие регистрации в её конец, существующие не трогаем.
+    if kind == "Отчет":
+        # У отчёта форма регистрируется одним ключом Интерфейс.Форма (подсекций Объект/Список
+        # у него нет), поэтому общий цикл ниже его не обслуживает.
+        form_name = f"{obj}ФормаОтчета"
+        span = top_level_key_span(text, "Интерфейс")
+        if re.search(rf"Форма:\s*{form_name}\b", text):
+            result.notes.append(f"{form_name} уже зарегистрирована в Интерфейс")
+        elif re.search(r"^\s{4}Форма:", text[span[0]: span[1]], re.M):
+            result.notes.append("В Интерфейс уже указана Форма – регистрация вручную")
+        else:
+            text = text[: span[1]] + f"{nl}    Форма: {form_name}" + text[span[1]:]
+        return text
+
     for form, subsection in (("object", "Объект"), ("list", "Список")):
         if form not in forms:
             continue
@@ -1834,12 +1848,6 @@ def _register_forms(text: str, nl: str, kind: str, obj: str, forms: list[str], r
             continue
         span = top_level_key_span(text, "Интерфейс")
         body = text[span[0]: span[1]]
-        if kind == "Отчет":
-            if re.search(r"^\s{4}Форма:", body, re.M):
-                result.notes.append("В Интерфейс уже указана Форма – регистрация вручную")
-                continue
-            text = text[: span[1]] + f"{nl}    Форма: {form_name}" + text[span[1]:]
-            continue
         sub = re.search(rf"^    {subsection}:[ \t]*\r?$", body, re.M)
         if sub is None:
             text = text[: span[1]] + f"{nl}    {subsection}:{nl}        Форма: {form_name}" + text[span[1]:]

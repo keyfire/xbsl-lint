@@ -785,3 +785,24 @@ def test_project_info_access_summary(tmp_path):
     assert "access_default" not in by_name["Хелпер"]  # вид без управления доступом
     assert "РазрешеноВсем" in overview["access_methods"]
     assert overview["access_kind_rights"]["HttpСервис"] == ["Вызов"]
+
+
+def test_report_form_registered_when_interface_exists(tmp_path):
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(
+        subsystem, "Отчет", "Продажи2",
+        report={"source": "Регистр.Продажи", "rows": ["Клиент"], "measures": ["Сумма"]},
+    ))
+    yaml_path = subsystem / "Продажи2.yaml"
+    # У отчёта уже есть секция Интерфейс – регистрация формы обязана в неё дописаться.
+    yaml_path.write_text(
+        yaml_path.read_text(encoding="utf-8") + "Интерфейс:\n    ВключатьВАвтоИнтерфейс: Ложь\n",
+        encoding="utf-8",
+    )
+    apply_result(scaffold.op_add_form(tmp_path, name="Продажи2", forms=["report"]))
+    owner = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
+    assert owner["Интерфейс"]["Форма"] == "Продажи2ФормаОтчета"
+    assert owner["Интерфейс"]["ВключатьВАвтоИнтерфейс"] == "Ложь"
+
+    again = scaffold.op_add_form(tmp_path, name="Продажи2", forms=["report"], overwrite=True)
+    assert any("уже зарегистрирована" in n for n in again.notes)
