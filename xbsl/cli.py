@@ -343,6 +343,22 @@ def main(argv: list[str] | None = None) -> int:
                 pass
 
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["self-update"]:
+        # Обновление распаковкой колеса – безопасно, когда exe заняты LSP/MCP-процессами.
+        from xbsl import selfupdate
+
+        sp = argparse.ArgumentParser(prog="xbsl self-update",
+                                     description="обновить xbsl распаковкой колеса с PyPI")
+        sp.add_argument("--version", help="целевая версия (по умолчанию – последняя с PyPI)")
+        sp_args = sp.parse_args(argv[1:])
+        try:
+            old, new = selfupdate.self_update(version=sp_args.version,
+                                              log=lambda msg: print(msg, file=sys.stderr))
+        except selfupdate.SelfUpdateError as exc:
+            print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+            return 2
+        print(json.dumps({"updated": old != new, "from": old, "to": new}, ensure_ascii=False))
+        return 0
     if argv and argv[0] in _SERVER_COMMANDS:
         # xbsl lsp|mcp|web – диспетчер к одноимённым точкам входа.
         command, rest = argv[0], argv[1:]

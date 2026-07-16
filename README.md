@@ -58,7 +58,15 @@ data somewhere else – for instance into a private package that ships it, see
 ```sh
 pip install xbsl            # or, from a clone: pip install -e .
 xbsl path/to/sources        # or: python -m xbsl path/to/sources
+xbsl self-update            # upgrade to the latest PyPI version
 ```
+
+`self-update` upgrades the package by unpacking the wheel straight into site-packages – safe
+even when `pip install --upgrade` fails with WinError 32 because an exe is busy (the typical
+case: `xbsl-lsp.exe` held by the VS Code LSP server, `xbsl-mcp.exe` by an agent's MCP
+session). The busy stubs are left alone and pick up the new code on the next start; restart
+the long-living processes after the update. `--version X.Y.Z` installs a specific version.
+In an editable install from a clone the command refuses – `git pull` updates that one.
 
 The extractors from step 1 ship with the repository, not with the PyPI package – clone the
 repository to generate the data.
