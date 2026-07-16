@@ -176,7 +176,7 @@ def _apply_fixes(sources, diagnostics, args) -> int:
 
 _META_COMMANDS = (
     "new-project", "new-object", "add-field", "add-route", "add-form",
-    "add-subsystem", "object-info", "project-info",
+    "add-subsystem", "rename-object", "object-info", "project-info",
 )
 _SERVER_COMMANDS = ("lsp", "mcp", "web")
 
@@ -232,6 +232,17 @@ def _scaffold_parser() -> argparse.ArgumentParser:
     p.add_argument("--representation")
     p.add_argument("--no-auto-interface", action="store_true")
     p.add_argument("--uses", help="имена подсистем через запятую")
+
+    p = sub.add_parser(
+        "rename-object",
+        help="переименовать объект (файлы, формы) и обновить ссылки по всему проекту",
+    )
+    p.add_argument("root")
+    p.add_argument("old_name")
+    p.add_argument("new_name")
+    p.add_argument("--new-presentation", help="новое Представление/Заголовок (по умолчанию – новое имя)")
+    p.add_argument("--old-presentation", help="старое представление (для замены в Заголовок/Представление)")
+    p.add_argument("--path", help="yaml объекта (при нескольких объектах с одним именем)")
 
     p = sub.add_parser("object-info", help="сводка объекта: реквизиты, ТЧ, формы, namespace")
     p.add_argument("root")
@@ -302,6 +313,13 @@ def _scaffold_main(argv: list[str]) -> int:
                 auto_interface=not args.no_auto_interface,
                 uses=args.uses.split(",") if args.uses else None,
             )
+        elif args.command == "rename-object":
+            result = scaffold.op_rename_object(
+                Path(args.root), args.old_name, args.new_name,
+                new_presentation=args.new_presentation,
+                old_presentation=args.old_presentation,
+                yaml_path=Path(args.path) if args.path else None,
+            )
         elif args.command == "object-info":
             print(json.dumps(
                 scaffold.object_info(
@@ -323,6 +341,9 @@ def _scaffold_main(argv: list[str]) -> int:
         return 0
     written = scaffold.apply_result(result)
     out = {
+        "renames": [
+            {"from": str(r.old_path), "to": str(r.new_path)} for r in result.renames
+        ],
         "files": [{"path": str(c.path), "created": c.created} for c in result.changes],
         "notes": result.notes,
         "lint": _scaffold_lint(written),

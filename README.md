@@ -287,6 +287,7 @@ xbsl add-form . --name Товары                        # object + list forms
 xbsl new-object ... HttpСервис Каталог --routes "GET /, POST /, GET /{id}"
 xbsl add-route  .../Каталог.yaml "DELETE /{id}"      # url template + handler stub
 xbsl add-subsystem vendor/App Задачи
+xbsl rename-object . Товары Номенклатура             # rename files + update references
 xbsl object-info . --name Товары                     # fields, tabulars, forms, namespace
 xbsl project-info .                                  # projects, subsystems, objects by kind
 ```
@@ -296,6 +297,13 @@ Forms are generated with real content: input fields per attribute (including the
 tables, a report form with parameters; the form is registered in the owner's `Интерфейс`
 section. `--dry-run` prints the changes (with full file texts) without writing – this is how
 the VS Code extension applies them through its own undo-friendly edits.
+
+`rename-object` renames the object's files (including its forms and the `СтрокаСписка<Имя>`
+row component) and rewrites references context-aware across the whole project: yaml
+type/table/form keys, `=` bindings and .xbsl code. Attributes, components or dynamic-list
+fields that merely share the old name are left alone, and so are string literals (UI text);
+`--new-presentation`/`--old-presentation` update the Заголовок/Представление values of the
+object and its forms. The object's `Ид` is untouched, so the platform keeps the stored data.
 
 ## Extending: your own rules, data and severities
 
@@ -371,7 +379,8 @@ claude mcp add xbsl -- xbsl-mcp
 Tools: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`; documentation search –
 `docs_search(query)`, `docs_page(id)`, `docs_symbol(name)` (needs the `docs.sqlite` database, see
 above); metadata scaffolding – `meta_new_project`, `meta_new_object`, `meta_add_field`,
-`meta_add_route`, `meta_add_form`, `meta_add_subsystem`, `meta_object_info`, `meta_project_info`.
+`meta_add_route`, `meta_add_form`, `meta_add_subsystem`, `meta_rename_object` (with a
+`dry_run` plan mode), `meta_object_info`, `meta_project_info`.
 Every writing `meta_*` tool applies the changes and returns the lint of the written files in the
 same response – creation and validation in one round trip. The core and the CLI do not require
 `mcp` – it lives only in the `[mcp]` extra.

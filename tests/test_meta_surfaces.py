@@ -167,3 +167,43 @@ def test_lsp_meta_add_field_error_shape(tmp_path):
         {"path": str(tmp_path / "Нет.yaml"), "fieldKind": "реквизит", "name": "Цвет"}
     )
     assert "не найден" in result["error"].lower()
+
+
+def test_mcp_meta_rename_object(mcp_module, tmp_path):
+    mcp_module.meta_new_object(str(tmp_path), "Справочник", "Склады")
+    mcp_module.meta_new_object(str(tmp_path), "Справочник", "Заказы")
+    mcp_module.meta_add_field(str(tmp_path / "Заказы.yaml"), "реквизит", "Склад",
+                              type="Склады.Ссылка?")
+
+    plan = mcp_module.meta_rename_object(str(tmp_path), "Склады", "Хранилища", dry_run=True)
+    assert plan["renames"] == [
+        {"from": str(tmp_path / "Склады.yaml"), "to": str(tmp_path / "Хранилища.yaml")}
+    ]
+    assert all("content" not in f for f in plan["files"])
+    assert (tmp_path / "Склады.yaml").is_file()  # dry_run ничего не пишет
+
+    res = mcp_module.meta_rename_object(str(tmp_path), "Склады", "Хранилища")
+    assert res["renames"] and "lint" in res
+    assert (tmp_path / "Хранилища.yaml").is_file()
+    assert not (tmp_path / "Склады.yaml").exists()
+    assert "Тип: Хранилища.Ссылка?" in (tmp_path / "Заказы.yaml").read_text(encoding="utf-8")
+
+    err = mcp_module.meta_rename_object(str(tmp_path), "Нет", "Куда")
+    assert "не найден" in err["error"]
+
+
+def test_cli_rename_object(capsys, tmp_path):
+    _run_cli(capsys, "new-object", str(tmp_path), "Справочник", "Склады")
+    code, plan = _run_cli(
+        capsys, "rename-object", str(tmp_path), "Склады", "Хранилища", "--dry-run"
+    )
+    assert code == 0
+    assert plan["renames"][0]["to"].endswith("Хранилища.yaml")
+    assert (tmp_path / "Склады.yaml").is_file()
+
+    code, out = _run_cli(capsys, "rename-object", str(tmp_path), "Склады", "Хранилища")
+    assert code == 0
+    assert out["renames"] and (tmp_path / "Хранилища.yaml").is_file()
+
+    code, err = _run_cli(capsys, "rename-object", str(tmp_path), "Склады", "Хранилища")
+    assert code == 2 and "не найден" in err["error"]

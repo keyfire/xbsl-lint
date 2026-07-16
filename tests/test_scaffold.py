@@ -399,3 +399,135 @@ def test_object_info_and_project_info(tmp_path):
 
     with pytest.raises(ScaffoldError, match="не найден"):
         scaffold.object_info(tmp_path, name="Нет")
+
+
+# --- переименование объекта ---------------------------------------------------------------
+
+
+def _make_rename_project(tmp_path) -> Path:
+    """Проект со складом, его формами и ловушками совпадающих имён."""
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Склады"))
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "СкладыАрхив"))
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Заказы"))
+    apply_result(scaffold.op_add_form(tmp_path, name="Склады"))
+
+    # Представление объекта и заголовок формы.
+    yaml_path = subsystem / "Склады.yaml"
+    yaml_path.write_text(
+        yaml_path.read_text(encoding="utf-8") + "Представление: Склад\n", encoding="utf-8"
+    )
+
+    # Реквизит-ловушка: называется как объект (не должен переименоваться).
+    apply_result(scaffold.op_add_field(subsystem / "Заказы.yaml", "реквизит", "Склады",
+                                       type_="Склады.Ссылка?"))
+
+    (subsystem / "Склады.Объект.xbsl").write_text(
+        "метод ПослеЗаписи()\n    Склады.ПересчитатьРазрешенияДоступа()\n;\n",
+        encoding="utf-8",
+    )
+    (subsystem / "Заказы.xbsl").write_text(
+        'импорт Склады\n'
+        "\n"
+        "метод Показать()\n"
+        "    пер С: Склады.Ссылка?\n"
+        "    знч Данные = Запрос{\n"
+        "        ВЫБРАТЬ С.Наименование ИЗ Склады КАК С\n"
+        "    }\n"
+        '    Сообщить("Склады не изменились")  // строка не правится, а Склады в комментарии – да\n'
+        "    возврат Объект.Склады\n"
+        ";\n",
+        encoding="utf-8",
+    )
+    # Компонент строки карточного списка.
+    (subsystem / "СтрокаСпискаСклады.yaml").write_text(
+        "ВидЭлемента: КомпонентИнтерфейса\nИд: x\nИмя: СтрокаСпискаСклады\n", encoding="utf-8"
+    )
+    return subsystem
+
+
+def test_rename_object_files_and_references(tmp_path):
+    subsystem = _make_rename_project(tmp_path)
+    result = scaffold.op_rename_object(
+        tmp_path, "Склады", "Хранилища",
+        new_presentation="Хранилище", old_presentation="Склад",
+    )
+
+    renamed = {r.old_path.name: r.new_path.name for r in result.renames}
+    assert renamed == {
+        "Склады.yaml": "Хранилища.yaml",
+        "Склады.Объект.xbsl": "Хранилища.Объект.xbsl",
+        "СкладыФормаОбъекта.yaml": "ХранилищаФормаОбъекта.yaml",
+        "СкладыФормаСписка.yaml": "ХранилищаФормаСписка.yaml",
+        "СтрокаСпискаСклады.yaml": "СтрокаСпискаХранилища.yaml",
+    }
+    assert "СкладыАрхив.yaml" not in renamed
+
+    apply_result(result)
+    assert (subsystem / "Хранилища.yaml").is_file()
+    assert not (subsystem / "Склады.yaml").exists()
+    assert (subsystem / "СкладыАрхив.yaml").is_file()
+
+    owner = (subsystem / "Хранилища.yaml").read_text(encoding="utf-8")
+    assert "Имя: Хранилища" in owner
+    assert "Представление: Хранилище" in owner
+    assert "Форма: ХранилищаФормаОбъекта" in owner
+    assert _valid_yaml(owner)
+
+    form = (subsystem / "ХранилищаФормаОбъекта.yaml").read_text(encoding="utf-8")
+    assert "Имя: ХранилищаФормаОбъекта" in form
+    assert "ФормаОбъекта<Хранилища.Объект>" in form
+    assert "Заголовок: Хранилище" in form
+    assert _valid_yaml(form)
+
+    list_form = (subsystem / "ХранилищаФормаСписка.yaml").read_text(encoding="utf-8")
+    assert "Таблица: Хранилища" in list_form
+    assert "ХранилищаФормаСписка.ДанныеСтрокиСписка" in list_form
+    assert _valid_yaml(list_form)
+
+    orders = (subsystem / "Заказы.yaml").read_text(encoding="utf-8")
+    assert "Тип: Хранилища.Ссылка?" in orders
+    assert "Имя: Склады" in orders  # реквизит-тёзка не переименован
+
+    module = (subsystem / "Заказы.xbsl").read_text(encoding="utf-8")
+    assert "импорт Склады" in module          # подсистема в импорте не трогается
+    assert "пер С: Хранилища.Ссылка?" in module
+    assert "ИЗ Хранилища КАК С" in module
+    assert '"Склады не изменились"' in module  # строковый литерал сохранён
+    assert "Хранилища в комментарии" in module
+    assert "Объект.Склады" in module           # член после точки – чужое имя
+
+    object_module = (subsystem / "Хранилища.Объект.xbsl").read_text(encoding="utf-8")
+    assert "Хранилища.ПересчитатьРазрешенияДоступа()" in object_module
+
+
+def test_rename_object_errors(tmp_path):
+    subsystem = _make_rename_project(tmp_path)
+    with pytest.raises(ScaffoldError, match="уже занято"):
+        scaffold.op_rename_object(tmp_path, "Склады", "Заказы")
+    with pytest.raises(ScaffoldError, match="не найден"):
+        scaffold.op_rename_object(tmp_path, "Нет", "Хранилища")
+    with pytest.raises(ScaffoldError, match="совпадают"):
+        scaffold.op_rename_object(tmp_path, "Склады", "Склады")
+
+    # Тёзки в двух подсистемах: без файла – ошибка, с файлом – переименовывается указанный.
+    apply_result(scaffold.op_add_subsystem(subsystem.parent, "Дальняя"))
+    other = subsystem.parent / "Дальняя"
+    apply_result(scaffold.op_new_object(other, "Справочник", "Склады"))
+    with pytest.raises(ScaffoldError, match="неоднозначно"):
+        scaffold.op_rename_object(tmp_path, "Склады", "Хранилища")
+    result = scaffold.op_rename_object(
+        tmp_path, "Склады", "Хранилища", yaml_path=other / "Склады.yaml"
+    )
+    assert [r.old_path for r in result.renames] == [other / "Склады.yaml"]
+
+
+def test_rename_object_dry_dict_shape(tmp_path):
+    _make_rename_project(tmp_path)
+    result = scaffold.op_rename_object(tmp_path, "Склады", "Хранилища")
+    plan = result.as_dict(content=False)
+    assert plan["renames"] and all("from" in r and "to" in r for r in plan["renames"])
+    assert plan["files"] and all("content" not in f for f in plan["files"])
+    assert any("замен" in note for note in plan["notes"])
+    # Ничего не записано: операция только вычисляет изменения.
+    assert (tmp_path / "vendor" / "Приложение" / "Основное" / "Склады.yaml").is_file()

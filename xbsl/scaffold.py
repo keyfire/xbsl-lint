@@ -564,22 +564,33 @@ class FileChange:
     cursor: tuple[int, int] | None = None  # (строка, колонка) точки интереса, 0-базные
 
 
+@dataclass(frozen=True)
+class FileRename:
+    old_path: Path
+    new_path: Path
+
+
 @dataclass
 class ScaffoldResult:
     changes: list[FileChange] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)  # предупреждения, ручные шаги
+    renames: list[FileRename] = field(default_factory=list)  # переименования файлов (до правок)
 
-    def as_dict(self) -> dict:
+    def as_dict(self, content: bool = True) -> dict:
+        files = []
+        for c in self.changes:
+            entry = {"path": str(c.path), "created": c.created}
+            if content:
+                entry["content"] = c.content
+            entry["cursor"] = (
+                {"line": c.cursor[0], "character": c.cursor[1]} if c.cursor else None
+            )
+            files.append(entry)
         return {
-            "files": [
-                {
-                    "path": str(c.path),
-                    "created": c.created,
-                    "content": c.content,
-                    "cursor": {"line": c.cursor[0], "character": c.cursor[1]} if c.cursor else None,
-                }
-                for c in self.changes
+            "renames": [
+                {"from": str(r.old_path), "to": str(r.new_path)} for r in self.renames
             ],
+            "files": files,
             "notes": self.notes,
         }
 
@@ -587,9 +598,15 @@ class ScaffoldResult:
 def apply_result(result: ScaffoldResult) -> list[str]:
     """Записать изменения на диск; возвращает пути записанных файлов.
 
-    Правка существующего файла сохраняет его BOM (кодировку определяет engine.load);
-    переводы строк выбирает сама операция при генерации текста.
+    Переименования файлов выполняются до записи правок: правки переименованных файлов
+    ссылаются на новые пути. Правка существующего файла сохраняет его BOM (кодировку
+    определяет engine.load); переводы строк выбирает сама операция при генерации текста.
     """
+    for rename in result.renames:
+        if rename.new_path.exists():
+            raise ScaffoldError(f"Файл уже существует: {rename.new_path}")
+        rename.new_path.parent.mkdir(parents=True, exist_ok=True)
+        rename.old_path.rename(rename.new_path)
     written = []
     for change in result.changes:
         change.path.parent.mkdir(parents=True, exist_ok=True)
@@ -1544,4 +1561,281 @@ def op_add_form(root: Path, name: str | None = None, yaml_path: Path | None = No
         new_text = _register_forms(text, nl, kind, obj, made, result)
         if new_text != text:
             result.changes.append(FileChange(owner_path, new_text, created=False))
+    return result
+
+
+# --- операция: переименование объекта ----------------------------------------------------
+#
+# Переименование текстовое и контекстное, без полного индекса: имя заменяется только там,
+# где оно ссылается на объект (значения ссылочных ключей yaml, корни цепочек в биндингах
+# и коде, составные имена форм), а совпадающие имена реквизитов, компонентов и полей
+# динамических списков не трогаются. Строковые литералы .xbsl не правятся (UI-текст),
+# комментарии – правятся (упоминания объекта в документации кода).
+
+_WORD = "A-Za-zА-Яа-яЁё0-9_"
+
+# Ключи yaml, в значениях которых имя объекта – ссылка на объект или форму.
+_YAML_REF_KEYS = ("Тип", "Таблица", "ИсточникДанных", "Форма", "ТипФормы")
+_PRESENTATION_KEYS = ("Заголовок", "Представление")
+_YAML_KEY_LINE = re.compile(rf"^([ \t]*(?:-[ \t]+)?)([{_WORD}]+):([ \t]*)(.*)$")
+_IMPORT_LINE = re.compile(r"^[ \t]*импорт[ \t]+\S")
+
+
+class _Renamer:
+    """Замены имени объекта в тексте: идентификатор и составные имена его форм.
+
+    Идентификатор заменяется только в корневой позиции (не после точки – там член чужого
+    типа, не после `@` – там аннотация). Составное имя формы – `<Имя>Форма` с заглавной
+    буквой после "Форма" (или ровно `<Имя>Форма`): строчная буква после "Форма" – чужое
+    слово вида "Форматирование". Компонент строки карточного списка – `СтрокаСписка<Имя>`.
+    """
+
+    def __init__(self, old: str, new: str):
+        self.old, self.new = old, new
+        escaped = re.escape(old)
+        self._ident = re.compile(rf"(?<![{_WORD}.@]){escaped}(?![{_WORD}])")
+        self._composite = re.compile(
+            rf"(?<![{_WORD}.]){escaped}(?=Форма(?:[А-ЯЁA-Z][{_WORD}]*)?(?![{_WORD}]))"
+        )
+        self._row = re.compile(rf"(?<![{_WORD}.])СтрокаСписка{escaped}(?![{_WORD}])")
+
+    def identifier(self, s: str) -> tuple[str, int]:
+        return self._ident.subn(self.new, s)
+
+    def composites(self, s: str) -> tuple[str, int]:
+        s, n1 = self._composite.subn(self.new, s)
+        s, n2 = self._row.subn(f"СтрокаСписка{self.new}", s)
+        return s, n1 + n2
+
+    def file_base(self, base: str) -> str:
+        """Новое имя владельца файла (часть до первой точки), если файл принадлежит объекту."""
+        for sub in (self.composites, self.identifier):
+            new_base, n = sub(base)
+            if n:
+                return new_base
+        return base
+
+
+def _split_strings(line: str) -> list[tuple[str, bool]]:
+    """Сегменты строки кода: (текст, это_строковый_литерал). Кавычка в литерале удваивается."""
+    parts: list[tuple[str, bool]] = []
+    start = 0
+    in_str = False
+    i, n = 0, len(line)
+    while i < n:
+        if line[i] == '"':
+            if in_str and i + 1 < n and line[i + 1] == '"':
+                i += 2
+                continue
+            if in_str:
+                parts.append((line[start : i + 1], True))
+                start = i + 1
+            else:
+                parts.append((line[start:i], False))
+                start = i
+            in_str = not in_str
+        i += 1
+    parts.append((line[start:], in_str))
+    return parts
+
+
+def _rename_in_xbsl(text: str, renamer: _Renamer) -> tuple[str, int]:
+    """Замены в модуле: идентификаторы и составные имена форм вне строковых литералов.
+
+    Строка `импорт <Подсистема>` пропускается целиком – там имя подсистемы, не объекта.
+    """
+    total = 0
+    out: list[str] = []
+    for line in text.split("\n"):
+        if _IMPORT_LINE.match(line):
+            out.append(line)
+            continue
+        pieces: list[str] = []
+        for segment, is_string in _split_strings(line):
+            if not is_string:
+                segment, n1 = renamer.composites(segment)
+                segment, n2 = renamer.identifier(segment)
+                total += n1 + n2
+            pieces.append(segment)
+        out.append("".join(pieces))
+    return "\n".join(out), total
+
+
+def _swap_presentation(value: str, old_values: set[str], new_value: str) -> tuple[str, bool]:
+    """Заменить значение Заголовок/Представление с сохранением кавычек и хвостовых пробелов."""
+    raw = value.rstrip()
+    tail = value[len(raw):]
+    quote = raw[:1] if raw[:1] in "\"'" and len(raw) >= 2 and raw.endswith(raw[:1]) else ""
+    core = raw[1:-1] if quote else raw
+    if core not in old_values:
+        return value, False
+    return f"{quote}{new_value}{quote}{tail}", True
+
+
+def _rename_in_yaml(
+    text: str,
+    renamer: _Renamer,
+    *,
+    own: bool = False,
+    presentations: tuple[set[str], str] | None = None,
+) -> tuple[str, int]:
+    """Замены в yaml: ссылочные ключи, биндинги (`=...`), составные имена форм.
+
+    own – это yaml самого объекта или его формы: дополнительно правится верхнеуровневое
+    `Имя:` и значения Заголовок/Представление, совпадающие со старым именем/представлением.
+    """
+    total = 0
+    out: list[str] = []
+    for line in text.split("\n"):
+        line, n = renamer.composites(line)
+        total += n
+        m = _YAML_KEY_LINE.match(line)
+        if m:
+            prefix, key, sep, value = m.groups()
+            if key in _YAML_REF_KEYS:
+                value, n = renamer.identifier(value)
+                total += n
+                line = f"{prefix}{key}:{sep}{value}"
+                out.append(line)
+                continue
+            if own and key == "Имя" and prefix == "" and value.strip() == renamer.old:
+                out.append(f"{prefix}{key}:{sep}{value.replace(renamer.old, renamer.new)}")
+                total += 1
+                continue
+            if own and presentations and key in _PRESENTATION_KEYS:
+                value, swapped = _swap_presentation(value, *presentations)
+                if swapped:
+                    total += 1
+                    out.append(f"{prefix}{key}:{sep}{value}")
+                    continue
+        eq = line.find("=")
+        if eq != -1:
+            replaced, n = renamer.identifier(line[eq:])
+            if n:
+                total += n
+                line = line[:eq] + replaced
+        out.append(line)
+    return "\n".join(out), total
+
+
+def op_rename_object(
+    root: Path,
+    old_name: str,
+    new_name: str,
+    *,
+    new_presentation: str | None = None,
+    old_presentation: str | None = None,
+    yaml_path: Path | None = None,
+    reader=None,
+) -> ScaffoldResult:
+    """Переименовать объект конфигурации и обновить ссылки на него по всем исходникам.
+
+    Переименовываются файлы объекта (yaml, модули `<Имя>.xbsl` / `<Имя>.<Часть>.xbsl`),
+    его форм (`<Имя>Форма*`) и компонента строки списка (`СтрокаСписка<Имя>`). В текстах
+    правятся: значения ссылочных ключей yaml (Тип/Таблица/ИсточникДанных/Форма/ТипФормы),
+    биндинги `=...`, код .xbsl (кроме строковых литералов) и составные имена форм; в yaml
+    самого объекта и его форм – ещё `Имя:` и Заголовок/Представление (старое представление
+    задаёт old_presentation, новое – new_presentation, по умолчанию новое имя).
+
+    yaml_path разрешает неоднозначность, когда в проекте несколько объектов с именем
+    old_name. Работает и для КомпонентИнтерфейса (переименование формы: обновляется
+    `Форма:` у владельца).
+    """
+    root = Path(root)
+    if not root.is_dir():
+        raise ScaffoldError(f"Корень проекта не найден: {root}")
+    old_name = _check_identifier(old_name, "объекта")
+    new_name = _check_identifier(new_name, "объекта")
+    if old_name == new_name:
+        raise ScaffoldError("Старое и новое имена совпадают")
+
+    if yaml_path is not None:
+        yaml_path = Path(yaml_path)
+        if not yaml_path.is_file():
+            raise ScaffoldError(f"Файл не найден: {yaml_path}")
+        text = (reader or _read)(yaml_path)
+        kind_m = _KIND_RE.search(text)
+        if kind_m is None:
+            raise ScaffoldError(f"В {yaml_path} нет ВидЭлемента – это не объект конфигурации")
+        file_name = (_NAME_RE.search(text) or [None, yaml_path.stem])[1]
+        if file_name != old_name:
+            raise ScaffoldError(f"В {yaml_path.name} объект называется '{file_name}', а не '{old_name}'")
+        subsystem, namespace = _namespace_of(yaml_path, root)
+        hit = ObjectHit(kind_m.group(1), file_name, yaml_path, subsystem, namespace, text)
+    else:
+        hit = find_object(root, old_name)
+
+    namesakes = []
+    for other_path, _kind, name, _text in _iter_objects(root):
+        if name == new_name:
+            raise ScaffoldError(f"Имя '{new_name}' уже занято: {other_path}")
+        if name == old_name and other_path.resolve() != hit.path.resolve():
+            namesakes.append(other_path)
+
+    renamer = _Renamer(old_name, new_name)
+    result = ScaffoldResult()
+    if namesakes:
+        listed = "; ".join(str(p) for p in namesakes)
+        result.notes.append(
+            f"В проекте остаются тёзки '{old_name}' ({listed}): ссылки по имени "
+            "заменяются во всём проекте – проверьте затронутые файлы"
+        )
+
+    # Переименования файлов: владелец файла – часть имени до первой точки.
+    directory = hit.path.parent
+    for path in sorted(directory.iterdir()):
+        if not path.is_file() or path.suffix not in (".yaml", ".xbsl"):
+            continue
+        base = path.name.split(".", 1)[0]
+        new_base = renamer.file_base(base)
+        if new_base == base:
+            continue
+        new_path = path.with_name(new_base + path.name[len(base):])
+        if new_path.exists():
+            raise ScaffoldError(f"Файл уже существует: {new_path}")
+        result.renames.append(FileRename(path, new_path))
+    renamed = {r.old_path.resolve(): r.new_path for r in result.renames}
+    own_yaml = {
+        r.old_path.resolve() for r in result.renames if r.old_path.suffix == ".yaml"
+    }
+
+    presentations = (
+        {old_name} | ({old_presentation} if old_presentation else set()),
+        new_presentation or new_name,
+    )
+
+    def rel(path: Path) -> str:
+        try:
+            return path.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            return str(path)
+
+    changed_files = 0
+    total = 0
+    for path in engine.find_sources(root, "*.yaml") + engine.find_sources(root, "*.xbsl"):
+        text = (reader or _read)(path)
+        if path.suffix == ".yaml":
+            new_text, count = _rename_in_yaml(
+                text, renamer,
+                own=path.resolve() in own_yaml,
+                presentations=presentations,
+            )
+        else:
+            new_text, count = _rename_in_xbsl(text, renamer)
+        if new_text == text:
+            continue
+        target = renamed.get(path.resolve(), path)
+        result.changes.append(FileChange(target, new_text, created=False))
+        result.notes.append(f"{rel(path)}: замен – {count}")
+        changed_files += 1
+        total += count
+
+    if not result.renames and not result.changes:
+        raise ScaffoldError(f"Ссылок на '{old_name}' не найдено – нечего переименовывать")
+    result.notes.insert(0, f"Файлов переименовано: {len(result.renames)}, "
+                           f"правок: {changed_files} файлов / {total} замен")
+    if hit.kind == "HttpСервис" and re.search(r"^КорневойUrl:", hit.text, re.M):
+        result.notes.append(
+            "КорневойUrl не изменён (публичный контракт сервиса) – при необходимости поправьте вручную"
+        )
     return result

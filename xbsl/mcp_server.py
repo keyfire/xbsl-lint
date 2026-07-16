@@ -138,13 +138,18 @@ def _apply_and_lint(result: scaffold.ScaffoldResult) -> dict:
     written = scaffold.apply_result(result)
     sources = [load(Path(p)) for p in written]
     diags = run_sources(sources, scopes=("file",))
-    return {
+    out = {
         "files": [
             {"path": str(c.path), "created": c.created} for c in result.changes
         ],
         "notes": result.notes,
         "lint": report.report(diags, len(sources)),
     }
+    if result.renames:
+        out["renames"] = [
+            {"from": str(r.old_path), "to": str(r.new_path)} for r in result.renames
+        ]
+    return out
 
 
 def _meta(op, *args, **kwargs) -> dict:
@@ -285,6 +290,40 @@ def meta_add_form(
         yaml_path=Path(yaml_path) if yaml_path else None,
         forms=forms, overwrite=overwrite,
     )
+
+
+@mcp.tool()
+def meta_rename_object(
+    root: str,
+    old_name: str,
+    new_name: str,
+    new_presentation: str | None = None,
+    old_presentation: str | None = None,
+    yaml_path: str | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Rename a configuration object and update every reference across the sources.
+
+    Renames the object's files (yaml, modules, its forms `<Имя>Форма*`, the card-list row
+    component `СтрокаСписка<Имя>`) and rewrites references: yaml type/table/form keys,
+    `=` bindings, .xbsl code (string literals are left intact) and composite form names.
+    Attributes, components or dynamic-list fields that merely share the old name are NOT
+    touched. new_presentation/old_presentation update Заголовок/Представление values of the
+    object and its forms (defaults: the new name). yaml_path resolves ambiguity when several
+    objects share old_name. dry_run=true returns the plan (renames, files, notes) without
+    writing anything.
+    """
+    try:
+        result = scaffold.op_rename_object(
+            Path(root), old_name, new_name,
+            new_presentation=new_presentation, old_presentation=old_presentation,
+            yaml_path=Path(yaml_path) if yaml_path else None,
+        )
+    except scaffold.ScaffoldError as exc:
+        return {"error": str(exc)}
+    if dry_run:
+        return result.as_dict(content=False)
+    return _apply_and_lint(result)
 
 
 @mcp.tool()
