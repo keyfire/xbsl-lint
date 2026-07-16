@@ -144,6 +144,10 @@ lint:
 
 ## Rule tiers
 
+**The full list of all 78 rules** (severity, default state, scope, links to platform
+documentation sections) is in [docs/RULES.md](docs/RULES.md); at runtime – `xbsl list-rules`.
+Below is an overview by tier.
+
 - **A. Structure and YAML** – `.xbsl`/`.yaml` pairing, schema validity, `Ид` as a UUID,
   `Ид` uniqueness, `Имя` matching the file name.
 - **B. Text and conventions** – typography (en dash, straight quotes),

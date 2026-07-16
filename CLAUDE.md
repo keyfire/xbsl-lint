@@ -70,3 +70,9 @@ so in the docstring:
 - structure field names are dictated by the serialization contract (JSON keys) – `style/camel-case`
   skips them;
 - string literals (HTML/CSS/SVG) are excluded from `style/line-length`.
+
+When adding or renaming a rule, update in the same change: the rule table in `docs/RULES.md` and
+`docs/RULES.ru.md` (id, severity, default, scope, one-line description, docs link) and its docs
+mapping in `editors/vscode/src/ruleDocs.ts` (if a platform documentation section stands behind it).
+`docs/RULES.*` and the rule-count numbers in it and in the READMEs must stay in sync with
+`xbsl list-rules`.
