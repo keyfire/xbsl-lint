@@ -1,6 +1,6 @@
 """Чистые помощники LSP-сервера (без pygls): слово под курсором и разбор параметров."""
 
-from xbsllint import lsp
+from xbsl import lsp
 
 
 def test_word_at():

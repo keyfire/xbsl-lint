@@ -1,7 +1,7 @@
 """query/in-subquery-composite: `В` с подзапросом по полю составного типа."""
 
-from xbsllint import engine
-from xbsllint.cli import discover
+from xbsl import engine
+from xbsl.cli import discover
 
 _RULE = "query/in-subquery-composite"
 

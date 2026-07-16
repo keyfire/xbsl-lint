@@ -7,9 +7,9 @@
 
 import pytest
 
-from xbsllint import dataset, engine, fixer
-from xbsllint.cli import discover
-from xbsllint.diagnostics import Diagnostic, Severity, TextEdit
+from xbsl import dataset, engine, fixer
+from xbsl.cli import discover
+from xbsl.diagnostics import Diagnostic, Severity, TextEdit
 
 
 def _src(name, content):
@@ -115,7 +115,7 @@ def test_typography_rules_carry_fixes():
 
 @_needs_data
 def test_cli_fix_writes_and_reports(tmp_path, capsys):
-    from xbsllint import cli
+    from xbsl import cli
 
     f = tmp_path / "М.xbsl"
     f.write_text("// многоточие…\nметод Ф()\n    возврат 1  \n;\n", encoding="utf-8")
@@ -129,7 +129,7 @@ def test_cli_fix_writes_and_reports(tmp_path, capsys):
 
 @_needs_data
 def test_cli_fix_rejects_stdin(capsys):
-    from xbsllint import cli
+    from xbsl import cli
 
     code = cli.main(["--fix", "--stdin", "--filename", "М.xbsl"])
     assert code == 2 and "--stdin" in capsys.readouterr().err
@@ -137,7 +137,7 @@ def test_cli_fix_rejects_stdin(capsys):
 
 @_needs_data
 def test_cli_fix_rejects_baseline(tmp_path, capsys):
-    from xbsllint import cli
+    from xbsl import cli
 
     f = tmp_path / "М.xbsl"
     f.write_text("метод Ф()\n;\n", encoding="utf-8")

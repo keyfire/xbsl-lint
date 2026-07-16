@@ -1,26 +1,40 @@
-# CLAUDE.md – xbsl-lint
+# CLAUDE.md – xbsl
 
-A linter for 1C:Element sources (`.yaml`/`.xbsl` pairs). It catches what the server-side
-compilation on deploy does not, and gives fast local feedback. Overview and usage: [README.md](README.md).
+The XBSL (1C:Element) toolkit for `.yaml`/`.xbsl` source pairs: linting with autofixes, an LSP
+server, a project index, documentation search, metadata scaffolding and an MCP server. It catches
+what the server-side compilation on deploy does not, and gives fast local feedback. Overview and
+usage: [README.md](README.md).
+
+Before 0.16 the project was named xbsl-lint (package `xbsllint`). The old names stay as
+compatibility aliases: the `xbsllint` package re-exports the `xbsl` modules (a meta-path finder,
+same module objects – never duplicate the rule registry), the `xbsllint*` console commands map to
+the new entry points, and the legacy env vars / entry-point groups are read after the new ones.
 
 ## Architecture
 
-- Core `xbsllint/engine.py`: source loading, the rule registry (`@rule`), `run() -> [Diagnostic]`.
-- Thin adapters over the core: CLI (`xbsllint/cli.py`), MCP (`xbsllint/mcp_server.py`, FastMCP,
-  optional `[mcp]` extra), and web (`xbsllint/web.py`, standard library, binds to `127.0.0.1` only).
+- Core `xbsl/engine.py`: source loading, the rule registry (`@rule`), `run() -> [Diagnostic]`.
+- Thin adapters over the core: CLI (`xbsl/cli.py`), MCP (`xbsl/mcp_server.py`, FastMCP,
+  optional `[mcp]` extra), and web (`xbsl/web.py`, standard library, binds to `127.0.0.1` only).
   The core does not depend on `mcp`.
-- Machine-readable output: `xbsllint/report.py` holds the shared `{diagnostics, summary}` shape used
-  by the CLI `--format json`, the MCP server, and editors. `xbsllint --stdin --filename NAME` checks
+- Machine-readable output: `xbsl/report.py` holds the shared `{diagnostics, summary}` shape used
+  by the CLI `--format json`, the MCP server, and editors. `xbsl --stdin --filename NAME` checks
   one buffer (per-file rules only) – this is what the VS Code extension in `editors/vscode/` drives.
-- Lexer `xbsllint/lexer.py` – follows the platform grammar; rules live in `xbsllint/rules/`.
+- Lexer `xbsl/lexer.py` – follows the platform grammar; rules live in `xbsl/rules/`.
+- Metadata scaffolding `xbsl/scaffold.py`: the single source of yaml/xbsl templates and precise
+  text edits (new objects, fields, routes, generated forms, subsystems, projects). Three surfaces
+  expose it – CLI subcommands (`xbsl new-object ...`, JSON output, `--dry-run` computes without
+  writing), MCP `meta_*` tools (apply to disk + lint the written files in the same response) and
+  LSP `xbsl/meta*` custom requests (compute only; the editor applies via WorkspaceEdit, reading
+  open buffers through the injected reader). The VS Code metadata tree is a thin client of these –
+  never grow write logic on the TypeScript side.
 
 ## Language data (versioned, generated locally)
 
 XBSL is built on Eclipse Xtext + ANTLR. The data is versioned by platform version:
-`xbsllint/data/element/<version>/{language.json, stdlib.json}` + `index.json` (default/available).
+`xbsl/data/element/<version>/{language.json, stdlib.json}` + `index.json` (default/available).
 `language.json` – keywords/operators from the grammar (`InternalBsl.g`/`.tokens`); `stdlib.json` –
-the type catalog from the distribution docs. Access is via `xbsllint/dataset.py` (version choice:
-`--element-version` / the `XBSLLINT_ELEMENT_VERSION` env var / the index default).
+the type catalog from the distribution docs. Access is via `xbsl/dataset.py` (version choice:
+`--element-version` / the `XBSL_ELEMENT_VERSION` env var / the index default).
 
 The data is NOT bundled in this repository – it is generated from the user's own distribution and is
 gitignored. The distribution is needed only by the extractors; vendor files are not committed
@@ -45,7 +59,7 @@ Add a new rule only after running it on a real project's sources with zero false
 
 The `style/` group implements the platform's code style conventions. Everything is token-based, with
 no full AST – an ambiguous construct is skipped rather than guessed. Shared helpers (`Запрос{...}`
-blocks, type expressions, declarations, signatures) live in `xbsllint/rules/_syntax.py`; the rules
+blocks, type expressions, declarations, signatures) live in `xbsl/rules/_syntax.py`; the rules
 themselves are split by the sections of the platform document: `style_layout` (layout and wrapping),
 `style_naming` (naming), `style_types` (types and signatures), `style_strings` (collections and
 strings), `style_conditions` (checks).

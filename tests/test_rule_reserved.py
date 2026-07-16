@@ -2,8 +2,8 @@
 
 import pytest
 
-from xbsllint import dataset, engine
-from xbsllint.rules import reserved_names
+from xbsl import dataset, engine
+from xbsl.rules import reserved_names
 
 
 def _lint(name, content, rule_id):

@@ -7,7 +7,7 @@
 import io
 import json
 
-from xbsllint import cli
+from xbsl import cli
 
 
 def _feed_stdin(monkeypatch, data: bytes):

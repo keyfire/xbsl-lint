@@ -1,4 +1,4 @@
-"""Рантайм-API документации (xbsllint/docs.py) на крошечной БД, собранной в тесте (без дистрибутива)."""
+"""Рантайм-API документации (xbsl/docs.py) на крошечной БД, собранной в тесте (без дистрибутива)."""
 
 import sqlite3
 import sys
@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import extract_docs as ex  # noqa: E402
-from xbsllint import dataset, docs  # noqa: E402
+from xbsl import dataset, docs  # noqa: E402
 
 
 def _has_fts5() -> bool:

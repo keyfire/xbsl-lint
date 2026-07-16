@@ -10,7 +10,7 @@
 
 import pytest
 
-from xbsllint import dataset, engine
+from xbsl import dataset, engine
 
 pytestmark = pytest.mark.skipif(
     not dataset.available_versions(),

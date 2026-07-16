@@ -6,7 +6,7 @@
 
 import json
 
-from xbsllint import cli
+from xbsl import cli
 
 _ХВОСТ = "метод Ф()\n    возврат 1  \n;\n"  # хвостовой пробел на строке 2
 
@@ -165,7 +165,7 @@ def test_reason_entry_suppresses(tmp_path, capsys):
 
 def test_rewrite_keeps_reasons(tmp_path, capsys):
     """--write-baseline переносит причины выживших записей из прежнего файла."""
-    from xbsllint import baseline
+    from xbsl import baseline
 
     f = tmp_path / "Ч.xbsl"
     f.write_text(_ХВОСТ, encoding="utf-8")
@@ -193,9 +193,9 @@ def test_rewrite_keeps_reasons(tmp_path, capsys):
 
 def test_lsp_apply_baseline_file(tmp_path):
     """Фильтр LSP: нет файла - без изменений, битый - проблема, валидный - гасит."""
-    from xbsllint import baseline
-    from xbsllint.diagnostics import Diagnostic, Severity
-    from xbsllint.lsp import apply_baseline_file
+    from xbsl import baseline
+    from xbsl.diagnostics import Diagnostic, Severity
+    from xbsl.lsp import apply_baseline_file
 
     d = Diagnostic(str(tmp_path / "Ч.xbsl"), 2, 5, "whitespace/trailing", Severity.WARNING, "Хвостовые пробелы.")
     kept, problem = apply_baseline_file([d], None)

@@ -1,6 +1,6 @@
 """Проверки правила yaml/size-needs-no-stretch (фикс. размер без Растягивать*: Ложь)."""
 
-from xbsllint import engine
+from xbsl import engine
 
 RULE = "yaml/size-needs-no-stretch"
 

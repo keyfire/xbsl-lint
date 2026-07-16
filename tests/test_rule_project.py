@@ -4,7 +4,7 @@
 проходят и в чистом чекауте.
 """
 
-from xbsllint import engine
+from xbsl import engine
 
 _HEAD = "Ид: ffeacdec-02d6-4f08-bcfa-be89e9a1861a\nРежимСовместимости: 9.0\n"
 

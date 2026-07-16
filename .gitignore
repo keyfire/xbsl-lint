@@ -15,5 +15,5 @@ venv/
 .refs/
 
 # Данные о языке/типах, извлекаемые из дистрибутива, генерируются локально (не публикуем)
-xbsllint/data/element/
+xbsl/data/element/
 demo/.vscode/

@@ -1,6 +1,6 @@
 """Проверки лексера XBSL."""
 
-from xbsllint.lexer import tokenize
+from xbsl.lexer import tokenize
 
 
 def _kinds(text):

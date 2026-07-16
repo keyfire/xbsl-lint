@@ -1,6 +1,6 @@
 """Проверки сгенерированных языковых данных (language.json)."""
 
-from xbsllint.lexer import _keyword_forms, _language, _operators
+from xbsl.lexer import _keyword_forms, _language, _operators
 
 
 def test_language_has_bilingual_keywords():

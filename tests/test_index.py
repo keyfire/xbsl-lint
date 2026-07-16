@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from xbsllint import __version__, cli
-from xbsllint.indexer import build_index
+from xbsl import __version__, cli
+from xbsl.indexer import build_index
 
 # Fixture-проект: номера строк в проверках ниже – 1-based позиции в этих литералах.
 _CATALOG_YAML = "\n".join([

@@ -1,5 +1,5 @@
-xbsl-lint
-=========
+xbsl
+====
 
 (English below, русский ниже)
 
@@ -11,7 +11,7 @@ This project is not affiliated with 1C and is not an official 1C product.
 of their respective owners. They are used here only to indicate the tool's compatibility with the
 platform.
 
-The language and type data (xbsllint/data/element/...) is NOT included in this repository. It is
+The language and type data (xbsl/data/element/...) is NOT included in this repository. It is
 extracted by the user from their OWN, legally obtained 1C:Element distribution using the scripts
 tools/extract_grammar.py and tools/extract_stdlib.py, and stays on the user's machine. The user is
 responsible for holding the rights to the distribution and for the admissibility of extracting data
@@ -27,7 +27,7 @@ The project's source code is distributed under the MIT License (see the LICENSE 
 обслуживания их правообладателей. Здесь они используются исключительно для указания
 совместимости инструмента с платформой.
 
-Данные о языке и типах (xbsllint/data/element/...) в этот репозиторий НЕ включены. Они
+Данные о языке и типах (xbsl/data/element/...) в этот репозиторий НЕ включены. Они
 извлекаются пользователем из его СОБСТВЕННОГО, законно полученного дистрибутива 1С:Элемент
 скриптами tools/extract_grammar.py и tools/extract_stdlib.py и остаются на локальной машине.
 Ответственность за наличие прав на дистрибутив и за допустимость извлечения из него данных несёт

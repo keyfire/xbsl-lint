@@ -1,7 +1,7 @@
 """Точки расширения: внешние правила и внешний корень данных.
 
 Тесты не зависят от сгенерированных данных Элемента – корни собираются во временном каталоге.
-Окружение чистится фикстурой: иначе прогон с выставленным XBSLLINT_DATA_DIR ломал бы проверки
+Окружение чистится фикстурой: иначе прогон с выставленным XBSL_DATA_DIR ломал бы проверки
 приоритетов.
 """
 
@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from xbsllint import dataset, i18n, plugins
+from xbsl import dataset, i18n, plugins
 
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    monkeypatch.delenv("XBSLLINT_DATA_DIR", raising=False)
-    monkeypatch.delenv("XBSLLINT_NO_PLUGINS", raising=False)
+    monkeypatch.delenv("XBSL_DATA_DIR", raising=False)
+    monkeypatch.delenv("XBSL_NO_PLUGINS", raising=False)
     dataset.set_data_root(None)
     yield
     dataset.set_data_root(None)
@@ -65,14 +65,14 @@ def test_bundled_root_by_default(monkeypatch):
 
 def test_env_data_dir_used(tmp_path, monkeypatch):
     root = _make_root(tmp_path)
-    monkeypatch.setenv("XBSLLINT_DATA_DIR", str(root))
+    monkeypatch.setenv("XBSL_DATA_DIR", str(root))
     assert dataset.data_root() == root
     assert dataset.default_version() == "1.0.0"
 
 
 def test_set_data_root_wins_over_env(tmp_path, monkeypatch):
     explicit = _make_root(tmp_path / "explicit")
-    monkeypatch.setenv("XBSLLINT_DATA_DIR", str(tmp_path / "from-env"))
+    monkeypatch.setenv("XBSL_DATA_DIR", str(tmp_path / "from-env"))
     dataset.set_data_root(explicit)
     assert dataset.data_root() == explicit
 
@@ -93,15 +93,15 @@ def test_load_json_isolated_per_root(tmp_path, monkeypatch):
     first = _make_root(tmp_path / "first", keyword="ПЕРВЫЙ")
     second = _make_root(tmp_path / "second", keyword="ВТОРОЙ")
 
-    monkeypatch.setenv("XBSLLINT_DATA_DIR", str(first))
+    monkeypatch.setenv("XBSL_DATA_DIR", str(first))
     assert "ПЕРВЫЙ" in dataset.load_json("language.json")["keywords"]
 
-    monkeypatch.setenv("XBSLLINT_DATA_DIR", str(second))
+    monkeypatch.setenv("XBSL_DATA_DIR", str(second))
     assert "ВТОРОЙ" in dataset.load_json("language.json")["keywords"]
 
 
 def test_missing_index_names_the_root(tmp_path, monkeypatch):
-    monkeypatch.setenv("XBSLLINT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("XBSL_DATA_DIR", str(tmp_path))
     with pytest.raises(dataset.DatasetError, match="Нет индекса версий"):
         dataset.default_version()
 
@@ -133,7 +133,7 @@ def test_no_plugins_env_disables_both(monkeypatch):
     rules_ep = EntryPoint("битая", "нет_такого_модуля", plugins.RULES_GROUP)
     data_ep = _StubEP("данные", plugins.DATA_GROUP, Path("/нет"))
     monkeypatch.setattr(plugins, "entry_points", _fake_entry_points(rules_ep, data_ep))
-    monkeypatch.setenv("XBSLLINT_NO_PLUGINS", "1")
+    monkeypatch.setenv("XBSL_NO_PLUGINS", "1")
     assert plugins.disabled()
     assert plugins.load_rules() == []
     assert plugins.data_roots() == []
@@ -141,7 +141,7 @@ def test_no_plugins_env_disables_both(monkeypatch):
 
 @pytest.mark.parametrize("value,expected", [("", False), ("0", False), ("no", False), ("1", True)])
 def test_disable_flag_parsing(monkeypatch, value, expected):
-    monkeypatch.setenv("XBSLLINT_NO_PLUGINS", value)
+    monkeypatch.setenv("XBSL_NO_PLUGINS", value)
     assert plugins.disabled() is expected
 
 
@@ -156,15 +156,15 @@ def test_data_root_source_reports_origin(tmp_path, monkeypatch):
 
     data_ep = _StubEP("данные", plugins.DATA_GROUP, _make_root(tmp_path / "плагин"))
     monkeypatch.setattr(plugins, "entry_points", _fake_entry_points(data_ep))
-    assert dataset.data_root_source() == "плагин (точка расширения xbsllint.data)"
+    assert dataset.data_root_source() == "плагин (точка расширения xbsl.data)"
 
     dataset.set_data_root(_make_root(tmp_path / "cli"))
     assert dataset.data_root_source() == "--data-dir"
 
 
 def test_cli_where_shows_root(tmp_path, capsys):
-    """xbsllint --where печатает корень данных, источник и версию."""
-    from xbsllint import cli
+    """xbsl --where печатает корень данных, источник и версию."""
+    from xbsl import cli
 
     root = _make_root(tmp_path)
     rc = cli.main(["--where", "--data-dir", str(root), "--lang", "ru"])

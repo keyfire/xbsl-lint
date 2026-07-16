@@ -7,8 +7,8 @@ syntactic helpers (types of locals, query aliases and columns) do run the lexer,
 
 import pytest
 
-from xbsllint import engine
-from xbsllint.lsp_nav import (
+from xbsl import engine
+from xbsl.lsp_nav import (
     IndexLookup,
     chain_at,
     resolve_completions,
@@ -16,7 +16,7 @@ from xbsllint.lsp_nav import (
     resolve_hover,
     resolve_references,
 )
-from xbsllint.rules._syntax import local_var_types, query_aliases, query_row_columns
+from xbsl.rules._syntax import local_var_types, query_aliases, query_row_columns
 
 INDEX = {
     "meta": {"root": "/project/src", "version": "test"},

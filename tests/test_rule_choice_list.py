@@ -1,6 +1,6 @@
 """Проверки правила yaml/choice-needs-static-list (данные платформы не нужны)."""
 
-from xbsllint import engine
+from xbsl import engine
 
 _SELECT = {"yaml/choice-needs-static-list"}
 

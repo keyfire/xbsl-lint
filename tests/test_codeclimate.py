@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from xbsllint import dataset, report
-from xbsllint.diagnostics import Diagnostic, Severity
+from xbsl import dataset, report
+from xbsl.diagnostics import Diagnostic, Severity
 
 REQUIRED_FIELDS = {"description", "check_name", "fingerprint", "severity", "location"}
 
@@ -94,7 +94,7 @@ def test_empty_report():
 
 
 def test_cli_codeclimate_output(tmp_path, monkeypatch, capsys):
-    from xbsllint import cli
+    from xbsl import cli
 
     # Правилам тира B данные не нужны, но main() резолвит версию данных до прогона
     if not dataset.available_versions():

@@ -2,7 +2,7 @@
 
 import pytest
 
-from xbsllint import dataset
+from xbsl import dataset
 
 
 def test_default_is_available():

@@ -1,12 +1,12 @@
 """Смоук-тесты, не зависящие от сгенерированных данных Элемента (выполняются всегда)."""
 
-import xbsllint
-from xbsllint import dataset
-from xbsllint.engine import RULES
+import xbsl
+from xbsl import dataset
+from xbsl.engine import RULES
 
 
 def test_version_present():
-    assert xbsllint.__version__
+    assert xbsl.__version__
 
 
 def test_rules_registered():

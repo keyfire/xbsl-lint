@@ -2,8 +2,8 @@
 
 import pytest
 
-from xbsllint import dataset, engine
-from xbsllint.rules import semantics
+from xbsl import dataset, engine
+from xbsl.rules import semantics
 
 RULE = "yaml/missing-import"
 

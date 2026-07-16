@@ -1,4 +1,4 @@
-"""Переопределение уровней правил точкой расширения "xbsllint.severity".
+"""Переопределение уровней правил точкой расширения "xbsl.severity".
 
 Реестр правил и карта переопределений – глобальное состояние движка; фикстура
 восстанавливает их после каждого теста, чтобы прогоны не влияли друг на друга.
@@ -8,8 +8,8 @@ from importlib.metadata import EntryPoint
 
 import pytest
 
-from xbsllint import engine, plugins
-from xbsllint.diagnostics import Diagnostic, Severity
+from xbsl import engine, plugins
+from xbsl.diagnostics import Diagnostic, Severity
 
 
 class _StubEP:
@@ -35,7 +35,7 @@ def _fake_entry_points(*eps):
 
 @pytest.fixture(autouse=True)
 def _restore_registry(monkeypatch):
-    monkeypatch.delenv("XBSLLINT_NO_PLUGINS", raising=False)
+    monkeypatch.delenv("XBSL_NO_PLUGINS", raising=False)
     rules_before = list(engine.RULES)
     overrides_before = dict(engine.SEVERITY_OVERRIDES)
     yield
@@ -75,7 +75,7 @@ def test_overrides_reject_non_dict(monkeypatch):
 def test_overrides_disabled_by_env(monkeypatch):
     ep = _StubEP("данные", plugins.SEVERITY_GROUP, {"x/one": "warning"})
     monkeypatch.setattr(plugins, "entry_points", _fake_entry_points(ep))
-    monkeypatch.setenv("XBSLLINT_NO_PLUGINS", "1")
+    monkeypatch.setenv("XBSL_NO_PLUGINS", "1")
     assert plugins.severity_overrides() == {}
 
 

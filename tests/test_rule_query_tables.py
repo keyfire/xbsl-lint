@@ -1,7 +1,7 @@
 """query/unknown-table: таблицы блоков Запрос{...} против объектов проекта."""
 
-from xbsllint import engine
-from xbsllint.cli import discover
+from xbsl import engine
+from xbsl.cli import discover
 
 _RULE = "query/unknown-table"
 

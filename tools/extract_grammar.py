@@ -3,7 +3,7 @@
 
 XBSL реализован на Eclipse Xtext + ANTLR. Внутри дистрибутива (в jar
 com.e1c.g5rt.xbsl.language-*.jar) лежат сгенерированные InternalBsl.g и InternalBsl.tokens.
-Скрипт читает их и формирует xbsllint/data/element/<версия>/language.json: двуязычные
+Скрипт читает их и формирует xbsl/data/element/<версия>/language.json: двуязычные
 ключевые слова, операторы/символы, карту идентификаторов токенов.
 
 Версия Элемента определяется из дистрибутива автоматически (или задаётся --element-version).

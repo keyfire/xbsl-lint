@@ -1,22 +1,30 @@
-# xbsl-lint
+# xbsl
 
-**English** · [Русский](https://github.com/keyfire/xbsl-lint/blob/main/README.ru.md)
+**English** · [Русский](https://github.com/keyfire/xbsl/blob/main/README.ru.md)
 
-![CI](https://github.com/keyfire/xbsl-lint/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/keyfire/xbsl/actions/workflows/ci.yml/badge.svg)
 
-A linter for 1C:Element sources – it checks `Name.yaml` (element description) and `Name.xbsl`
-(code module) pairs before the server-side compilation that happens on deploy.
+The XBSL (1C:Element) toolkit: a linter with autofixes, an LSP server, a project index,
+platform documentation search, metadata scaffolding and an MCP server for AI agents.
+It works on `Name.yaml` (element description) and `Name.xbsl` (code module) pairs –
+before the server-side compilation that happens on deploy.
+
+> Before 0.16 the project was named **xbsl-lint** (the `xbsllint` package). The old names
+> keep working: the `xbsllint*` commands are aliases of the new ones, `import xbsllint`
+> returns the `xbsl` modules, and both spellings of the environment variables and
+> entry-point groups are honored.
 
 > Not affiliated with 1C. "1C:Element", "1C:Fresh" and related names are trademarks of their
-> respective owners. Language data is generated from your own distribution. See [NOTICE](https://github.com/keyfire/xbsl-lint/blob/main/NOTICE).
+> respective owners. Language data is generated from your own distribution. See [NOTICE](https://github.com/keyfire/xbsl/blob/main/NOTICE).
 
 Development notes and updates (in Russian): the [1C × AI: engineering workshop](https://t.me/ceh_1c_ai) Telegram channel.
 
 ## Why
 
-1C:Element has no external linter: the only code check is the server-side compilation on deploy –
-it is slow and knows nothing about project conventions. xbsl-lint gives fast local feedback and
-catches what the compiler does not check at all.
+1C:Element has no external tooling: the only code check is the server-side compilation on deploy –
+it is slow and knows nothing about project conventions. xbsl gives fast local feedback, catches
+what the compiler does not check at all, and takes over the metadata mechanics – creating
+objects, attributes and forms.
 
 ## Step 1: generate the language data
 
@@ -32,16 +40,16 @@ python tools/extract_metamodel.py --dist "<path to the 1C:Element distribution>"
 ```
 
 The scripts auto-detect the platform version and place the data under
-`xbsllint/data/element/<version>/` (this folder is gitignored). Without the data, the linter and
-the tests will tell you to generate it. Pass `--data-dir` (or set `XBSLLINT_DATA_DIR`) to write the
+`xbsl/data/element/<version>/` (this folder is gitignored). Without the data, the linter and
+the tests will tell you to generate it. Pass `--data-dir` (or set `XBSL_DATA_DIR`) to write the
 data somewhere else – for instance into a private package that ships it, see
 [Extending](#extending-your-own-rules-and-data).
 
 ## Step 2: install and run
 
 ```sh
-pip install xbsllint            # or, from a clone: pip install -e .
-xbsllint path/to/sources        # or: python -m xbsllint path/to/sources
+pip install xbsl            # or, from a clone: pip install -e .
+xbsl path/to/sources        # or: python -m xbsl path/to/sources
 ```
 
 The extractors from step 1 ship with the repository, not with the PyPI package – clone the
@@ -57,7 +65,7 @@ unambiguous edits and only for rules active in the run (so `--fix --enable typog
 down the em-dash/guillemets debt); anything needing judgment is never touched.
 For editor integration, `--stdin --filename NAME` checks a single buffer read from stdin (per-file
 rules only); the JSON payload (`{diagnostics, summary}`) is the same one the MCP server returns.
-`xbsllint --index PATH` dumps a JSON index of the project to stdout instead of linting – the
+`xbsl --index PATH` dumps a JSON index of the project to stdout instead of linting – the
 objects (with tabular sections, module-declared local types and the member families for dot
 completion), the method declarations with their annotations and the named form components, with
 POSIX paths relative to the root and 1-based lines – for go-to-definition and completion in
@@ -69,17 +77,17 @@ to the current directory – run it from the repository root and save the output
 ## Output language
 
 Rule titles and diagnostic messages come in Russian and English. The language is picked by
-`--lang ru|en` > the `XBSLLINT_LANG` env var > the system locale > Russian. Type names, keywords
+`--lang ru|en` > the `XBSL_LANG` env var > the system locale > Russian. Type names, keywords
 and other XBSL text inside a message are never translated – only the wording around them. The MCP
 server and the web panel follow the same setting (the web panel also has an in-page RU/EN toggle).
 
 ## Use in CI
 
-`xbsllint` exits non-zero only when a run produces an **error-severity** finding, so it works as a
+`xbsl` exits non-zero only when a run produces an **error-severity** finding, so it works as a
 pipeline gate as-is – warnings and `info` do not fail the build. The one prerequisite is the
 language data (see [Step 1](#step-1-generate-the-language-data)): generate it in the job (the
 extractors ship with the repository, so check the repo out), or depend on a package that ships the
-data via the `xbsllint.data` entry point (see [Extending](#extending-your-own-rules-and-data)) and
+data via the `xbsl.data` entry point (see [Extending](#extending-your-own-rules-and-data)) and
 just `pip install` it.
 
 ### GitHub Actions
@@ -91,13 +99,13 @@ lint:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with: { python-version: "3.12" }
-    - run: pip install xbsllint
+    - run: pip install xbsl
     # generate the data from your 1C:Element distribution (or install a package that ships it):
     - run: |
         python tools/extract_grammar.py  --dist "$ELEMENT_DIST"
         python tools/extract_stdlib.py   --dist "$ELEMENT_DIST"
         python tools/extract_metamodel.py --dist "$ELEMENT_DIST"
-    - run: xbsllint e1c/          # fails the job on any error-severity finding
+    - run: xbsl e1c/          # fails the job on any error-severity finding
 ```
 
 ### GitLab CI (Code Quality widget)
@@ -110,8 +118,8 @@ the job gates the pipeline (drop the gate with a trailing `|| true` if you want 
 ```yaml
 lint:
   script:
-    - pip install xbsllint
-    - xbsllint --format codeclimate e1c/ > gl-code-quality-report.json
+    - pip install xbsl
+    - xbsl --format codeclimate e1c/ > gl-code-quality-report.json
   artifacts:
     when: always
     reports:
@@ -187,7 +195,7 @@ The number of a name is checked against the kind: catalogs, documents, registers
 sections are named in the plural, enumerations and structures in the singular (`naming/number`).
 This is morphology, not a guess by the ending: `Номенклатура` is singular and the standard allows
 it, while `Программы` and `Акции` without the case read as a genitive singular. Needs the `[morph]`
-extra (`pip install "xbsllint[morph]"`); without it the rule stays silent.
+extra (`pip install "xbsl[morph]"`); without it the rule stays silent.
 
 The rest: the letter `ё` and underscores in names, an abbreviation written as one word (`Ндс`, not
 `НДС`), an English term as the original (`Xml`, not `Хмл`), `Вид` rather than `Тип` for
@@ -208,9 +216,9 @@ regressions. Rules that typically fire on accumulated legacy debt are `info` and
 them to measure the debt and pay it down:
 
 ```sh
-xbsllint path/to/sources --select style     # ONLY these rules (replaces the default set)
-xbsllint path/to/sources --enable style     # the default set PLUS these
-xbsllint path/to/sources --ignore style     # the default set minus these
+xbsl path/to/sources --select style     # ONLY these rules (replaces the default set)
+xbsl path/to/sources --enable style     # the default set PLUS these
+xbsl path/to/sources --ignore style     # the default set minus these
 ```
 
 `--select`, `--enable` and `--ignore` accept a rule id, a group (the part before `/`) or a tier
@@ -228,8 +236,8 @@ To enable a rule over code that already violates it without drowning in legacy f
 current findings into a baseline and hold only new code to the rule:
 
 ```sh
-xbsllint e1c/app --enable style --write-baseline baseline.json   # freeze the debt once
-xbsllint e1c/app --enable style --baseline baseline.json         # only NEW findings surface
+xbsl e1c/app --enable style --write-baseline baseline.json   # freeze the debt once
+xbsl e1c/app --enable style --baseline baseline.json         # only NEW findings surface
 ```
 
 A finding's identity is `(file, rule, message)` with an allowed count, so moving a line keeps its
@@ -241,30 +249,58 @@ root and run the linter from anywhere.
 The same file also records point exclusions with their reasons: an entry's value is either a
 bare count or `{"count": N, "reason": "..."}` – the reason says why the code is right on
 purpose. Reasons are written by the "Exclude the finding" lightbulb action of the
-[VS Code extension](https://github.com/keyfire/xbsl-lint/blob/main/editors/vscode/README.md#excluding-a-finding-the-baseline) (or by hand);
+[VS Code extension](https://github.com/keyfire/xbsl/blob/main/editors/vscode/README.md#excluding-a-finding-the-baseline) (or by hand);
 `--write-baseline` keeps the reasons of the identities that survive a rewrite. The LSP server
 accepts the same `--baseline FILE` flag, so exclusions disappear in editors too. The identity
 includes the message text: write and check the baseline under the same output language.
+
+## Metadata scaffolding
+
+The toolkit takes over the metadata mechanics: UUIDs, indentation, precise yaml insertions,
+duplicate checks and section/kind compatibility. The same operations are exposed through the
+CLI (subcommands, JSON output), MCP (the `meta_*` tools for agents) and LSP (the `xbsl/meta*`
+custom requests that power the VS Code metadata tree).
+
+```sh
+xbsl new-project . vendor App                        # Проект.yaml + Проект.xbsl + a subsystem
+xbsl new-object vendor/App/Основное Справочник Товары
+xbsl add-field vendor/App/Основное/Товары.yaml реквизит Цвет --type Строка
+xbsl add-form . --name Товары                        # object + list forms, registered
+xbsl new-object ... HttpСервис Каталог --routes "GET /, POST /, GET /{id}"
+xbsl add-route  .../Каталог.yaml "DELETE /{id}"      # url template + handler stub
+xbsl add-subsystem vendor/App Задачи
+xbsl object-info . --name Товары                     # fields, tabulars, forms, namespace
+xbsl project-info .                                  # projects, subsystems, objects by kind
+```
+
+Forms are generated with real content: input fields per attribute (including the standard
+Наименование / Номер / Дата and hierarchy support), dynamic-list columns, tabular-section
+tables, a report form with parameters; the form is registered in the owner's `Интерфейс`
+section. `--dry-run` prints the changes (with full file texts) without writing – this is how
+the VS Code extension applies them through its own undo-friendly edits.
 
 ## Extending: your own rules, data and severities
 
 Three entry point groups let a separate package extend the linter without forking it. This exists
 for teams whose rules or language data cannot be published: keep those in a private package that
-depends on `xbsllint`.
+depends on `xbsl`.
 
 ```toml
 # pyproject.toml of your package
-dependencies = ["xbsllint>=0.3"]
+dependencies = ["xbsl>=0.16"]
 
-[project.entry-points."xbsllint.rules"]
+[project.entry-points."xbsl.rules"]
 myproject = "myproject.rules"        # importing the module runs its @rule decorators
 
-[project.entry-points."xbsllint.data"]
+[project.entry-points."xbsl.data"]
 myproject = "myproject:data_root"    # a path, or a callable returning one
 
-[project.entry-points."xbsllint.severity"]
+[project.entry-points."xbsl.severity"]
 myproject = "myproject:severity_overrides"   # {rule id: "error"|"warning"|"info"|"off"}
 ```
+
+Packages that declared the groups under the pre-rename name (`xbsllint.rules`/`xbsllint.data`/
+`xbsllint.severity`) keep working: the legacy groups are scanned after the new ones.
 
 The severity dict (or a zero-argument callable returning one) raises or lowers the default level
 of any rule – built-in or plugin – for every run in this installation: a project may treat, say,
@@ -274,12 +310,12 @@ rule from the default set (an explicit `--select`/`--enable` still turns it on, 
 Install the package and the CLI, the MCP server and the web UI all pick everything up – no flags,
 no config file. A failing entry point raises instead of warning: a linter that silently drops a
 rule stays green in CI and guarantees nothing; an override naming an unknown rule id or level
-raises for the same reason. `XBSLLINT_NO_PLUGINS=1` ignores every external package (built-in
+raises for the same reason. `XBSL_NO_PLUGINS=1` ignores every external package (built-in
 rules, bundled data and default severities only).
 
 ## LSP server (experimental)
 
-`xbsllint-lsp` (the `[lsp]` extra: `pip install "xbsllint[lsp]"`) runs the linter as a
+`xbsl-lsp` (the `[lsp]` extra: `pip install "xbsl[lsp]"`) runs the linter as a
 long-living Language Server over stdio: live per-file diagnostics as you type, project-wide
 diagnostics on save, go to definition, completion and hover over a resident project index,
 and quick-fix code actions - without paying the interpreter start-up cost per call. Flags:
@@ -300,7 +336,7 @@ distribution, like the language data (step 1).
 python tools/extract_docs.py --dist "$ELEMENT_DIST"
 ```
 
-The runtime API `xbsllint.docs` (`search`, `page`, `tree`, `for_symbol`, `asset`) reads
+The runtime API `xbsl.docs` (`search`, `page`, `tree`, `for_symbol`, `asset`) reads
 `docs.sqlite`; with no database the search is simply empty. It powers the MCP tools (below) and –
 later – the reference panel in the VS Code extension.
 
@@ -311,12 +347,16 @@ receive structured diagnostics.
 
 ```sh
 pip install -e ".[mcp]"
-claude mcp add xbsllint -- xbsllint-mcp
+claude mcp add xbsl -- xbsl-mcp
 ```
 
 Tools: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`; documentation search –
 `docs_search(query)`, `docs_page(id)`, `docs_symbol(name)` (needs the `docs.sqlite` database, see
-above). The core and the CLI do not require `mcp` – it lives only in the `[mcp]` extra.
+above); metadata scaffolding – `meta_new_project`, `meta_new_object`, `meta_add_field`,
+`meta_add_route`, `meta_add_form`, `meta_add_subsystem`, `meta_object_info`, `meta_project_info`.
+Every writing `meta_*` tool applies the changes and returns the lint of the written files in the
+same response – creation and validation in one round trip. The core and the CLI do not require
+`mcp` – it lives only in the `[mcp]` extra.
 
 ## Web interface
 
@@ -324,7 +364,7 @@ A local page: point it at a project folder and see the diagnostics. Standard lib
 external dependencies), binds to `127.0.0.1` only.
 
 ```sh
-xbsllint-web            # then open http://127.0.0.1:8771/
+xbsl-web            # then open http://127.0.0.1:8771/
 ```
 
 Per-tier rule toggles, a data-version selector, severity/text filters, dark/light theme; clicking
@@ -335,7 +375,7 @@ a diagnostic opens the file in VS Code (`vscode://`).
 A VS Code extension in [`editors/vscode`](editors/vscode) gives `.xbsl` syntax highlighting,
 live diagnostics as you type (`--stdin`), workspace diagnostics on save (a full linter run in
 the background brings the project-scope rules into the editor), index-based go-to-definition
-and completion across the project (`xbsllint --index`), a form preview with a properties
+and completion across the project (`xbsl --index`), a form preview with a properties
 panel, and a deploy button powered by [elemctl](https://github.com/keyfire/elemctl). It is
 published on the [Marketplace](https://marketplace.visualstudio.com/items?itemName=keyfire.xbsl)
 and [Open VSX](https://open-vsx.org/extension/keyfire/xbsl); its
@@ -348,17 +388,17 @@ extension from the [elemctl](https://github.com/keyfire/elemctl) project.
 The data is versioned by platform version:
 
 ```
-xbsllint/data/element/
+xbsl/data/element/
     index.json            # { available: [...], default: "<version>" }
     <version>/{language.json, stdlib.json, metamodel.json}
 ```
 
-Pick a version with `--element-version` / the `XBSLLINT_ELEMENT_VERSION` env var / the index
+Pick a version with `--element-version` / the `XBSL_ELEMENT_VERSION` env var / the index
 `default`; `--version` shows what is available. Add a new version by re-running the extractors with
 a new `--dist`.
 
-The data root itself is resolved in this order: `--data-dir` > `XBSLLINT_DATA_DIR` > a root supplied
-by an installed `xbsllint.data` entry point > `xbsllint/data/element` inside the package.
+The data root itself is resolved in this order: `--data-dir` > `XBSL_DATA_DIR` > a root supplied
+by an installed `xbsl.data` entry point > `xbsl/data/element` inside the package.
 
 ## Tests
 
@@ -371,5 +411,5 @@ Data-dependent tests are skipped automatically when the data has not been genera
 
 ## License
 
-MIT – see [LICENSE](https://github.com/keyfire/xbsl-lint/blob/main/LICENSE). Trademarks and data provenance – [NOTICE](https://github.com/keyfire/xbsl-lint/blob/main/NOTICE).
-How to add a rule – [CONTRIBUTING.md](https://github.com/keyfire/xbsl-lint/blob/main/CONTRIBUTING.md).
+MIT – see [LICENSE](https://github.com/keyfire/xbsl/blob/main/LICENSE). Trademarks and data provenance – [NOTICE](https://github.com/keyfire/xbsl/blob/main/NOTICE).
+How to add a rule – [CONTRIBUTING.md](https://github.com/keyfire/xbsl/blob/main/CONTRIBUTING.md).

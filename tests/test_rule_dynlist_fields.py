@@ -4,7 +4,7 @@
 не входит в список data-dependent модулей conftest.py.
 """
 
-from xbsllint import engine
+from xbsl import engine
 
 RULE = "yaml/dynlist-missing-field"
 

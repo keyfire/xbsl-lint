@@ -4,9 +4,9 @@
 дистрибутива и кладут производные данные в <корень>/<версия>/, обновляя индекс.
 Сам линтер работает от этих данных и дистрибутив в рантайме не требует.
 
-Корень по умолчанию – xbsllint/data/element этого клона. Тот, кто держит данные отдельно
+Корень по умолчанию – xbsl/data/element этого клона. Тот, кто держит данные отдельно
 (не может их публиковать), направляет вывод в свой каталог: --data-dir или env
-XBSLLINT_DATA_DIR – та же переменная, по которой линтер потом эти данные читает.
+XBSL_DATA_DIR – та же переменная, по которой линтер потом эти данные читает.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-_ENV_DATA_DIR = "XBSLLINT_DATA_DIR"
+_ENV_DATA_DIR = "XBSL_DATA_DIR"
 _VER_RE = re.compile(r"-(\d+\.\d+\.\d+(?:\+\d+)?)-")
 _root_override: Path | None = None
 
@@ -46,7 +46,7 @@ def add_data_dir_arg(ap) -> None:
     """Общий ключ экстракторов: куда класть данные и индекс."""
     ap.add_argument(
         "--data-dir",
-        help=f"корень данных (по умолчанию xbsllint/data/element клона; также env {_ENV_DATA_DIR})",
+        help=f"корень данных (по умолчанию xbsl/data/element клона; также env {_ENV_DATA_DIR})",
     )
 
 
@@ -61,7 +61,7 @@ def data_root() -> Path:
     env = os.environ.get(_ENV_DATA_DIR)
     if env:
         return Path(env)
-    return REPO / "xbsllint" / "data" / "element"
+    return REPO / "xbsl" / "data" / "element"
 
 
 def version_dir(version: str) -> Path:

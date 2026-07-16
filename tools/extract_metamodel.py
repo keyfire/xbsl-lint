@@ -6,7 +6,7 @@
 аннотацией `@PropertyInfo(ru="Имя", en="Name")` – ru-имя совпадает с ключом в yaml. Классы
 наследуются (`class X extends A, B`), свойства собираются по всей цепочке.
 
-Результат – xbsllint/data/element/<версия>/metamodel.json:
+Результат – xbsl/data/element/<версия>/metamodel.json:
     { "classes": { "<Class>": {"props": [ru-имена], "ext": [базовые классы]} },
       "vid2class": { "<ВидЭлемента>": "<корневой класс>" },
       "common": [универсальные ключи оболочки элемента проекта] }

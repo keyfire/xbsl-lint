@@ -1,7 +1,7 @@
 """Проверки правила yaml/enum-needs-nullable (перечисление в Тип: без nullable)."""
 
-from xbsllint import engine
-from xbsllint.cli import discover
+from xbsl import engine
+from xbsl.cli import discover
 
 _ВИД_YAML = (
     "ВидЭлемента: Перечисление\nИмя: ВидСообщения\nЭлементы:\n"

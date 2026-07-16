@@ -2,8 +2,8 @@
 
 import json
 
-from xbsllint import report
-from xbsllint.diagnostics import Diagnostic, Severity, TextEdit
+from xbsl import report
+from xbsl.diagnostics import Diagnostic, Severity, TextEdit
 
 
 def _d(line, col, rule, sev):

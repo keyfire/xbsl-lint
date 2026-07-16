@@ -6,8 +6,8 @@
 
 import pytest
 
-from xbsllint import dataset, engine
-from xbsllint.cli import discover
+from xbsl import dataset, engine
+from xbsl.cli import discover
 
 pytestmark = pytest.mark.skipif(
     not dataset.available_versions(),

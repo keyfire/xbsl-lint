@@ -1,4 +1,4 @@
-# Contributing to xbsl-lint
+# Contributing to xbsl
 
 **English** · [Русский](CONTRIBUTING.ru.md)
 
@@ -16,17 +16,17 @@ python tools/extract_metamodel.py --dist "<path to the distribution>"
 
 pip install -e ".[dev]"     # linter + pytest + PyYAML
 pytest                      # tests (data-dependent ones are skipped without data)
-python -m xbsllint <path>   # run over sources
+python -m xbsl <path>   # run over sources
 ```
 
 ## How to add a rule
 
-1. Create a module under `xbsllint/rules/` (or extend an existing one).
+1. Create a module under `xbsl/rules/` (or extend an existing one).
 2. Declare a rule function and decorate it:
 
    ```python
-   from xbsllint.diagnostics import Diagnostic, Severity
-   from xbsllint.engine import SourceFile, rule
+   from xbsl.diagnostics import Diagnostic, Severity
+   from xbsl.engine import SourceFile, rule
 
    @rule("group/name", "Short title", "B", severity=Severity.WARNING)
    def my_rule(source: SourceFile):
@@ -38,9 +38,9 @@ python -m xbsllint <path>   # run over sources
    - `tier`: `A` structure/YAML, `B` text/conventions, `C` code, `D` semantics.
    - `scope="project"` – for cross-file rules; the function then receives `list[SourceFile]`.
    - `enabled_by_default=False` – if the rule is noisy on legacy code (enable it via `--select`).
-   - Line/column positions are 1-indexed. Use `xbsllint.lexer.linemap` for positions.
+   - Line/column positions are 1-indexed. Use `xbsl.lexer.linemap` for positions.
 
-3. Register the module in `xbsllint/rules/__init__.py` (importing it registers the rule).
+3. Register the module in `xbsl/rules/__init__.py` (importing it registers the rule).
 4. **The project's main rule:** run it on a real project's sources and reach **zero false
    positives**. If a rule fires massively on existing code, make it `info` and disabled by default
    instead of forcing everyone to fix legacy code.
@@ -52,7 +52,7 @@ primary source.
 
 ## Data for a new Element version
 
-The data is versioned under `xbsllint/data/element/<version>/`. To add a new version, take its
+The data is versioned under `xbsl/data/element/<version>/`. To add a new version, take its
 distribution and run the extractors – the version is detected automatically:
 
 ```sh

@@ -8,8 +8,8 @@ import string
 
 import pytest
 
-from xbsllint import i18n
-from xbsllint.engine import RULES
+from xbsl import i18n
+from xbsl.engine import RULES
 
 _FORMATTER = string.Formatter()
 
@@ -27,7 +27,7 @@ def _restore_lang():
 
 
 def _builtin_rules():
-    return [r for r in RULES if r.func.__module__.startswith("xbsllint.rules")]
+    return [r for r in RULES if r.func.__module__.startswith("xbsl.rules")]
 
 
 # --- Catalog integrity ---------------------------------------------------------------
@@ -125,19 +125,19 @@ def test_set_lang_rejects_an_unknown_language():
 
 def test_env_is_used_when_nothing_is_pinned(monkeypatch):
     i18n.set_lang(None)
-    monkeypatch.setenv("XBSLLINT_LANG", "en")
+    monkeypatch.setenv("XBSL_LANG", "en")
     assert i18n.current_lang() == "en"
 
 
 def test_pinned_language_wins_over_env(monkeypatch):
-    monkeypatch.setenv("XBSLLINT_LANG", "en")
+    monkeypatch.setenv("XBSL_LANG", "en")
     i18n.set_lang("ru")
     assert i18n.current_lang() == "ru"
 
 
 def test_falls_back_to_russian(monkeypatch):
     i18n.set_lang(None)
-    monkeypatch.delenv("XBSLLINT_LANG", raising=False)
+    monkeypatch.delenv("XBSL_LANG", raising=False)
     monkeypatch.delenv("LC_ALL", raising=False)
     monkeypatch.delenv("LANG", raising=False)
     monkeypatch.setattr(i18n._locale, "getlocale", lambda *a: (None, None))
@@ -146,6 +146,6 @@ def test_falls_back_to_russian(monkeypatch):
 
 def test_system_locale_is_recognised(monkeypatch):
     i18n.set_lang(None)
-    monkeypatch.delenv("XBSLLINT_LANG", raising=False)
+    monkeypatch.delenv("XBSL_LANG", raising=False)
     monkeypatch.setattr(i18n._locale, "getlocale", lambda *a: ("English_United States", "1252"))
     assert i18n.current_lang() == "en"

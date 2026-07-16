@@ -1,7 +1,7 @@
 """Инвариант: реальный корпус проходит линтер без замечаний по умолчанию.
 
 Тест пропускается, если корпус недоступен (переносимость).
-Путь задаётся переменной окружения XBSLLINT_CORPUS.
+Путь задаётся переменной окружения XBSL_CORPUS.
 """
 
 import os
@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from xbsllint import engine
-from xbsllint.cli import discover
+from xbsl import engine
+from xbsl.cli import discover
 
-_CORPUS = os.environ.get("XBSLLINT_CORPUS")
+_CORPUS = os.environ.get("XBSL_CORPUS")
 
 
 # Правила, чьи находки на корпусе допустимы: это НАСТОЯЩИЕ находки, а не ложные.
@@ -21,7 +21,7 @@ _CORPUS = os.environ.get("XBSLLINT_CORPUS")
 _KNOWN_FINDING_RULES = {"code/unused-loop-var"}
 
 
-@pytest.mark.skipif(not (_CORPUS and Path(_CORPUS).exists()), reason="корпус недоступен (задайте XBSLLINT_CORPUS)")
+@pytest.mark.skipif(not (_CORPUS and Path(_CORPUS).exists()), reason="корпус недоступен (задайте XBSL_CORPUS)")
 def test_corpus_no_errors_and_only_known_warnings():
     # Корпус – валидный задеплоенный код: ошибок линтера быть не должно.
     diags = engine.run(discover([str(_CORPUS)]))

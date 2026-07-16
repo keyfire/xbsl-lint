@@ -1,0 +1,169 @@
+"""Поверхности скаффолдинга: MCP-инструменты meta_*, CLI-подкоманды и LSP-методы xbsl/meta*.
+
+MCP грузится через подставной FastMCP (как в test_mcp.py) – extra [mcp] не нужен;
+LSP-часть проверяет обработчики напрямую, если установлен pygls, иначе пропускается.
+"""
+
+import importlib
+import json
+import sys
+import types
+
+import pytest
+
+from xbsl import cli, scaffold
+
+
+@pytest.fixture()
+def mcp_module(monkeypatch):
+    class _FakeMCP:
+        def __init__(self, name):
+            self.name = name
+            self.tools = {}
+
+        def tool(self):
+            def deco(fn):
+                self.tools[fn.__name__] = fn
+                return fn
+
+            return deco
+
+    fast = types.ModuleType("mcp.server.fastmcp")
+    fast.FastMCP = _FakeMCP
+    monkeypatch.setitem(sys.modules, "mcp", types.ModuleType("mcp"))
+    monkeypatch.setitem(sys.modules, "mcp.server", types.ModuleType("mcp.server"))
+    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", fast)
+    sys.modules.pop("xbsl.mcp_server", None)
+    module = importlib.import_module("xbsl.mcp_server")
+    yield module
+    sys.modules.pop("xbsl.mcp_server", None)
+
+
+def test_mcp_meta_tools_registered(mcp_module):
+    expected = {
+        "meta_project_info", "meta_object_info", "meta_new_project", "meta_new_object",
+        "meta_add_field", "meta_add_route", "meta_add_form", "meta_add_subsystem",
+    }
+    assert expected.issubset(mcp_module.mcp.tools)
+
+
+def test_mcp_meta_new_object_writes_and_lints(mcp_module, tmp_path):
+    res = mcp_module.meta_new_object(str(tmp_path), "Справочник", "Товары")
+    assert [f["path"] for f in res["files"]] == [str(tmp_path / "Товары.yaml")]
+    assert res["files"][0]["created"] is True
+    assert "lint" in res
+    assert (tmp_path / "Товары.yaml").is_file()
+
+    dup = mcp_module.meta_new_object(str(tmp_path), "Справочник", "Товары")
+    assert "уже существует" in dup["error"]
+
+
+def test_mcp_meta_field_and_info(mcp_module, tmp_path):
+    mcp_module.meta_new_object(str(tmp_path), "Справочник", "Товары")
+    res = mcp_module.meta_add_field(str(tmp_path / "Товары.yaml"), "реквизит", "Цвет")
+    assert res["files"][0]["created"] is False
+
+    info = mcp_module.meta_object_info(str(tmp_path), name="Товары")
+    assert [f["name"] for f in info["fields"]] == ["Наименование", "Цвет"]
+
+    overview = mcp_module.meta_project_info(str(tmp_path))
+    assert any(o["name"] == "Товары" for o in overview["objects"])
+    assert "Справочник" in overview["creatable_kinds"]
+
+
+# --- CLI ---------------------------------------------------------------------------------
+
+
+def _run_cli(capsys, *argv) -> tuple[int, dict]:
+    code = cli.main(list(argv))
+    out = capsys.readouterr().out.strip()
+    return code, json.loads(out)
+
+
+def test_cli_new_object_and_field(tmp_path, capsys):
+    code, out = _run_cli(capsys, "new-object", str(tmp_path), "Справочник", "Товары")
+    assert code == 0
+    assert out["files"][0]["created"] is True
+
+    code, out = _run_cli(
+        capsys, "add-field", str(tmp_path / "Товары.yaml"), "реквизит", "Цвет", "--type", "Строка"
+    )
+    assert code == 0
+    text = (tmp_path / "Товары.yaml").read_text(encoding="utf-8")
+    assert "Имя: Цвет" in text
+
+
+def test_cli_dry_run_writes_nothing(tmp_path, capsys):
+    code, out = _run_cli(capsys, "new-object", str(tmp_path), "Справочник", "Товары", "--dry-run")
+    assert code == 0
+    assert out["files"][0]["content"].startswith("ВидЭлемента: Справочник")
+    assert not (tmp_path / "Товары.yaml").exists()
+
+
+def test_cli_error_is_json(tmp_path, capsys):
+    code, out = _run_cli(capsys, "new-object", str(tmp_path), "НеВид", "Имя")
+    assert code == 2
+    assert "не поддерживается" in out["error"]
+
+
+def test_cli_project_info(tmp_path, capsys):
+    scaffold.apply_result(scaffold.op_new_project(tmp_path, "vendor", "Приложение"))
+    code, out = _run_cli(capsys, "project-info", str(tmp_path))
+    assert code == 0
+    assert out["projects"][0]["name"] == "Приложение"
+
+
+@pytest.mark.needs_data
+def test_cli_lint_alias(tmp_path, capsys):
+    (tmp_path / "М.xbsl").write_text("метод Ф()\n;\n", encoding="utf-8")
+    code = cli.main(["lint", str(tmp_path), "--format", "json"])
+    assert code in (0, 1)
+    json.loads(capsys.readouterr().out)
+
+
+# --- LSP ---------------------------------------------------------------------------------
+
+pygls = pytest.importorskip("pygls", reason="LSP-методы проверяются при установленном extra [lsp]")
+
+
+def _server_features():
+    from xbsl import lsp as lsp_module
+
+    server = lsp_module._make_server()
+    # У pygls разных версий реестр обработчиков лежит в fm.features протокола.
+    fm = getattr(server.lsp, "fm", None) or getattr(server.lsp, "_features", None)
+    features = getattr(fm, "features", fm)
+    return server, features
+
+
+def test_lsp_meta_methods_registered():
+    _, features = _server_features()
+    for method in (
+        "xbsl/metaCapabilities", "xbsl/metaNewObject", "xbsl/metaAddField",
+        "xbsl/metaAddForm", "xbsl/metaAddRoute", "xbsl/metaAddSubsystem",
+    ):
+        assert method in features
+
+
+def test_lsp_meta_capabilities_and_new_object(tmp_path):
+    _, features = _server_features()
+    caps = features["xbsl/metaCapabilities"](None)
+    assert "Справочник" in caps["kinds"]
+    assert "Отчет" not in caps["kinds"] and "Отчет" in caps["allKinds"]
+
+    result = features["xbsl/metaNewObject"](
+        {"directory": str(tmp_path), "kind": "Справочник", "name": "Товары"}
+    )
+    files = result["files"]
+    assert files[0]["path"].endswith("Товары.yaml")
+    assert files[0]["content"].startswith("ВидЭлемента: Справочник")
+    # LSP только вычисляет: на диск ничего не записано – применяет редактор.
+    assert not (tmp_path / "Товары.yaml").exists()
+
+
+def test_lsp_meta_add_field_error_shape(tmp_path):
+    _, features = _server_features()
+    result = features["xbsl/metaAddField"](
+        {"path": str(tmp_path / "Нет.yaml"), "fieldKind": "реквизит", "name": "Цвет"}
+    )
+    assert "не найден" in result["error"].lower()

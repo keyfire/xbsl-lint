@@ -9,8 +9,8 @@ needs_data. Число имени (naming/number и ветка "существи
 
 import pytest
 
-from xbsllint import engine
-from xbsllint.rules import naming
+from xbsl import engine
+from xbsl.rules import naming
 
 _YO = "naming/yo"
 _UNDERSCORE = "naming/underscore"

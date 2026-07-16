@@ -1,6 +1,6 @@
 """Shared test setup.
 
-The language/type data (xbsllint/data/element/...) is extracted from a 1C:Element distribution
+The language/type data (xbsl/data/element/...) is extracted from a 1C:Element distribution
 and may not have been generated (e.g. in a public checkout without a data bundle). Tests that
 need the data are skipped rather than failed: either a whole module (_DATA_DEPENDENT) or a single
 test marked `@pytest.mark.needs_data` - the latter keeps the data-free tests of a mixed module
@@ -12,7 +12,7 @@ without pinning the result would depend on the developer's system locale.
 
 import pytest
 
-from xbsllint import dataset, i18n
+from xbsl import dataset, i18n
 
 i18n.set_lang("ru")
 

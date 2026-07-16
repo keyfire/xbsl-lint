@@ -1,7 +1,7 @@
-"""Проверки семейства правил окружения (xbsllint/rules/environment.py)."""
+"""Проверки семейства правил окружения (xbsl/rules/environment.py)."""
 
-from xbsllint import engine
-from xbsllint.cli import discover
+from xbsl import engine
+from xbsl.cli import discover
 
 
 def _has(diags, rule_id):

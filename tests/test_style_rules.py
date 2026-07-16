@@ -4,7 +4,7 @@
 (примеры взяты из самого CODE_STYLE), а у правил-исключений – что исключение не ловится.
 """
 
-from xbsllint import engine
+from xbsl import engine
 
 
 def _lint(content, rule_id, name="М.xbsl"):

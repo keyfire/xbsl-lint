@@ -7,8 +7,8 @@
 
 import pytest
 
-from xbsllint import dataset, engine
-from xbsllint.cli import discover
+from xbsl import dataset, engine
+from xbsl.cli import discover
 
 if not dataset.available_versions():
     pytest.skip(

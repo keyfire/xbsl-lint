@@ -1,7 +1,9 @@
 """Проверки правил тиров A/B/C через ядро."""
 
-from xbsllint import engine
-from xbsllint.cli import discover
+import pytest
+
+from xbsl import engine
+from xbsl.cli import discover
 
 
 def _lint(name, content, **kw):
@@ -20,6 +22,10 @@ def test_curly_quotes_flagged():
 
 
 def test_em_dash_off_by_default_then_selectable():
+    from xbsl.engine import SEVERITY_OVERRIDES
+
+    if "typography/em-dash" in SEVERITY_OVERRIDES:
+        pytest.skip("уровень переопределён установленным плагином – публичный дефолт не виден")
     content = "// длинное тире — здесь\n"
     assert _lint("М.xbsl", content) == []  # выключено по умолчанию
     d = _lint("М.xbsl", content, select={"typography/em-dash"})
@@ -393,7 +399,7 @@ def test_cast_then_call_chain_not_merged(tmp_path):
 def test_object_member_family_from_catalog():
     # каталог версии несёт порождаемые члены по видам (object_members из дистрибутива);
     # страховочное объединение дополняет их членами без шаблонных страниц
-    from xbsllint.rules.semantics import _checked_kinds, _member_family
+    from xbsl.rules.semantics import _checked_kinds, _member_family
     family = _member_family("Справочник")
     assert {"Ссылка", "Объект", "СоздатьОбъект", "АвтоматическаяФормаСписка"} <= family
     assert "ПараметрыЗаполнения" in family  # только из страховочного списка

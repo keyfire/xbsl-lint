@@ -27,9 +27,9 @@ def test_mcp_adapter_registers_tools_and_lints(monkeypatch):
     monkeypatch.setitem(sys.modules, "mcp", types.ModuleType("mcp"))
     monkeypatch.setitem(sys.modules, "mcp.server", types.ModuleType("mcp.server"))
     monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", fast)
-    sys.modules.pop("xbsllint.mcp_server", None)
+    sys.modules.pop("xbsl.mcp_server", None)
 
-    m = importlib.import_module("xbsllint.mcp_server")
+    m = importlib.import_module("xbsl.mcp_server")
     assert {"lint_paths", "lint_source", "list_rules"}.issubset(m.mcp.tools)
 
     rules = m.list_rules()
@@ -38,4 +38,4 @@ def test_mcp_adapter_registers_tools_and_lints(monkeypatch):
     res = m.lint_source("М.xbsl", "метод Ф()  \n;\n", select=["whitespace/trailing"])
     assert res["summary"]["diagnostics"] >= 1
 
-    sys.modules.pop("xbsllint.mcp_server", None)
+    sys.modules.pop("xbsl.mcp_server", None)
