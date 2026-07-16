@@ -165,6 +165,17 @@ def test_yaml_name_mismatch():
     assert _has(d, "yaml/name-matches-file")
 
 
+def test_yaml_name_mismatch_with_trailing_comment():
+    # комментарий после значения не мешает ни правилу, ни позиции на значении
+    d = _lint(
+        "Имя.yaml",
+        "ВидЭлемента: Справочник\nИд: 11111111-1111-1111-1111-111111111111\nИмя: Другое # к\n",
+        select={"yaml/name-matches-file"},
+    )
+    assert _has(d, "yaml/name-matches-file")
+    assert (d[0].line, d[0].col) == (3, 6)
+
+
 def test_yaml_structural_file_exempt():
     d = _lint("Подсистема.yaml", "Наименование: Тест\n", select={"A"})
     assert d == []
@@ -576,6 +587,14 @@ def test_enum_yaml_field_named_as_enum_skipped(tmp_path):
 
 def test_handler_missing_flagged(tmp_path):
     (tmp_path / "Ф.yaml").write_text("Обработчик: НетТакого\n", encoding="utf-8")
+    (tmp_path / "Ф.xbsl").write_text("метод Другой()\n;\n", encoding="utf-8")
+    d = engine.run(discover([str(tmp_path)]), select={"form/unknown-handler"})
+    assert any(x.rule_id == "form/unknown-handler" and "НетТакого" in x.message for x in d)
+
+
+def test_handler_trailing_comment_flagged(tmp_path):
+    # хвостовой комментарий - не часть значения и не повод молчать
+    (tmp_path / "Ф.yaml").write_text("Обработчик: НетТакого # комментарий\n", encoding="utf-8")
     (tmp_path / "Ф.xbsl").write_text("метод Другой()\n;\n", encoding="utf-8")
     d = engine.run(discover([str(tmp_path)]), select={"form/unknown-handler"})
     assert any(x.rule_id == "form/unknown-handler" and "НетТакого" in x.message for x in d)

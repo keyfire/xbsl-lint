@@ -183,8 +183,9 @@ _BUILTIN_COMPONENT_PROPS: dict[str, frozenset[str]] = {
 
 _BASE_ROOT_RE = re.compile(r"\s*([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё_0-9]*)")
 
-# The top-level `Свойства:` block: from the key line to the next top-level key (or EOF).
-_PROPS_BLOCK_RE = re.compile(r"(?ms)^Свойства:[ \t]*\r?$(.*?)(?=^\S|\Z)")
+# The top-level `Свойства:` block: from the key line (a trailing comment is allowed) to the
+# next top-level key (or EOF). `[^\n]` instead of `.` in the comment: DOTALL is on.
+_PROPS_BLOCK_RE = re.compile(r"(?ms)^Свойства:[ \t]*(?:#[^\n]*)?\r?$(.*?)(?=^\S|\Z)")
 
 
 def _base_root(type_expr: str) -> str | None:

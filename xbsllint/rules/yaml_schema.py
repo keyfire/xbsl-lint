@@ -79,7 +79,13 @@ i18n.register(MESSAGES)
 
 _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 _ID_LINE_RE = re.compile(r"(?m)^[ \t]*Ид:[ \t]*(\S+)")
-_NAME_LINE_RE = re.compile(r"(?m)^[ \t]*Имя:[ \t]*(\S.*)$")
+# A line with the `Имя:` key: the indent (a list-item dash counts as indent), the value with or
+# without quotes, an optional trailing comment (per YAML it is not part of the value); `\r?` lets
+# CRLF files match (`$` anchors before `\n`). Groups: 1 – indent, 2 – quote, 3 – value.
+# Shared by the naming rules and the indexer.
+_NAME_LINE_RE = re.compile(
+    r"(?m)^([ \t]*(?:-[ \t]+)?)Имя:[ \t]*(['\"]?)([^\r\n#]*?)\2[ \t]*(?:#.*)?\r?$"
+)
 
 
 def _parsed(source: SourceFile):
@@ -169,7 +175,7 @@ def yaml_name_matches_file(source: SourceFile) -> Iterable[Diagnostic]:
         m = _NAME_LINE_RE.search(source.text)
         line, col = (1, 1)
         if m:
-            line, col = linemap(source).linecol(m.start(1))
+            line, col = linemap(source).linecol(m.start(3))
         yield Diagnostic(
             source.rel, line, col, "yaml/name-matches-file", Severity.WARNING,
             i18n.t("yaml/name-matches-file.mismatch", name=name, stem=stem),

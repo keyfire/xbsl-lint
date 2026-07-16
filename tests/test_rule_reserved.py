@@ -141,6 +141,14 @@ def test_builtin_property_zagolovok_flagged():
     assert "Заголовок" in d[0].message and "СтандартнаяКарточка" in d[0].message
 
 
+def test_builtin_property_commented_section_key_positioned():
+    # комментарий после `Свойства:` не ломает поиск блока - позиция остаётся на имени
+    content = _КАРТОЧКА.format(prop="Заголовок").replace("Свойства:", "Свойства: # собственные")
+    d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
+    assert len(d) == 1
+    assert (d[0].line, d[0].col) == (8, 14)
+
+
 def test_builtin_inherited_property_flagged():
     # Видимость унаследована от Компонент – тоже встроенное имя
     d = _lint(

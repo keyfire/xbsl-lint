@@ -35,7 +35,7 @@ from xbsllint import i18n
 from xbsllint.diagnostics import Diagnostic, Severity
 from xbsllint.engine import SourceFile, rule
 from xbsllint.lexer import linemap
-from xbsllint.rules.yaml_schema import _HAVE_YAML, _is_object, _parsed
+from xbsllint.rules.yaml_schema import _HAVE_YAML, _NAME_LINE_RE, _is_object, _parsed
 
 MESSAGES = {
     "naming/yo.title": {"ru": "Буква \"ё\" в имени", "en": "Letter \"ё\" in a name"},
@@ -156,12 +156,12 @@ i18n.register(MESSAGES)
 
 # --- разбор описания -------------------------------------------------------------------
 
-# Ключ Имя и секции, в которых он может встретиться: по отступу определяем, чьё это имя.
-_NAME_RE = re.compile(r"(?m)^([ \t]*)Имя:[ \t]*(\S+)[ \t]*$")
+# Строки с ключом Имя разбирает общий регекс yaml_schema._NAME_LINE_RE (кавычки и хвостовой
+# комментарий он отделяет от значения); секции, в которых ключ может встретиться, – ниже:
+# по отступу определяем, чьё это имя.
 _SECTION_RE = re.compile(
     r"(?m)^([ \t]*)(Реквизиты|Измерения|Ресурсы|ТабличныеЧасти|Элементы|Поля|Параметры):"
 )
-_PRESENTATION_RE = re.compile(r"(?m)^Представление:[ \t]*(.+?)[ \t]*$")
 
 # Слово в UpperCamelCase-имени: кириллица, латиница или число.
 _WORD_RE = re.compile(r"[А-ЯЁ][а-яё]*|[A-Z][a-z]*|\d+")
@@ -188,9 +188,11 @@ def _names(source: SourceFile) -> list[NameRef]:
         (m.start(), len(m.group(1)), m.group(2)) for m in _SECTION_RE.finditer(source.text)
     ]
     out: list[NameRef] = []
-    for m in _NAME_RE.finditer(source.text):
+    for m in _NAME_LINE_RE.finditer(source.text):
+        if not m.group(3):
+            continue  # пустое значение (или один комментарий) - имени нет
         indent = len(m.group(1))
-        line, col = lm.linecol(m.start(2))
+        line, col = lm.linecol(m.start(3))
         section = ""
         if indent:
             # ближайшая секция выше с меньшим отступом - та, чей это элемент
@@ -198,7 +200,7 @@ def _names(source: SourceFile) -> list[NameRef]:
                 if start < m.start() and sec_indent < indent:
                     section = name
                     break
-        out.append(NameRef(m.group(2), line, col, section))
+        out.append(NameRef(m.group(3), line, col, section))
     return out
 
 

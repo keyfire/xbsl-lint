@@ -385,6 +385,47 @@ def test_suffix_by_kind_present_silent():
     assert _lint(_PREFIX, "ЛокализованныеСтроки", "СайтЛокализация") == []
 
 
+# --- хвостовой комментарий и кавычки в строке Имя ----------------------------------------
+
+def test_trailing_comment_not_part_of_name():
+    # По YAML комментарий после значения не является его частью: раньше такая строка вовсе
+    # не совпадала с регексом имён, и вся группа naming/ молчала об этом имени.
+    d = _lint(_YO, "Справочник", "ПересчётТоваров # комментарий")
+    assert len(d) == 1
+    assert "ПересчётТоваров" in d[0].message  # имя без хвоста
+
+
+def test_trailing_comment_in_section_name():
+    d = _lint(_YO, "Справочник", "Товары", _section("Реквизиты", ("Объём # комментарий", "Число")))
+    assert len(d) == 1
+    assert d[0].line == 7
+    assert "Объём" in d[0].message
+
+
+def test_trailing_comment_number(morph):
+    # Репро исходного ложного минуса: имя регистра в единственном числе + комментарий.
+    d = _lint(_NUMBER, "РегистрСведений", "КешТокенов # закэшированные токены")
+    assert len(d) == 1
+    assert "КешТокенов" in d[0].message
+
+
+def test_quoted_name_with_comment():
+    source = engine.load_text(
+        "Товары.yaml",
+        f'ВидЭлемента: Справочник\nИд: {_ID}\nИмя: "ПересчётТоваров" # комментарий\n',
+    )
+    d = engine.run_sources([source], select={_YO})
+    assert len(d) == 1
+    assert "ПересчётТоваров" in d[0].message  # без кавычек и без хвоста
+
+
+def test_comment_only_value_is_no_name():
+    source = engine.load_text(
+        "Товары.yaml", f"ВидЭлемента: Справочник\nИд: {_ID}\nИмя: # имени нет\n",
+    )
+    assert engine.run_sources([source], select={_YO}) == []
+
+
 # --- группа целиком ---------------------------------------------------------------------
 
 def test_structural_yaml_skipped():

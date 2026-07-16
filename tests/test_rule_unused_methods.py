@@ -162,6 +162,16 @@ def test_http_service_module_skipped(tmp_path):
     assert not _hits(d)
 
 
+def test_http_service_with_trailing_comment_skipped(tmp_path):
+    # комментарий после вида не прячет HTTP-сервис от исключения
+    d = _lint_dir(
+        tmp_path,
+        Апи__yaml="ВидЭлемента: HttpСервис # публичное апи\nИмя: Апи\n",
+        Апи__xbsl="метод ОбработатьЗапрос()\n;\n",
+    )
+    assert not _hits(d)
+
+
 # --- Прочее -----------------------------------------------------------------------------
 
 def test_same_name_in_two_modules_not_flagged(tmp_path):

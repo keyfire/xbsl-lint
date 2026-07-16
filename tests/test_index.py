@@ -220,6 +220,25 @@ def test_references(project):
     json.dumps(refs, ensure_ascii=False)
 
 
+def test_trailing_comments_in_yaml(tmp_path):
+    # Комментарий после значения или ключа секции по YAML не является их частью:
+    # имя объекта и строки табличных частей находятся как обычно.
+    (tmp_path / "Товары.yaml").write_text("\n".join([
+        "ВидЭлемента: Справочник",                    # 1
+        "Ид: 5d3f0a1b-2c4d-4e5f-8a9b-0c1d2e3f4a5b",   # 2
+        "Имя: Товары # каталог",                      # 3
+        "ТабличныеЧасти: # секция с комментарием",    # 4
+        "    -",                                      # 5
+        "        Имя: Состав # строки",               # 6
+        "",
+    ]), encoding="utf-8")
+    idx = build_index(tmp_path)
+
+    obj = next(o for o in idx["objects"] if o["name"] == "Товары")
+    assert obj["line"] == 3
+    assert obj["tabular"] == [{"name": "Состав", "line": 6}]
+
+
 def test_empty_project(tmp_path):
     idx = build_index(tmp_path)
 

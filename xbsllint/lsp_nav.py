@@ -17,7 +17,8 @@ IDENT = r"[A-Za-zА-Яа-яЁё_][A-Za-z0-9А-Яа-яЁё_]*"
 NOT_BEFORE = r"[^.0-9A-Za-zА-Яа-яЁё_]"
 
 _CHAIN_RE = re.compile(rf"{IDENT}(?:\.{IDENT})*")
-_HANDLER_RE = re.compile(rf"^(\s*Обработчик\s*:\s*)({IDENT})\s*$")
+# Хвостовой комментарий после значения допускается – частью имени он не является.
+_HANDLER_RE = re.compile(rf"^(\s*Обработчик\s*:\s*)({IDENT})\s*(?:#.*)?$")
 
 
 class IndexLookup:

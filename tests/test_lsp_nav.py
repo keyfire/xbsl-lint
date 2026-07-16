@@ -111,6 +111,12 @@ def test_definition_yaml_handler():
     assert d("    Обработчик: Обновить", 3, language_id="yaml") is None
 
 
+def test_definition_yaml_handler_with_comment():
+    # хвостовой комментарий после имени обработчика не мешает переходу
+    assert d("    Обработчик: Обновить # клик", 20, language_id="yaml",
+             file_path="Каталог/ГлавнаяФорма.yaml") == ("Каталог/ГлавнаяФорма.xbsl", 5)
+
+
 def test_definition_unknown_contexts():
     assert d("Неведомое.Что", 3) is None
     assert d("А.Б.В.Г", 6) is None  # глубокая цепочка без Компоненты – вне охвата

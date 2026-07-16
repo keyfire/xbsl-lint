@@ -37,8 +37,8 @@ _HANDLER_KEYS = (
     "Обработчик", "ПриНажатии", "ПриИзменении", "ПриВыделенииСтроки",
     "ПослеЗагрузкиСодержимого", "ПриСменеСтраницы", "ПриВыбореЭлемента",
 )
-_HANDLER_RE = re.compile(
-    r"(?m)^[ \t]*(?:" + "|".join(_HANDLER_KEYS) + r"):[ \t]*([^\s#][^\n#]*?)[ \t]*$"
+_HANDLER_RE = re.compile(  # a trailing comment and CRLF are allowed after the value
+    r"(?m)^[ \t]*(?:" + "|".join(_HANDLER_KEYS) + r"):[ \t]*([^\s#][^\n#]*?)[ \t]*(?:#.*)?\r?$"
 )
 _IDENT_RE = re.compile(r"^[^\W\d]\w*$", re.UNICODE)
 

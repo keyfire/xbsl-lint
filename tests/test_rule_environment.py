@@ -39,6 +39,22 @@ def test_server_call_from_handler_flagged(tmp_path):
     )
 
 
+def test_handler_with_trailing_comment_flagged(tmp_path):
+    # комментарий после имени обработчика в yaml не выводит его из-под проверки
+    d = _форма(
+        tmp_path,
+        "метод ПриНажатии()\n"
+        "    Сохранить()\n"
+        ";\n\n"
+        "@НаСервере\n"
+        "метод Сохранить()\n"
+        "    возврат\n"
+        ";\n",
+        yaml=_ФОРМА_YAML.replace("Обработчик: ПриНажатии", "Обработчик: ПриНажатии # клик"),
+    )
+    assert _has(d, "code/server-call-from-handler")
+
+
 def test_server_call_with_client_access_ok(tmp_path):
     d = _форма(
         tmp_path,

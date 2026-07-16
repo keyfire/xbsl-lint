@@ -36,14 +36,7 @@ from xbsllint import __version__
 from xbsllint.engine import SourceFile, find_sources, load
 from xbsllint.lexer import linemap, tokens
 from xbsllint.rules.semantics import _file_local_type_decls, _member_family
-from xbsllint.rules.yaml_schema import _HAVE_YAML, _parsed
-
-# Строка с ключом `Имя:`: отступ (дефис элемента списка тоже считается отступом), значение
-# в кавычках или без них, необязательный хвостовой комментарий; `\r?` позволяет совпадать
-# файлам с CRLF (`$` привязан к позиции перед `\n`).
-_NAME_LINE_RE = re.compile(
-    r"(?m)^([ \t]*(?:-[ \t]+)?)Имя:[ \t]*(['\"]?)([^\r\n#]*?)\2[ \t]*(?:#.*)?\r?$"
-)
+from xbsllint.rules.yaml_schema import _HAVE_YAML, _NAME_LINE_RE, _parsed
 
 
 # --- позиции в yaml (текстовый поиск, как в _value_positions из yaml_types.py) ---------
@@ -70,7 +63,7 @@ def _top_name_line(s: SourceFile, name: str) -> int:
 
 def _section_span(text: str, key: str) -> tuple[int, int] | None:
     """Смещения тела секции верхнего уровня (`ТабличныеЧасти:` ... следующий ключ того же уровня)."""
-    m = re.search(rf"(?m)^{key}:[ \t]*\r?$", text)
+    m = re.search(rf"(?m)^{key}:[ \t]*(?:#.*)?\r?$", text)
     if m is None:
         return None
     end = re.compile(r"(?m)^[^\s#-]").search(text, m.end())

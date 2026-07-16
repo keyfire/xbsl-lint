@@ -53,7 +53,7 @@ MESSAGES = {
 i18n.register(MESSAGES)
 
 _WORD_RE = re.compile(r"[^\W\d]\w*", re.UNICODE)
-_HTTP_SERVICE_RE = re.compile(r"(?m)^ВидЭлемента:[ \t]*HttpСервис[ \t\r]*$")
+_HTTP_SERVICE_RE = re.compile(r"(?m)^ВидЭлемента:[ \t]*HttpСервис[ \t]*(?:#.*)?\r?$")
 
 # Modifiers that may stand between the annotations and the `метод` keyword.
 _MODIFIERS = ("STATIC", "ABSTRACT", "GLOBAL_EN", "GLOBAL_RU")
