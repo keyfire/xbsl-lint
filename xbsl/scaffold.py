@@ -510,6 +510,11 @@ _SECTION_SPECS: dict[str, dict] = {
     # Операция обработки: имя в yaml, а одноимённый @Обработчик-метод дописывается в модуль
     # (без него платформа выдаёт "Обязательный обработчик не определен" – см. op_add_field).
     "операция": {"section": "Операции", "lines": ("Имя: {name}",)},
+    # Индекс объекта или ТЧ: имя + список полей. Стартовое поле – заглушка (список Поля не
+    # может быть пустым); реальные реквизиты дописываются, поэтому в notes идёт напоминание.
+    "индекс": {"section": "Индексы", "lines": ("Имя: {name}", "Поля:", "    - Реквизит1")},
+    # Параметр запроса отчёта: имя + тип (секция ПараметрыЗапроса, читается object_info).
+    "параметр-запроса": {"section": "ПараметрыЗапроса", "lines": ("Имя: {name}", "Тип: {type}")},
     "табличная-часть": {
         "section": "ТабличныеЧасти",
         # Табличная часть с одним стартовым реквизитом (пустая обычно бесполезна).
@@ -525,18 +530,29 @@ _SECTION_SPECS: dict[str, dict] = {
     },
 }
 
+# Секции-отображения "Ключ: Значение" (не список элементов с "-"): ЛокализованныеСтроки.
+# quote – заключать значение в кавычки (у шаблонов бывают пробелы и подстановки %0/$0).
+_MAPPING_SPECS: dict[str, dict] = {
+    "строка": {"section": "Строки", "quote": False},
+    "шаблон": {"section": "Шаблоны", "quote": True},
+}
+
 # Вид объекта -> какие секции у него пополняемы.
 KIND_SECTIONS: dict[str, tuple[str, ...]] = {
     # Табличные части – только у ссылочных сущностей (документация "Табличная часть":
     # Справочник, Документ, ПланОбмена, ХранилищеНастроек, КонтрактСущности).
-    "Справочник": ("реквизит", "табличная-часть"),
-    "Документ": ("реквизит", "табличная-часть"),
-    "ПланОбмена": ("реквизит", "табличная-часть"),
+    # Индексы – у объектов с хранимыми данными (документация: набор основных/дополнительных
+    # полей, по которым создаётся индекс в БД).
+    "Справочник": ("реквизит", "табличная-часть", "индекс"),
+    "Документ": ("реквизит", "табличная-часть", "индекс"),
+    "ПланОбмена": ("реквизит", "табличная-часть", "индекс"),
     "ХранилищеНастроек": ("реквизит", "табличная-часть"),
-    "РегистрСведений": ("измерение", "ресурс", "реквизит"),
-    "РегистрНакопления": ("измерение", "ресурс", "реквизит"),
+    "РегистрСведений": ("измерение", "ресурс", "реквизит", "индекс"),
+    "РегистрНакопления": ("измерение", "ресурс", "реквизит", "индекс"),
     "НаборКонстант": ("константа",),
     "Обработка": ("реквизит", "операция"),
+    "Отчет": ("параметр-запроса",),
+    "ЛокализованныеСтроки": ("строка", "шаблон"),
     "Перечисление": ("значение",),
     "ПараметрыРаботыКлиента": ("параметр",),
     "ГлобальноеКлиентскоеСобытие": ("параметр",),
@@ -1087,6 +1103,10 @@ def op_add_field(
         cursor = _cursor_at(new_text, edit.start + len(edit.new_text))
         return ScaffoldResult([FileChange(yaml_path, new_text, created=False, cursor=cursor)])
 
+    map_spec = _MAPPING_SPECS.get(field_kind)
+    if map_spec is not None:
+        return _add_mapping_entry(yaml_path, text, nl, kind, field_kind, map_spec, name, type_)
+
     spec = _SECTION_SPECS.get(field_kind)
     if spec is None:
         raise ScaffoldError(
@@ -1117,7 +1137,44 @@ def op_add_field(
     result = ScaffoldResult([FileChange(yaml_path, new_text, created=False, cursor=cursor)])
     if field_kind == "операция":
         _add_operation_handler(yaml_path, name, result, reader)
+    if field_kind == "индекс":
+        result.notes.append(
+            f"Индекс {name} создан с полем-заглушкой Реквизит1 – замените Поля на реальные "
+            "реквизиты, по которым нужен индекс"
+        )
     return result
+
+
+def _add_mapping_entry(
+    yaml_path: Path, text: str, nl: str, kind: str, field_kind: str,
+    map_spec: dict, key: str, value: str,
+) -> ScaffoldResult:
+    """Добавить пару "Ключ: Значение" в секцию-отображение (Строки/Шаблоны локстрок).
+
+    Формат из документации "Локализация": секции Строки и Шаблоны – это отображения ключ →
+    значение, а не списки элементов. Значение по умолчанию равно ключу (как Мероприятия:
+    Мероприятия); у шаблонов значение берётся в кавычки.
+    """
+    allowed = KIND_SECTIONS.get(kind)
+    if allowed is None or field_kind not in allowed:
+        avail = ", ".join(allowed) if allowed else "нет"
+        raise ScaffoldError(f"У вида {kind} нет секции для '{field_kind}'; доступны: {avail}")
+    section = map_spec["section"]
+    raw_value = value if value and value != "Строка" else key
+    entry_value = f'"{raw_value}"' if map_spec["quote"] else raw_value
+
+    bounds = _section_bounds(text, section, top_level=True)
+    if bounds is not None:
+        _, header_line_end, body_end = bounds
+        body = text[header_line_end:body_end]
+        if re.search(rf"^[ \t]+{re.escape(key)}:", body, re.M):
+            raise ScaffoldError(f"Ключ '{key}' уже есть в секции {section} файла {yaml_path.name}")
+        new_text = text[:body_end] + f"{nl}    {key}: {entry_value}" + text[body_end:]
+    else:
+        tail = "" if (not text or text.endswith("\n")) else nl
+        new_text = text + f"{tail}{section}:{nl}    {key}: {entry_value}{nl}"
+    cursor = _cursor_at(new_text, new_text.index(f"{key}: {entry_value}"))
+    return ScaffoldResult([FileChange(yaml_path, new_text, created=False, cursor=cursor)])
 
 
 def _add_operation_handler(yaml_path: Path, operation: str, result: ScaffoldResult, reader) -> None:
@@ -1736,7 +1793,7 @@ def _new_report(yaml_path: Path, name: str, report: dict, result: ScaffoldResult
             "            ВизуальныеРоли:",
             *roles,
             f"            Выражение: {expr}",
-            f"            Ид: {_uuid.uuid4().hex}",
+            f"            Ид: {new_uuid()}",
             "            Использовать: Истина",
         ]
 
@@ -1755,7 +1812,7 @@ def _new_report(yaml_path: Path, name: str, report: dict, result: ScaffoldResult
             "            ВизуальныеРоли:",
             "                - ЗначенияКолонок",
             f"            Выражение: {expr}",
-            f"            Ид: {_uuid.uuid4().hex}",
+            f"            Ид: {new_uuid()}",
             "            Использовать: Истина",
         ]
         if title:

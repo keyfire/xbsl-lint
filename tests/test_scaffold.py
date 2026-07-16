@@ -4,6 +4,7 @@
 не разбирается парсером, не должен пройти тесты независимо от точечных проверок.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -245,10 +246,52 @@ def test_new_report_layout(tmp_path):
     kinds = [f["Вид"] for f in fields]
     assert kinds == ["Измерение", "Измерение", "Мера"]
     assert fields[2]["Выражение"] == "СУММА(Количество)"
-    assert all(len(f["Ид"]) == 32 for f in fields)  # hex без дефисов
+    # Ид полей макета – канонический UUID с дефисами (иначе линтер yaml/id-uuid ругается).
+    assert all(re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                            f["Ид"]) for f in fields)
 
     with pytest.raises(ScaffoldError, match="источник"):
         scaffold.op_new_object(tmp_path, "Отчет", "Пустой")
+
+
+def test_report_query_params(tmp_path):
+    apply_result(scaffold.op_new_object(
+        tmp_path, "Отчет", "Продажи",
+        report={"source": "Заказы", "rows": ["Товар"], "measures": ["Сумма"]},
+    ))
+    result = scaffold.op_add_field(tmp_path / "Продажи.yaml", "параметр-запроса", "Период",
+                                   type_="Дата")
+    apply_result(result)
+    parsed = _valid_yaml((tmp_path / "Продажи.yaml").read_text(encoding="utf-8"))
+    assert parsed["ПараметрыЗапроса"] == [{"Имя": "Период", "Тип": "Дата"}]
+    info = scaffold.object_info(tmp_path, name="Продажи")
+    assert info["report_params"] == [{"name": "Период", "type": "Дата"}]
+
+
+def test_localized_strings_mapping_sections(tmp_path):
+    apply_result(scaffold.op_new_object(tmp_path, "ЛокализованныеСтроки", "СтрокиЛокализация"))
+    yaml_path = tmp_path / "СтрокиЛокализация.yaml"
+    apply_result(scaffold.op_add_field(yaml_path, "строка", "Задачи"))
+    apply_result(scaffold.op_add_field(yaml_path, "строка", "Событие", type_="Событие"))
+    apply_result(scaffold.op_add_field(yaml_path, "шаблон", "ТекущееВремя",
+                                       type_="Текущее время: %0"))
+    parsed = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
+    # Секции – отображения ключ: значение (не список). Значение строки по умолчанию = ключ.
+    assert parsed["Строки"] == {"Задачи": "Задачи", "Событие": "Событие"}
+    assert parsed["Шаблоны"] == {"ТекущееВремя": "Текущее время: %0"}  # шаблон в кавычках
+
+    with pytest.raises(ScaffoldError, match="уже есть"):
+        scaffold.op_add_field(yaml_path, "строка", "Задачи")
+
+
+def test_index_stub_field_and_note(tmp_path):
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Товары"))
+    result = scaffold.op_add_field(subsystem / "Товары.yaml", "индекс", "ПоНаименованию")
+    apply_result(result)
+    parsed = _valid_yaml((subsystem / "Товары.yaml").read_text(encoding="utf-8"))
+    assert parsed["Индексы"] == [{"Имя": "ПоНаименованию", "Поля": ["Реквизит1"]}]
+    assert any("замените Поля" in n for n in result.notes)
 
 
 # --- поля ------------------------------------------------------------------------------
