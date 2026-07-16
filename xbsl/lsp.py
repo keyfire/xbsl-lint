@@ -588,12 +588,11 @@ def _make_server() -> "LanguageServer":
 
     @server.feature("xbsl/metaCapabilities")
     def _meta_capabilities(_params: object = None) -> dict:
-        # kinds – виды, создаваемые без дополнительных параметров (для меню дерева);
-        # Отчет требует описания источника и макета, поэтому отдаётся отдельно.
-        bare = sorted(k for k in scaffold.KIND_SPECS if k != "Отчет")
+        # kinds – виды, создаваемые одним именем (меню дерева); виды, которым нужны данные
+        # от вызывающего (напр. Отчет – источник и макет), сюда не попадают, но есть в allKinds.
         return {
             "version": __version__,
-            "kinds": bare,
+            "kinds": scaffold.bare_kinds(),
             "allKinds": sorted(scaffold.KIND_SPECS),
             "fieldKinds": {k: list(v) for k, v in scaffold.KIND_SECTIONS.items()},
             "formKinds": list(scaffold.FORM_KINDS),

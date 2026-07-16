@@ -192,7 +192,7 @@ def _scaffold_parser() -> argparse.ArgumentParser:
     p.add_argument("vendor")
     p.add_argument("name")
     p.add_argument("--representation")
-    p.add_argument("--version", default="1.0")
+    p.add_argument("--version", default="1.0.0")
     p.add_argument("--compatibility", default="9.0")
     p.add_argument("--subsystem", default="Основное")
     p.add_argument("--library", action="store_true")

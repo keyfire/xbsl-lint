@@ -195,7 +195,7 @@ def meta_new_project(
     vendor: str,
     name: str,
     representation: str | None = None,
-    version: str = "1.0",
+    version: str = "1.0.0",
     compatibility: str = "9.0",
     subsystem: str = "Основное",
     library: bool = False,

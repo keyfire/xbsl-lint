@@ -100,8 +100,13 @@ def test_new_object_catalog(tmp_path):
     text = (tmp_path / "Товары.yaml").read_text(encoding="utf-8")
     parsed = _valid_yaml(text)
     assert parsed["ВидЭлемента"] == "Справочник"
-    assert parsed["ОбластьВидимости"] == "ВПроекте"
+    # Умолчание – платформенное: видимость не расширяется за разработчика.
+    assert parsed["ОбластьВидимости"] == "ВПодсистеме"
     assert parsed["Ид"]
+
+    apply_result(scaffold.op_new_object(tmp_path, "Справочник", "Склады", scope="ВПроекте"))
+    wider = _valid_yaml((tmp_path / "Склады.yaml").read_text(encoding="utf-8"))
+    assert wider["ОбластьВидимости"] == "ВПроекте"
 
 
 def test_new_object_rejects_duplicates_and_bad_names(tmp_path):
@@ -806,3 +811,119 @@ def test_report_form_registered_when_interface_exists(tmp_path):
 
     again = scaffold.op_add_form(tmp_path, name="Продажи2", forms=["report"], overwrite=True)
     assert any("уже зарегистрирована" in n for n in again.notes)
+
+
+# --- виды объектов: покрытие и парные файлы -----------------------------------------------
+
+
+def test_every_bare_kind_creates_valid_yaml(tmp_path):
+    """Каждый вид без обязательных параметров создаётся и даёт разбираемый yaml."""
+    for kind in scaffold.bare_kinds():
+        result = scaffold.op_new_object(tmp_path, kind, f"Проверка{len(kind)}{abs(hash(kind)) % 97}")
+        yaml_change = next(c for c in result.changes if c.path.suffix == ".yaml")
+        parsed = _valid_yaml(yaml_change.content)
+        assert parsed["ВидЭлемента"] == kind
+        # Умолчание видимости платформенное – инструмент не расширяет её за разработчика.
+        assert parsed["ОбластьВидимости"] == "ВПодсистеме"
+
+
+def test_kind_module_pairs(tmp_path):
+    """Парный файл создаётся ровно у тех видов, которым он нужен, и с нужным расширением."""
+    def files(kind: str) -> list[str]:
+        return [c.path.suffix for c in scaffold.op_new_object(tmp_path / kind, kind, "Э").changes]
+
+    # Право на элемент – перечисление: "Не имеет модуля".
+    assert files("ПравоНаЭлемент") == [".yaml"]
+    # Право на действие вычисляет разрешения в модуле.
+    assert files("ПравоНаДействие") == [".yaml", ".xbsl"]
+    # Контракты типа и сущности – одни свойства, модуль только под абстрактные методы.
+    assert files("КонтрактТипа") == [".yaml"]
+    assert files("КонтрактСущности") == [".yaml"]
+    assert files("КонтрактСервиса") == [".yaml", ".xbsl"]
+    # У виртуальной таблицы парный файл – запрос, а не модуль.
+    assert files("ВиртуальнаяТаблица") == [".yaml", ".xbql"]
+    # Навигационная команда декларативна, остальные команды живут обработчиком.
+    assert files("НавигационнаяКоманда") == [".yaml"]
+    assert files("ОбычнаяКоманда") == [".yaml", ".xbsl"]
+    assert files("СобытиеЖурналаСобытий") == [".yaml"]
+
+
+def test_kind_module_stubs_carry_documented_handlers(tmp_path):
+    def module(kind: str, name: str) -> str:
+        changes = scaffold.op_new_object(tmp_path / kind, kind, name).changes
+        return next(c for c in changes if c.path.suffix in (".xbsl", ".xbql")).content
+
+    # Имя элемента подставляется в обобщения; КлючДоступа.Объект – литеральный базовый тип.
+    stub = module("ПравоНаДействие", "ПравоМодератора")
+    assert "метод ВычислитьРазрешенияДоступа(Права: ЧитаемыйМассив<ПравоМодератора.Объект>)" in stub
+    assert "ЧитаемаяКоллекция<КлючДоступа.Объект>" in stub
+    assert "возврат {:}" in stub
+
+    assert "метод Обработчик()" in module("ЗапланированноеЗадание", "ОчисткаКэша")
+    assert "метод ВычислитьПараметрыРаботыКлиента()" in module("ПараметрыРаботыКлиента", "Парам")
+    assert "метод ПослеПодключения()" in module(
+        "ПараметрСамостоятельнойРегистрацииПользователя", "Приглашение"
+    )
+    # Среда разработки создаёт запрос пустым – генератор не выдумывает текст запроса.
+    assert module("ВиртуальнаяТаблица", "Остатки").strip() == ""
+
+
+def test_kind_notes_and_mandatory_fields(tmp_path):
+    # Событию журнала обязателен ШаблонПредставления (для вида Информация).
+    result = scaffold.op_new_object(tmp_path, "СобытиеЖурналаСобытий", "ИмпортДанных")
+    parsed = _valid_yaml(result.changes[0].content)
+    assert parsed["ВидСобытия"] == "Информация"
+    assert parsed["ШаблонПредставления"] == "ИмпортДанных"
+    assert any("ХарактерОшибки" in n for n in result.notes)
+
+    # Цветовой схеме обязательно Представление.
+    scheme = scaffold.op_new_object(tmp_path, "ЦветоваяСхемаОтчета", "СхемаОтчета")
+    assert _valid_yaml(scheme.changes[0].content)["Представление"] == "СхемаОтчета"
+    assert any("Цвета" in n for n in scheme.notes)
+
+    # Виртуальной таблице напоминаем про обязательный запрос.
+    vt = scaffold.op_new_object(tmp_path, "ВиртуальнаяТаблица", "Остатки")
+    assert any(".xbql" in n for n in vt.notes)
+
+
+def test_new_sections_of_added_kinds(tmp_path):
+    subsystem = _make_project(tmp_path)
+    # Константы набора констант – с Ид (как реквизиты).
+    apply_result(scaffold.op_new_object(subsystem, "НаборКонстант", "КурсыВалют"))
+    apply_result(scaffold.op_add_field(subsystem / "КурсыВалют.yaml", "константа", "КурсЦБ",
+                                       type_="Число"))
+    const = _valid_yaml((subsystem / "КурсыВалют.yaml").read_text(encoding="utf-8"))["Константы"][0]
+    assert const["Имя"] == "КурсЦБ" and const["Ид"]
+
+    # Свойства контракта типа – без Ид, контракта сущности – с Ид.
+    apply_result(scaffold.op_new_object(subsystem, "КонтрактТипа", "КонтрактПредставления"))
+    apply_result(scaffold.op_add_field(subsystem / "КонтрактПредставления.yaml", "свойство",
+                                       "Заголовок", type_="Строка"))
+    prop = _valid_yaml(
+        (subsystem / "КонтрактПредставления.yaml").read_text(encoding="utf-8")
+    )["Свойства"][0]
+    assert prop == {"Имя": "Заголовок", "Тип": "Строка"}
+
+    apply_result(scaffold.op_new_object(subsystem, "КонтрактСущности", "Контрагенты"))
+    apply_result(scaffold.op_add_field(subsystem / "Контрагенты.yaml", "свойство", "ИНН",
+                                       type_="Строка"))
+    entity_prop = _valid_yaml((subsystem / "Контрагенты.yaml").read_text(encoding="utf-8"))["Свойства"][0]
+    assert entity_prop["Ид"]
+
+    # Действия права на элемент – секция Элементы.
+    apply_result(scaffold.op_new_object(subsystem, "ПравоНаЭлемент", "ПравоНаКонтрагента"))
+    apply_result(scaffold.op_add_field(subsystem / "ПравoНаКонтрагента.yaml".replace("o", "о"),
+                                       "значение", "ИзменениеЦены"))
+    action = _valid_yaml(
+        (subsystem / "ПравоНаКонтрагента.yaml").read_text(encoding="utf-8")
+    )["Элементы"][0]
+    assert action["Имя"] == "ИзменениеЦены" and action["Ид"]
+
+
+def test_new_project_version_follows_standard(tmp_path):
+    apply_result(scaffold.op_new_project(tmp_path, "vendor", "Приложение"))
+    project = _valid_yaml(
+        (tmp_path / "vendor" / "Приложение" / "Проект.yaml").read_text(encoding="utf-8")
+    )
+    # Правило project/version требует A.B.C – генератор не должен ему противоречить.
+    assert project["Версия"] == "1.0.0"
