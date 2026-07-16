@@ -129,7 +129,8 @@ def test_new_object_access_control(tmp_path):
         scaffold.op_new_object(tmp_path, "Справочник", "Заказы", access="РазрешеноАутентифицированным")
     )
     parsed = _valid_yaml((tmp_path / "Заказы.yaml").read_text(encoding="utf-8"))
-    assert parsed["КонтрольДоступа"]["ПоУмолчанию"] == "РазрешеноАутентифицированным"
+    # Право лежит внутри Разрешения: КонтрольДоступа – набор "Право: СпособКонтроляДоступа".
+    assert parsed["КонтрольДоступа"]["Разрешения"]["ПоУмолчанию"] == "РазрешеноАутентифицированным"
 
 
 def test_new_http_service_routes(tmp_path):
@@ -659,3 +660,128 @@ def test_cards_conflicts_and_unknown_form_kind(tmp_path):
     created = [c.path.name for c in partial.changes if c.created]
     assert created == ["СотрудникиФормаСписка.yaml"]
     assert any("СтрокаСпискаСотрудники.yaml уже существует" in n for n in partial.notes)
+
+
+# --- контроль доступа ---------------------------------------------------------------------
+
+
+def test_access_info_and_set_default(tmp_path):
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Товары"))
+    apply_result(scaffold.op_add_field(subsystem / "Товары.yaml", "реквизит", "Цвет"))
+    yaml_path = subsystem / "Товары.yaml"
+
+    # Секции нет – сводка None (значит, действует РазрешеноАдминистраторам).
+    assert scaffold.object_info(tmp_path, name="Товары")["access"] is None
+
+    result = scaffold.op_set_access(tmp_path, name="Товары", default="РазрешеноАутентифицированным")
+    apply_result(result)
+    text = yaml_path.read_text(encoding="utf-8")
+    parsed = _valid_yaml(text)
+    assert parsed["КонтрольДоступа"]["Разрешения"]["ПоУмолчанию"] == "РазрешеноАутентифицированным"
+    assert parsed["Реквизиты"][0]["Имя"] == "Цвет"  # секция данных не пострадала
+    assert any("нет секции" in n for n in result.notes)
+
+    info = scaffold.object_info(tmp_path, name="Товары")
+    assert info["access"]["default"] == "РазрешеноАутентифицированным"
+    assert info["access_rights"] == ["Создание", "Чтение", "Изменение", "Удаление"]
+
+    # Повторная установка того же значения – файл не трогается.
+    again = scaffold.op_set_access(tmp_path, name="Товары", default="РазрешеноАутентифицированным")
+    assert again.changes == []
+    assert any("уже имеют такие значения" in n for n in again.notes)
+
+
+def test_access_set_individual_rights_precisely(tmp_path):
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Товары",
+                                        access="РазрешеноАдминистраторам"))
+    yaml_path = subsystem / "Товары.yaml"
+    apply_result(scaffold.op_set_access(
+        tmp_path, name="Товары",
+        permissions={"Чтение": "РазрешеноВсем", "Создание": "РазрешеноАутентифицированным"},
+    ))
+    perms = _valid_yaml(yaml_path.read_text(encoding="utf-8"))["КонтрольДоступа"]["Разрешения"]
+    # Существующее ПоУмолчанию сохранено, новые права дописаны.
+    assert perms == {
+        "ПоУмолчанию": "РазрешеноАдминистраторам",
+        "Чтение": "РазрешеноВсем",
+        "Создание": "РазрешеноАутентифицированным",
+    }
+
+    # Замена значения существующего права – на месте.
+    apply_result(scaffold.op_set_access(tmp_path, name="Товары",
+                                        permissions={"Чтение": "РазрешеноАутентифицированным"}))
+    perms = _valid_yaml(yaml_path.read_text(encoding="utf-8"))["КонтрольДоступа"]["Разрешения"]
+    assert perms["Чтение"] == "РазрешеноАутентифицированным"
+    assert len(perms) == 3
+
+
+def test_access_per_object_requires_calc_by(tmp_path):
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Задачи"))
+    apply_result(scaffold.op_add_field(subsystem / "Задачи.yaml", "реквизит", "Ответственный",
+                                       type_="Пользователи.Ссылка?"))
+    with pytest.raises(ScaffoldError, match="РасчетРазрешенийПо"):
+        scaffold.op_set_access(tmp_path, name="Задачи",
+                               default="РазрешенияВычисляютсяДляКаждогоОбъекта")
+
+    result = scaffold.op_set_access(
+        tmp_path, name="Задачи", default="РазрешенияВычисляютсяДляКаждогоОбъекта",
+        calc_by=["Ответственный"],
+    )
+    apply_result(result)
+    access = _valid_yaml((subsystem / "Задачи.yaml").read_text(encoding="utf-8"))["КонтрольДоступа"]
+    assert access["Разрешения"]["ПоУмолчанию"] == "РазрешенияВычисляютсяДляКаждогоОбъекта"
+    assert access["РасчетРазрешенийПо"] == ["Ответственный"]
+    assert any("ВычислитьРазрешенияДоступаДляОбъектов" in n for n in result.notes)
+
+    info = scaffold.object_info(tmp_path, name="Задачи")
+    assert info["access"]["calc_by"] == ["Ответственный"]
+
+
+def test_access_validation(tmp_path):
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Товары"))
+    apply_result(scaffold.op_new_object(subsystem, "ОбщийМодуль", "Хелпер"))
+    apply_result(scaffold.op_new_object(subsystem, "HttpСервис", "Каталог"))
+
+    with pytest.raises(ScaffoldError, match="Недопустимый способ"):
+        scaffold.op_set_access(tmp_path, name="Товары", default="РазрешеноГостям")
+    with pytest.raises(ScaffoldError, match="не поддерживает управление доступом"):
+        scaffold.op_set_access(tmp_path, name="Хелпер", default="РазрешеноВсем")
+    with pytest.raises(ScaffoldError, match="нет права 'Вызов'"):
+        scaffold.op_set_access(tmp_path, name="Товары", permissions={"Вызов": "РазрешеноВсем"})
+    with pytest.raises(ScaffoldError, match="Нечего менять"):
+        scaffold.op_set_access(tmp_path, name="Товары")
+
+    # У сервиса своё право Вызов; шаблоны URL не трогаются.
+    apply_result(scaffold.op_set_access(tmp_path, name="Каталог",
+                                        permissions={"Вызов": "РазрешеноВсем"}))
+    service = _valid_yaml((subsystem / "Каталог.yaml").read_text(encoding="utf-8"))
+    assert service["КонтрольДоступа"]["Разрешения"]["Вызов"] == "РазрешеноВсем"
+    assert service["ШаблоныUrl"]
+
+    # Пользовательское право (ПравоНаЭлемент) допускается как есть.
+    apply_result(scaffold.op_set_access(
+        tmp_path, name="Товары",
+        permissions={"ПравоНаТовар.ИзменениеЦены": "РазрешенияВычисляются"},
+    ))
+    perms = _valid_yaml((subsystem / "Товары.yaml").read_text(encoding="utf-8"))["КонтрольДоступа"]["Разрешения"]
+    assert perms["ПравоНаТовар.ИзменениеЦены"] == "РазрешенияВычисляются"
+
+
+def test_project_info_access_summary(tmp_path):
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Товары",
+                                        access="РазрешеноАутентифицированным"))
+    apply_result(scaffold.op_new_object(subsystem, "Справочник", "Склады"))
+    apply_result(scaffold.op_new_object(subsystem, "ОбщийМодуль", "Хелпер"))
+
+    overview = scaffold.project_info(tmp_path)
+    by_name = {o["name"]: o for o in overview["objects"]}
+    assert by_name["Товары"]["access_default"] == "РазрешеноАутентифицированным"
+    assert by_name["Склады"]["access_default"] is None  # секции нет
+    assert "access_default" not in by_name["Хелпер"]  # вид без управления доступом
+    assert "РазрешеноВсем" in overview["access_methods"]
+    assert overview["access_kind_rights"]["HttpСервис"] == ["Вызов"]

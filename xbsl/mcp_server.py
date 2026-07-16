@@ -305,6 +305,39 @@ def meta_add_form(
 
 
 @mcp.tool()
+def meta_set_access(
+    root: str,
+    name: str | None = None,
+    yaml_path: str | None = None,
+    default: str | None = None,
+    permissions: dict | None = None,
+    calc_by: list[str] | None = None,
+) -> dict:
+    """Set КонтрольДоступа.Разрешения on an object (a precise yaml edit, kind-aware).
+
+    default – the method for the ПоУмолчанию right (the common case); permissions – methods
+    for individual rights, e.g. {"Чтение": "РазрешеноВсем"} (custom rights of a ПравоНаЭлемент
+    are written as "ПравоНаX.ИмяПрава"). Methods: РазрешеноВсем, РазрешеноАутентифицированным,
+    РазрешеноАдминистраторам, РазрешенияВычисляются, РазрешенияВычисляютсяДляКаждогоОбъекта.
+    calc_by fills РасчетРазрешенийПо – mandatory for РазрешенияВычисляютсяДляКаждогоОбъекта
+    (per-object/RLS rights).
+
+    Rights per kind and the current state come from meta_object_info (access / access_rights)
+    and meta_project_info (access_default per object; no section means the platform applies
+    РазрешеноАдминистраторам). The computed-permission handlers are business logic and are NOT
+    written here – notes remind which ones the object then needs.
+    """
+    return _meta(
+        scaffold.op_set_access,
+        Path(root), name=name,
+        yaml_path=Path(yaml_path) if yaml_path else None,
+        default=default,
+        permissions={str(k): str(v) for k, v in permissions.items()} if permissions else None,
+        calc_by=calc_by,
+    )
+
+
+@mcp.tool()
 def meta_rename_object(
     root: str,
     old_name: str,

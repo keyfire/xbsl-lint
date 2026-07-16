@@ -236,3 +236,44 @@ def test_cli_add_form_cards(capsys, tmp_path):
     names = {Path(f["path"]).name for f in out["files"]}
     assert {"СотрудникиФормаСписка.yaml", "СтрокаСпискаСотрудники.yaml"} <= names
     assert "МинимальнаяШирина: 300" in (tmp_path / "СотрудникиФормаСписка.yaml").read_text(encoding="utf-8")
+
+
+def test_mcp_meta_set_access(mcp_module, tmp_path):
+    mcp_module.meta_new_object(str(tmp_path), "Справочник", "Товары")
+    res = mcp_module.meta_set_access(str(tmp_path), name="Товары",
+                                     default="РазрешеноАутентифицированным",
+                                     permissions={"Чтение": "РазрешеноВсем"})
+    assert res["files"][0]["created"] is False
+    assert "lint" in res
+    text = (tmp_path / "Товары.yaml").read_text(encoding="utf-8")
+    assert "        ПоУмолчанию: РазрешеноАутентифицированным" in text
+    assert "        Чтение: РазрешеноВсем" in text
+
+    info = mcp_module.meta_object_info(str(tmp_path), name="Товары")
+    assert info["access"]["default"] == "РазрешеноАутентифицированным"
+    assert info["access"]["permissions"]["Чтение"] == "РазрешеноВсем"
+
+    overview = mcp_module.meta_project_info(str(tmp_path))
+    товары = next(o for o in overview["objects"] if o["name"] == "Товары")
+    assert товары["access_default"] == "РазрешеноАутентифицированным"
+    assert "РазрешенияВычисляются" in overview["access_methods"]
+
+    err = mcp_module.meta_set_access(str(tmp_path), name="Товары", default="ЧтоТоНеТо")
+    assert "Недопустимый способ" in err["error"]
+
+
+def test_cli_set_access(capsys, tmp_path):
+    _run_cli(capsys, "new-object", str(tmp_path), "Справочник", "Задачи")
+    _run_cli(capsys, "add-field", str(tmp_path / "Задачи.yaml"), "реквизит", "Ответственный",
+             "--type", "Пользователи.Ссылка?")
+    code, out = _run_cli(capsys, "set-access", str(tmp_path), "--name", "Задачи",
+                         "--default", "РазрешенияВычисляютсяДляКаждогоОбъекта",
+                         "--calc-by", "Ответственный")
+    assert code == 0
+    text = (tmp_path / "Задачи.yaml").read_text(encoding="utf-8")
+    assert "РасчетРазрешенийПо: [Ответственный]" in text
+    assert any("ВычислитьРазрешенияДоступаДляОбъектов" in n for n in out["notes"])
+
+    code, err = _run_cli(capsys, "set-access", str(tmp_path), "--name", "Задачи",
+                         "--permission", "Чтение")
+    assert code == 2 and "ПРАВО=СПОСОБ" in err["error"]

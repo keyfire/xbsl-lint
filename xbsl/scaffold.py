@@ -32,6 +32,7 @@ from xbsl import engine, fixer
 PROJECT_FILE = "Проект.yaml"
 SUBSYSTEM_FILE = "Подсистема.yaml"
 
+_WORD = "A-Za-zА-Яа-яЁё0-9_"  # класс символов идентификатора (для regex-границ слова)
 _IDENTIFIER = re.compile(r"^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*$")
 _KIND_RE = re.compile(r"^ВидЭлемента:\s*(\S+)", re.M)
 _NAME_RE = re.compile(r"^Имя:\s*(\S+)", re.M)
@@ -505,6 +506,9 @@ def object_info(root: Path, name: str | None = None, yaml_path: Path | None = No
         "name": hit.name,
         "subsystem": hit.subsystem,
         "namespace": hit.namespace,
+        # None – секции КонтрольДоступа нет: платформа применяет РазрешеноАдминистраторам.
+        "access": access_info(text),
+        "access_rights": list(ACCESS_KIND_RIGHTS.get(hit.kind, ())),
         "fields": fields,
         "tabulars": tabulars,
         "suggested_layout": layout,
@@ -538,11 +542,19 @@ def project_info(root: Path) -> dict:
     """Обзор исходников под корнем: проекты, подсистемы и объекты по видам."""
     projects = find_projects(root)
     objects = []
-    for yaml_path, kind, name, _text in _iter_objects(root):
+    for yaml_path, kind, name, text in _iter_objects(root):
         subsystem, namespace = _namespace_of(yaml_path, root)
-        objects.append(
-            {"kind": kind, "name": name, "path": str(yaml_path), "subsystem": subsystem, "namespace": namespace}
-        )
+        entry = {
+            "kind": kind, "name": name, "path": str(yaml_path),
+            "subsystem": subsystem, "namespace": namespace,
+        }
+        if kind in ACCESS_KIND_RIGHTS:
+            # Сводка прав по проекту: способ для ПоУмолчанию (None – секции нет, значит
+            # действует РазрешеноАдминистраторам) и способы отдельных прав.
+            access = access_info(text)
+            entry["access_default"] = access["default"] if access else None
+            entry["access_permissions"] = access["permissions"] if access else {}
+        objects.append(entry)
     return {
         "projects": [
             {**p, "dir": str(p["dir"])} for p in projects
@@ -550,6 +562,8 @@ def project_info(root: Path) -> dict:
         "objects": sorted(objects, key=lambda o: (o["kind"], o["name"])),
         "creatable_kinds": sorted(KIND_SPECS),
         "field_kinds": {kind: list(sections) for kind, sections in KIND_SECTIONS.items()},
+        "access_methods": list(ACCESS_METHODS),
+        "access_kind_rights": {k: list(v) for k, v in ACCESS_KIND_RIGHTS.items()},
     }
 
 
@@ -654,9 +668,10 @@ def op_new_object(
 ) -> ScaffoldResult:
     """Создать объект конфигурации: Имя.yaml (+ Имя.xbsl у видов с модулем).
 
-    environment – Окружение для ОбщийМодуль/Структура; access – КонтрольДоступа
-    (у HttpСервис – Разрешения.Вызов, у объектов данных – ПоУмолчанию); routes –
-    маршруты HttpСервис ("GET /, POST /, GET /{id}"); report – источник и макет отчёта.
+    environment – Окружение для ОбщийМодуль/Структура; access – способ контроля доступа
+    (у HttpСервис пишется в Разрешения.Вызов, у объектов данных – в Разрешения.ПоУмолчанию;
+    отдельные права задаёт op_set_access); routes – маршруты HttpСервис
+    ("GET /, POST /, GET /{id}"); report – источник и макет отчёта.
     """
     spec = KIND_SPECS.get(kind)
     if spec is None:
@@ -680,7 +695,10 @@ def op_new_object(
         extra = [line for line in extra if not line.startswith("Окружение:")]
         extra.append(f"Окружение: {environment}")
     if access:
-        extra += ["КонтрольДоступа:", f"    ПоУмолчанию: {access}"]
+        # Разрешения обязательны: КонтрольДоступа – это набор "Право: СпособКонтроляДоступа"
+        # внутри Разрешения (см. ACCESS_KIND_RIGHTS и документацию "Контроль прав доступа").
+        extra += ["КонтрольДоступа:", f"    {_PERMISSIONS_KEY}:",
+                  f"        {ACCESS_DEFAULT_RIGHT}: {access}"]
     content = new_object_yaml(kind, new_uuid(), name, scope or spec.scope, extra)
     result.changes.append(FileChange(yaml_path, content, created=True))
     if spec.module:
@@ -1860,6 +1878,266 @@ def _add_card_row(info: dict, owner_path: Path, overwrite: bool, placeholder: st
         )
 
 
+# --- контроль доступа --------------------------------------------------------------------
+#
+# КонтрольДоступа.Разрешения – набор записей "Право: СпособКонтроляДоступа" (документация:
+# "Контроль прав доступа"). Права сущности – Создание/Чтение/Изменение/Удаление
+# (Стд::Сущности::Сущность.Право), у сервисов – Вызов, у регистров и набора констант –
+# Чтение/Изменение; ПоУмолчанию задаёт способ для всех прочих прав. Право может быть и
+# пользовательским – "ПравоНаX.ИмяПрава" (элемент проекта вида ПравоНаЭлемент). Секции нет –
+# платформа применяет РазрешеноАдминистраторам.
+
+ACCESS_METHODS = (
+    "РазрешеноВсем",
+    "РазрешеноАутентифицированным",
+    "РазрешеноАдминистраторам",
+    "РазрешенияВычисляются",
+    "РазрешенияВычисляютсяДляКаждогоОбъекта",
+)
+ACCESS_DEFAULT_RIGHT = "ПоУмолчанию"
+_ACCESS_IMPLICIT = "РазрешеноАдминистраторам"  # когда секции КонтрольДоступа нет
+_PER_OBJECT = "РазрешенияВычисляютсяДляКаждогоОбъекта"
+
+# Права по видам элементов проекта (документация "Контроль прав доступа": управление
+# доступом поддерживают именно эти виды). Пустой кортеж – вид поддерживает только ПоУмолчанию.
+ACCESS_KIND_RIGHTS: dict[str, tuple[str, ...]] = {
+    "Справочник": ("Создание", "Чтение", "Изменение", "Удаление"),
+    "Документ": ("Создание", "Чтение", "Изменение", "Удаление"),
+    "ПланОбмена": ("Создание", "Чтение", "Изменение", "Удаление"),
+    "РегистрСведений": ("Чтение", "Изменение"),
+    "РегистрНакопления": ("Чтение", "Изменение"),
+    "НаборКонстант": ("Чтение", "Изменение"),
+    "HttpСервис": ("Вызов",),
+    "SoapСервис": ("Вызов",),
+    "ХранилищеНастроек": (),
+}
+# Набор констант не поддерживает построчные разрешения (документация "Свойства элемента
+# проекта вида НаборКонстант").
+_NO_PER_OBJECT_KINDS = ("НаборКонстант",)
+
+_ACCESS_SECTION = "КонтрольДоступа"
+_PERMISSIONS_KEY = "Разрешения"
+_CALC_BY_KEY = "РасчетРазрешенийПо"
+# Куда вставить секцию КонтрольДоступа, если её нет: перед первой из этих секций.
+_ACCESS_ANCHORS = (
+    "Реквизиты", "Измерения", "Ресурсы", "ТабличныеЧасти", "ШаблоныUrl", "Операции",
+    "Интерфейс", "НастройкиТипов", "Индексы", "Свойства",
+)
+_KEY_VALUE_LINE = re.compile(rf"^([ \t]*)([{_WORD}.]+):[ \t]*(\S.*?)[ \t]*$")
+
+
+def _mapping_in(body: str, key: str) -> dict[str, str]:
+    """Скалярные пары "Ключ: Значение" вложенной секции-отображения (напр. Разрешения)."""
+    bounds = _section_bounds(body, key)
+    if bounds is None:
+        return {}
+    header_indent, header_line_end, body_end = bounds
+    out: dict[str, str] = {}
+    for line in body[header_line_end:body_end].split("\n"):
+        m = _KEY_VALUE_LINE.match(line)
+        if m and len(m.group(1)) > header_indent:
+            out[m.group(2)] = m.group(3)
+    return out
+
+
+def _calc_by_values(body: str) -> list[str]:
+    """Значения РасчетРазрешенийПо: и инлайн-список [A, B], и список из "- A"."""
+    m = re.search(rf"^[ \t]*{_CALC_BY_KEY}:[ \t]*(.*)$", body, re.M)
+    if m is None:
+        return []
+    inline = m.group(1).strip()
+    if inline.startswith("["):
+        return [v.strip() for v in inline.strip("[]").split(",") if v.strip()]
+    bounds = _section_bounds(body, _CALC_BY_KEY)
+    if bounds is None:
+        return []
+    _, header_line_end, body_end = bounds
+    return [
+        line.strip().lstrip("-").strip()
+        for line in body[header_line_end:body_end].split("\n")
+        if line.strip().startswith("-")
+    ]
+
+
+def access_info(text: str) -> dict | None:
+    """Сводка КонтрольДоступа объекта или None, если секции нет.
+
+    {permissions: {право: способ}, default: способ|None, calc_by: [поля]}. Отсутствие секции –
+    именно None, а не пустая сводка: платформа тогда применяет РазрешеноАдминистраторам.
+    """
+    bounds = _section_bounds(text, _ACCESS_SECTION)
+    if bounds is None:
+        return None
+    _, header_line_end, body_end = bounds
+    body = text[header_line_end:body_end]
+    permissions = _mapping_in(body, _PERMISSIONS_KEY)
+    return {
+        "permissions": permissions,
+        "default": permissions.get(ACCESS_DEFAULT_RIGHT),
+        "calc_by": _calc_by_values(body),
+    }
+
+
+def _access_anchor(text: str) -> int:
+    """Смещение вставки секции КонтрольДоступа: перед первой секцией данных, иначе в конец."""
+    offsets = [
+        m.start()
+        for key in _ACCESS_ANCHORS
+        for m in [re.search(rf"^{re.escape(key)}:[ \t]*\r?$", text, re.M)]
+        if m
+    ]
+    return min(offsets) if offsets else len(text)
+
+
+def _set_mapping_value(text: str, section_offset_end: int, body_end: int, indent: str,
+                       key: str, value: str, nl: str) -> tuple[str, int]:
+    """Заменить значение ключа отображения или дописать ключ в конец секции.
+
+    Возвращает (новый текст, сдвиг конца секции) – вызывающий пересчитывает границы.
+    """
+    body = text[section_offset_end:body_end]
+    m = re.search(rf"^([ \t]*){re.escape(key)}:[ \t]*(.*)$", body, re.M)
+    if m:
+        start = section_offset_end + m.start()
+        end = section_offset_end + m.end()
+        new_line = f"{m.group(1)}{key}: {value}"
+        return text[:start] + new_line + text[end:], len(new_line) - (end - start)
+    addition = f"{nl}{indent}{key}: {value}"
+    return text[:body_end] + addition + text[body_end:], len(addition)
+
+
+def op_set_access(
+    root: Path,
+    name: str | None = None,
+    yaml_path: Path | None = None,
+    *,
+    default: str | None = None,
+    permissions: dict[str, str] | None = None,
+    calc_by: list[str] | None = None,
+    reader=None,
+) -> ScaffoldResult:
+    """Задать КонтрольДоступа.Разрешения объекта: точечно, с проверкой вида и способа.
+
+    default – способ для права ПоУмолчанию (частый случай); permissions – способы отдельных
+    прав ({"Чтение": "РазрешеноВсем"}), в том числе пользовательских ("ПравоНаX.ИмяПрава").
+    calc_by задаёт РасчетРазрешенийПо – он обязателен для РазрешенияВычисляютсяДляКаждогоОбъекта.
+    Обработчики вычисления разрешений операция НЕ пишет: это бизнес-логика (см. документацию
+    "Самостоятельное формирование разрешений и выдача экземпляров ключей") – в notes остаётся
+    напоминание.
+    """
+    wanted: dict[str, str] = dict(permissions or {})
+    if default:
+        wanted[ACCESS_DEFAULT_RIGHT] = default
+    if not wanted and calc_by is None:
+        raise ScaffoldError("Нечего менять: задайте default, permissions или calc_by")
+
+    info = object_info(Path(root), name=name, yaml_path=yaml_path)
+    kind = info["kind"]
+    owner_path = Path(info["path"])
+    if kind not in ACCESS_KIND_RIGHTS:
+        raise ScaffoldError(
+            f"Вид {kind} не поддерживает управление доступом; поддерживают: "
+            + ", ".join(sorted(ACCESS_KIND_RIGHTS))
+        )
+
+    result = ScaffoldResult()
+    known = ACCESS_KIND_RIGHTS[kind]
+    for right, method in wanted.items():
+        if method not in ACCESS_METHODS:
+            raise ScaffoldError(
+                f"Недопустимый способ контроля доступа '{method}' у права '{right}'; "
+                + "доступны: " + ", ".join(ACCESS_METHODS)
+            )
+        if method == _PER_OBJECT and kind in _NO_PER_OBJECT_KINDS:
+            raise ScaffoldError(f"Вид {kind} не поддерживает {_PER_OBJECT}")
+        if right != ACCESS_DEFAULT_RIGHT and "." not in right and right not in known:
+            allowed = ", ".join(known) if known else "только " + ACCESS_DEFAULT_RIGHT
+            raise ScaffoldError(
+                f"У вида {kind} нет права '{right}'; доступны: {allowed} "
+                f"(и {ACCESS_DEFAULT_RIGHT}; пользовательское право пишется как ПравоНаX.ИмяПрава)"
+            )
+
+    text, nl = _load_for_edit(owner_path, reader)
+    current = access_info(text)
+    per_object = [r for r, m in wanted.items() if m == _PER_OBJECT]
+    if per_object:
+        has_calc = bool(calc_by) or bool(current and current["calc_by"])
+        if not has_calc:
+            raise ScaffoldError(
+                f"{_PER_OBJECT} требует {_CALC_BY_KEY} – передайте calc_by "
+                "(поля объекта, по которым считаются разрешения)"
+            )
+    if calc_by is not None and not calc_by:
+        raise ScaffoldError(f"{_CALC_BY_KEY} не может быть пустым")
+
+    unchanged = [r for r, m in wanted.items() if current and current["permissions"].get(r) == m]
+    if unchanged and len(unchanged) == len(wanted) and calc_by is None:
+        result.notes.append(
+            "Права уже имеют такие значения: "
+            + ", ".join(f"{r}: {wanted[r]}" for r in unchanged)
+        )
+        return result
+
+    if current is None:
+        lines = [f"{_ACCESS_SECTION}:", f"    {_PERMISSIONS_KEY}:"]
+        lines += [f"        {right}: {method}" for right, method in wanted.items()]
+        if calc_by:
+            lines.append(f"    {_CALC_BY_KEY}: [{', '.join(calc_by)}]")
+        at = _access_anchor(text)
+        block = nl.join(lines) + nl
+        new_text = text[:at] + block + text[at:]
+    else:
+        new_text = text
+        for right, method in wanted.items():
+            new_text = _write_permission(new_text, right, method, nl)
+        if calc_by:
+            new_text = _write_calc_by(new_text, calc_by, nl)
+
+    result.changes.append(FileChange(owner_path, new_text, created=False))
+    was = (current["permissions"] if current else {})
+    for right, method in wanted.items():
+        before = was.get(right) or (f"нет секции – {_ACCESS_IMPLICIT}" if current is None else "не задано")
+        result.notes.append(f"{right}: {before} -> {method}")
+    if per_object:
+        result.notes.append(
+            "Нужны обработчики ВычислитьРазрешенияДоступа и "
+            "ВычислитьРазрешенияДоступаДляОбъектов в модуле объекта, иначе доступа не будет"
+        )
+    elif any(m == "РазрешенияВычисляются" for m in wanted.values()):
+        result.notes.append(
+            "Нужен обработчик ВычислитьРазрешенияДоступа в модуле объекта, иначе доступа не будет"
+        )
+    return result
+
+
+def _access_body_bounds(text: str) -> tuple[int, int]:
+    _, header_line_end, body_end = _section_bounds(text, _ACCESS_SECTION)
+    return header_line_end, body_end
+
+
+def _write_permission(text: str, right: str, method: str, nl: str) -> str:
+    """Точечно задать право в существующей секции КонтрольДоступа."""
+    header_line_end, body_end = _access_body_bounds(text)
+    body = text[header_line_end:body_end]
+    perms = _section_bounds(body, _PERMISSIONS_KEY)
+    if perms is None:  # секция есть, а Разрешения нет – дописываем блок
+        addition = f"{nl}    {_PERMISSIONS_KEY}:{nl}        {right}: {method}"
+        return text[:body_end] + addition + text[body_end:]
+    perm_indent, perm_header_end, perm_body_end = perms
+    new_text, _ = _set_mapping_value(
+        text, header_line_end + perm_header_end, header_line_end + perm_body_end,
+        " " * (perm_indent + 4), right, method, nl,
+    )
+    return new_text
+
+
+def _write_calc_by(text: str, calc_by: list[str], nl: str) -> str:
+    header_line_end, body_end = _access_body_bounds(text)
+    value = f"[{', '.join(calc_by)}]"
+    new_text, _ = _set_mapping_value(text, header_line_end, body_end, "    ", _CALC_BY_KEY, value, nl)
+    return new_text
+
+
 # --- операция: переименование объекта ----------------------------------------------------
 #
 # Переименование текстовое и контекстное, без полного индекса: имя заменяется только там,
@@ -1867,8 +2145,6 @@ def _add_card_row(info: dict, owner_path: Path, overwrite: bool, placeholder: st
 # и коде, составные имена форм), а совпадающие имена реквизитов, компонентов и полей
 # динамических списков не трогаются. Строковые литералы .xbsl не правятся (UI-текст),
 # комментарии – правятся (упоминания объекта в документации кода).
-
-_WORD = "A-Za-zА-Яа-яЁё0-9_"
 
 # Ключи yaml, в значениях которых имя объекта – ссылка на объект или форму.
 _YAML_REF_KEYS = ("Тип", "Таблица", "ИсточникДанных", "Форма", "ТипФормы")

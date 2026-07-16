@@ -289,6 +289,7 @@ xbsl new-object ... HttpСервис Каталог --routes "GET /, POST /, GET
 xbsl add-route  .../Каталог.yaml "DELETE /{id}"      # url template + handler stub
 xbsl add-subsystem vendor/App Задачи
 xbsl rename-object . Товары Номенклатура             # rename files + update references
+xbsl set-access . --name Товары --default РазрешеноАутентифицированным
 xbsl object-info . --name Товары                     # fields, tabulars, forms, namespace
 xbsl project-info .                                  # projects, subsystems, objects by kind
 ```
@@ -306,6 +307,15 @@ switches it to `ПроизвольнаяКарточка` with the image above t
 fields, dates formatted; notes report what landed on the card and what did not.
 `--card-min-width` sets the grid column width (default 400, 250 with a photo) and
 `--card-placeholder` the image shown when the photo is empty.
+
+`set-access` edits `КонтрольДоступа.Разрешения` in place, aware of what each kind allows:
+`--default` sets the ПоУмолчанию right, `--permission Чтение=РазрешеноВсем` an individual one
+(custom rights of a `ПравоНаЭлемент` included), `--calc-by` fills `РасчетРазрешенийПо` –
+mandatory for `РазрешенияВычисляютсяДляКаждогоОбъекта`. Wrong methods, rights a kind does not
+have, and per-object rights on a `НаборКонстант` are rejected; the computed-permission
+handlers stay yours to write (notes say which). `object-info` reports the current permissions
+and the kind's rights, `project-info` the ПоУмолчанию of every object – no section there means
+the platform applies `РазрешеноАдминистраторам`.
 
 `rename-object` renames the object's files (including its forms and the `СтрокаСписка<Имя>`
 row component) and rewrites references context-aware across the whole project: yaml
@@ -389,7 +399,7 @@ Tools: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`; do
 `docs_search(query)`, `docs_page(id)`, `docs_symbol(name)` (needs the `docs.sqlite` database, see
 above); metadata scaffolding – `meta_new_project`, `meta_new_object`, `meta_add_field`,
 `meta_add_route`, `meta_add_form`, `meta_add_subsystem`, `meta_rename_object` (with a
-`dry_run` plan mode), `meta_object_info`, `meta_project_info`.
+`dry_run` plan mode), `meta_set_access`, `meta_object_info`, `meta_project_info`.
 Every writing `meta_*` tool applies the changes and returns the lint of the written files in the
 same response – creation and validation in one round trip. The core and the CLI do not require
 `mcp` – it lives only in the `[mcp]` extra.

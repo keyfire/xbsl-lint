@@ -176,7 +176,7 @@ def _apply_fixes(sources, diagnostics, args) -> int:
 
 _META_COMMANDS = (
     "new-project", "new-object", "add-field", "add-route", "add-form",
-    "add-subsystem", "rename-object", "object-info", "project-info",
+    "add-subsystem", "rename-object", "set-access", "object-info", "project-info",
 )
 _SERVER_COMMANDS = ("lsp", "mcp", "web")
 
@@ -249,6 +249,16 @@ def _scaffold_parser() -> argparse.ArgumentParser:
     p.add_argument("--old-presentation", help="старое представление (для замены в Заголовок/Представление)")
     p.add_argument("--path", help="yaml объекта (при нескольких объектах с одним именем)")
 
+    p = sub.add_parser("set-access", help="задать КонтрольДоступа.Разрешения объекта")
+    p.add_argument("root")
+    p.add_argument("--name")
+    p.add_argument("--path", help="yaml объекта (вместо --name)")
+    p.add_argument("--default", help="способ для права ПоУмолчанию")
+    p.add_argument("--permission", action="append", metavar="ПРАВО=СПОСОБ",
+                   help="способ отдельного права (повторяемый), напр. Чтение=РазрешеноВсем")
+    p.add_argument("--calc-by", help="поля РасчетРазрешенийПо через запятую "
+                                     "(обязательны для РазрешенияВычисляютсяДляКаждогоОбъекта)")
+
     p = sub.add_parser("object-info", help="сводка объекта: реквизиты, ТЧ, формы, namespace")
     p.add_argument("root")
     p.add_argument("--name")
@@ -319,6 +329,19 @@ def _scaffold_main(argv: list[str]) -> int:
                 representation=args.representation,
                 auto_interface=not args.no_auto_interface,
                 uses=args.uses.split(",") if args.uses else None,
+            )
+        elif args.command == "set-access":
+            perms = {}
+            for item in args.permission or []:
+                right, sep, method = item.partition("=")
+                if not sep:
+                    raise ValueError(f"Ожидается ПРАВО=СПОСОБ, получено: '{item}'")
+                perms[right.strip()] = method.strip()
+            result = scaffold.op_set_access(
+                Path(args.root), name=args.name,
+                yaml_path=Path(args.path) if args.path else None,
+                default=args.default, permissions=perms or None,
+                calc_by=[f.strip() for f in args.calc_by.split(",")] if args.calc_by else None,
             )
         elif args.command == "rename-object":
             result = scaffold.op_rename_object(
