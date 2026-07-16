@@ -290,9 +290,12 @@ KIND_SPECS: dict[str, KindSpec] = {
     "Документ": KindSpec(),
     "Перечисление": KindSpec(),
     "Структура": KindSpec(extra=("Окружение: КлиентИСервер",)),
+    "ХранимаяСтруктура": KindSpec(),
     "РегистрСведений": KindSpec(),
     "РегистрНакопления": KindSpec(),
-    "ПараметрыРаботыКлиента": KindSpec(),
+    # Модуль обязателен: платформа ждёт в нём обработчик ВычислитьПараметрыРаботыКлиента,
+    # без него параметры не вычисляются (документация "ПараметрыРаботыКлиента").
+    "ПараметрыРаботыКлиента": KindSpec(module=True),
     "ОбщийМодуль": KindSpec(module=True, extra=("Окружение: Сервер",)),
     "HttpСервис": KindSpec(scope="ВПодсистеме", module=True, extra=("КорневойUrl: /{name}",)),
     "ГлобальноеКлиентскоеСобытие": KindSpec(),
@@ -347,6 +350,14 @@ KIND_SECTIONS: dict[str, tuple[str, ...]] = {
     "Структура": ("поле",),
     "ХранимаяСтруктура": ("поле",),
     "КлючДоступа": ("параметр",),
+}
+
+# Состав строк, отличный от общего для вида объекта: у полей ХранимойСтруктуры и параметров
+# КлючаДоступа документация описывает Ид – он держит привязку данных при переименовании
+# (у обычной Структуры и у ПараметрыРаботыКлиента Ид в составе нет).
+_KIND_SECTION_LINES: dict[tuple[str, str], tuple[str, ...]] = {
+    ("ХранимаяСтруктура", "поле"): _WITH_TYPE,
+    ("КлючДоступа", "параметр"): _WITH_TYPE,
 }
 
 FIELD_KINDS = tuple(_SECTION_SPECS)
@@ -684,11 +695,29 @@ def op_new_object(
     if yaml_path.exists():
         raise ScaffoldError(f"Файл уже существует: {yaml_path}")
 
+    if access and kind not in ACCESS_KIND_RIGHTS:
+        raise ScaffoldError(
+            f"Вид {kind} не поддерживает управление доступом – параметр access неприменим; "
+            "поддерживают: " + ", ".join(sorted(ACCESS_KIND_RIGHTS))
+        )
+    if access and access not in ACCESS_METHODS:
+        raise ScaffoldError(
+            f"Недопустимый способ контроля доступа '{access}'; доступны: " + ", ".join(ACCESS_METHODS)
+        )
+
     result = ScaffoldResult()
+    if access in ("РазрешенияВычисляются", _PER_OBJECT):
+        result.notes.append(
+            f"{access}: разрешения нужно вычислить самому – напишите обработчик "
+            "ВычислитьРазрешенияДоступа" + (
+                " и ВычислитьРазрешенияДоступаДляОбъектов (+ РасчетРазрешенийПо)"
+                if access == _PER_OBJECT else ""
+            ) + " в модуле объекта"
+        )
     if kind == "HttpСервис":
-        return _new_http_service(yaml_path, name, access, routes or "GET /", result)
+        return _new_http_service(yaml_path, name, access, routes or "GET /", result, scope)
     if kind == "Отчет":
-        return _new_report(yaml_path, name, report or {}, result)
+        return _new_report(yaml_path, name, report or {}, result, scope)
 
     extra = [line.format(name=name) for line in spec.extra]
     if environment:
@@ -744,16 +773,23 @@ def op_add_field(
             f"Неизвестный вид элемента '{field_kind}'; доступны: {', '.join(FIELD_KINDS)}"
         )
     allowed = KIND_SECTIONS.get(kind)
-    if allowed is not None and field_kind not in allowed:
+    if allowed is None:
+        # Вид без пополняемых секций (ОбщийМодуль, HttpСервис, КомпонентИнтерфейса и т.п.):
+        # раньше проверка пропускала такой вид и молча дописывала ему чужую секцию.
+        raise ScaffoldError(
+            f"У вида {kind} нет пополняемых секций; они есть у: " + ", ".join(sorted(KIND_SECTIONS))
+        )
+    if field_kind not in allowed:
         raise ScaffoldError(
             f"У вида {kind} нет секции для '{field_kind}'; доступны: {', '.join(allowed)}"
         )
     existing = {i.get("Имя") for i in section_items(text, spec["section"])}
     if name in existing:
         raise ScaffoldError(f"'{name}' уже есть в секции {spec['section']} файла {yaml_path.name}")
+    template = _KIND_SECTION_LINES.get((kind, field_kind), spec["lines"])
     lines = [
         line.format(uuid=new_uuid(), uuid2=new_uuid(), name=name, type=type_)
-        for line in spec["lines"]
+        for line in template
     ]
     edit = insert_item_edit(text, spec["section"], lines, nl)
     new_text = apply_edit(text, edit)
@@ -779,12 +815,13 @@ def op_add_subsystem(
     if uses:
         lines.append("Использование:")
         lines += [f"    - {u}" for u in uses]
-    if auto_interface or representation:
-        lines.append("Интерфейс:")
-        lines.append(f"    ВключатьВАвтоИнтерфейс: {'Истина' if auto_interface else 'Ложь'}")
-        if representation:
-            lines.append(f"    Представление: {representation}")
-    content = ("\n".join(lines) + "\n") if lines else ""
+    # Блок Интерфейс пишется всегда: умолчание платформы – Истина, поэтому отключение
+    # автоинтерфейса существует только как явная запись ВключатьВАвтоИнтерфейс: Ложь.
+    lines.append("Интерфейс:")
+    lines.append(f"    ВключатьВАвтоИнтерфейс: {'Истина' if auto_interface else 'Ложь'}")
+    if representation:
+        lines.append(f"    Представление: {representation}")
+    content = "\n".join(lines) + "\n"
     return ScaffoldResult([FileChange(yaml_path, content, created=True)])
 
 
@@ -897,21 +934,45 @@ def _has_path_param(path: str) -> bool:
 
 
 def _to_pascal(s: str) -> str:
+    """Сегмент пути -> часть идентификатора: разделители убираются, слова с заглавной.
+
+    В пути законны символы, недопустимые в имени (дефис, точка, звёздочка шаблона
+    `/read/*`): их отбрасываем, иначе получится не идентификатор, а сломанный yaml
+    (`Имя: *` парсер читает как алиас) и некомпилируемое имя обработчика.
+    """
     s = s.strip("{}")
-    return s[:1].upper() + s[1:] if s else s
+    parts = [p for p in re.split(r"[^A-Za-zА-Яа-яЁё0-9_]+", s) if p]
+    return "".join(p[:1].upper() + p[1:] for p in parts)
 
 
 def template_name(path: str) -> str:
     if path == "/":
         return "Список"
     segments = [s for s in path.lstrip("/").split("/") if s]
-    literal = [s for s in segments if not (s.startswith("{") and s.endswith("}"))]
+    literal = [_to_pascal(s) for s in segments if not (s.startswith("{") and s.endswith("}"))]
+    literal = [s for s in literal if s]
     params = [s for s in segments if s.startswith("{") and s.endswith("}")]
     if not literal:
         return "ЭлементПоИд"
     if params:
-        return _to_pascal(literal[-1]) + "ПоРодителю"
-    return _to_pascal(literal[-1])
+        return literal[-1] + "ПоРодителю"
+    return literal[-1]
+
+
+def assign_template_name(path: str, used: set[str]) -> str:
+    """Имя шаблона URL, уникальное в пределах сервиса.
+
+    Имя шаблона – ключ: по нему платформа хранит разрешения доступа и его отдаёт
+    Запрос.ИмяШаблона, а op_add_route ищет по нему блок для дополнения. Разные пути легко
+    дают одно имя (`/users` и `/orders/users`), поэтому дубли разводятся суффиксом.
+    """
+    base = template_name(path) or "Шаблон"
+    name, n = base, 2
+    while name in used:
+        name = f"{base}{n}"
+        n += 1
+    used.add(name)
+    return name
 
 
 def assign_handler(method: str, path: str, used: set[str]) -> str:
@@ -928,8 +989,8 @@ def assign_handler(method: str, path: str, used: set[str]) -> str:
     return name
 
 
-def _template_lines(path: str, method_handlers: list[tuple[str, str]]) -> list[str]:
-    lines = [f"Имя: {template_name(path)}", f"Шаблон: {path}", "Методы:"]
+def _template_lines(path: str, method_handlers: list[tuple[str, str]], name: str) -> list[str]:
+    lines = [f"Имя: {name}", f"Шаблон: {path}", "Методы:"]
     for method, handler in method_handlers:
         lines += [
             "    -",
@@ -957,8 +1018,8 @@ def _handler_stub(method: str, path: str, handler: str) -> str:
         // знч Данные = <Справочник>.ПолучитьСписок(Ограничение)
         // Запрос.Ответ.Заголовки.Установить("Content-Type", "application/json")
         // Запрос.Ответ.УстановитьТело(СериализацияJson.ЗаписатьОбъект(Данные))
-    поймать Исключение: Исключение
-        ОбработатьОшибку(Запрос.Ответ, Исключение)
+    поймать Ошибка: Исключение
+        ОбработатьОшибку(Запрос.Ответ, Ошибка)
     ;"""
     elif key == ("POST", False):
         body = """\
@@ -968,8 +1029,8 @@ def _handler_stub(method: str, path: str, handler: str) -> str:
         // знч Ссылка = <Справочник>.Создать(Данные)
         Запрос.Ответ.УстановитьКодСтатуса(201)
         // Запрос.Ответ.УстановитьТело(Ссылка.Ид.ВСтроку())
-    поймать Исключение: Исключение
-        ОбработатьОшибку(Запрос.Ответ, Исключение)
+    поймать Ошибка: Исключение
+        ОбработатьОшибку(Запрос.Ответ, Ошибка)
     ;"""
     elif key == ("GET", True):
         m = re.search(r"\{([^}]+)\}", path)
@@ -984,52 +1045,55 @@ def _handler_stub(method: str, path: str, handler: str) -> str:
         //     возврат
         // ;
         // Запрос.Ответ.УстановитьТело(СериализацияJson.ЗаписатьОбъект(Объект))
-    поймать Исключение: Исключение
-        ОбработатьОшибку(Запрос.Ответ, Исключение)
+    поймать Ошибка: Исключение
+        ОбработатьОшибку(Запрос.Ответ, Ошибка)
     ;"""
     else:
         body = f"""\
     попытка
         // TODO: реализовать {method}
-    поймать Исключение: Исключение
-        ОбработатьОшибку(Запрос.Ответ, Исключение)
+    поймать Ошибка: Исключение
+        ОбработатьОшибку(Запрос.Ответ, Ошибка)
     ;"""
     return f"метод {handler}(Запрос: HttpСервисЗапрос)\n{body}\n;"
 
 
 _ERROR_HELPER = """\
-метод ОбработатьОшибку(Ответ: HttpСервисОтвет, Исключение: Исключение)
+метод ОбработатьОшибку(Ответ: HttpСервисОтвет, Ошибка: Исключение)
     Ответ.УстановитьКодСтатуса(500)
     Ответ.Заголовки.Установить("Content-Type", "text/plain; charset=utf-8")
-    Ответ.УстановитьТело(Исключение.Описание)
+    Ответ.УстановитьТело(Ошибка.Описание)
 ;"""
 
 
 def _new_http_service(
-    yaml_path: Path, name: str, access: str | None, routes: str, result: ScaffoldResult
+    yaml_path: Path, name: str, access: str | None, routes: str, result: ScaffoldResult,
+    scope: str | None = None,
 ) -> ScaffoldResult:
     templates = parse_routes(routes)
     used: set[str] = set()
+    used_templates: set[str] = set()
     assigned = [
-        (path, [(m, assign_handler(m, path, used)) for m in methods])
+        (path, assign_template_name(path, used_templates),
+         [(m, assign_handler(m, path, used)) for m in methods])
         for path, methods in templates
     ]
     lines = [
         "ВидЭлемента: HttpСервис",
         f"Ид: {new_uuid()}",
         f"Имя: {name}",
-        "ОбластьВидимости: ВПодсистеме",
+        f"ОбластьВидимости: {scope or KIND_SPECS['HttpСервис'].scope}",
         f"КорневойUrl: /{name}",
     ]
     if access:
         lines += ["КонтрольДоступа:", "    Разрешения:", f"        Вызов: {access}"]
     lines.append("ШаблоныUrl:")
-    for path, method_handlers in assigned:
+    for path, template, method_handlers in assigned:
         lines.append("    -")
-        lines += [f"        {line}" for line in _template_lines(path, method_handlers)]
+        lines += [f"        {line}" for line in _template_lines(path, method_handlers, template)]
     blocks = [
         _handler_stub(m, path, handler)
-        for path, method_handlers in assigned
+        for path, _template, method_handlers in assigned
         for m, handler in method_handlers
     ]
     blocks.append(_ERROR_HELPER)
@@ -1058,6 +1122,9 @@ def op_add_route(yaml_path: Path, routes: str, *, reader=None) -> ScaffoldResult
     # Занятые имена обработчиков: объявленные в модуле и упомянутые в yaml.
     declared = set(re.findall(r"^метод\s+([A-Za-zА-Яа-яЁё0-9_]+)", module_text, re.M))
     used = set(declared) | set(re.findall(r"Обработчик:\s*(\S+)", text))
+    # Занятые имена шаблонов: имя – ключ шаблона (по нему платформа хранит разрешения,
+    # его отдаёт Запрос.ИмяШаблона, и по нему же ищется блок для дополнения ниже).
+    used_templates = {i.get("Имя", "") for i in section_items(text, "ШаблоныUrl")}
 
     result = ScaffoldResult()
     added: list[tuple[str, str, str]] = []  # (метод, шаблон, обработчик)
@@ -1082,7 +1149,10 @@ def op_add_route(yaml_path: Path, routes: str, *, reader=None) -> ScaffoldResult
                 added.append((method, path, handler))
         else:
             method_handlers = [(m, assign_handler(m, path, used)) for m in methods]
-            edit = insert_item_edit(text, "ШаблоныUrl", _template_lines(path, method_handlers), nl)
+            template_name_ = assign_template_name(path, used_templates)
+            edit = insert_item_edit(
+                text, "ШаблоныUrl", _template_lines(path, method_handlers, template_name_), nl
+            )
             text = apply_edit(text, edit)
             added += [(m, path, handler) for m, handler in method_handlers]
 
@@ -1125,7 +1195,8 @@ def _block_at(text: str, offset: int | None) -> str:
 # --- операции: отчёт --------------------------------------------------------------------
 
 
-def _new_report(yaml_path: Path, name: str, report: dict, result: ScaffoldResult) -> ScaffoldResult:
+def _new_report(yaml_path: Path, name: str, report: dict, result: ScaffoldResult,
+                scope: str | None = None) -> ScaffoldResult:
     """Отчёт с ВидИсточникаДанных: Таблица и сводным макетом по заданным полям."""
     source = report.get("source")
     if not source:
@@ -1141,7 +1212,7 @@ def _new_report(yaml_path: Path, name: str, report: dict, result: ScaffoldResult
         "ВидЭлемента: Отчет",
         f"Ид: {new_uuid()}",
         f"Имя: {name}",
-        "ОбластьВидимости: ВПодсистеме",
+        f"ОбластьВидимости: {scope or KIND_SPECS['Отчет'].scope}",
         f"Представление: {report.get('title') or name}",
     ]
     if report.get("import_subsystem"):

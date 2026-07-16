@@ -9,6 +9,7 @@ const DOCS_ORIGIN = "https://1cmycloud.com/docs/help/";
 
 const NAMES = "topics/project-element-names-standard";
 const PROPS = "topics/project-properties-standard";
+const METHODS = "topics/methods-in-built-in-script-language";
 
 // Соответствие правило/группа -> страница документации + якорь раздела (id заголовка на странице).
 // Конкретные правила раньше групповых. Якоря – id заголовков в docs.sqlite (см. extract_docs).
@@ -23,6 +24,8 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
     page: "topics/in-expression",
     anchor: "использование-выражения-в-с-подзапросом-для-выражений-составного-типа",
   },
+  { match: (r) => r === "code/param-type-required", page: METHODS, anchor: "определение-метода" },
+  { match: (r) => r === "code/loop-header", page: "topics/for-in-loop", anchor: "синтаксис" },
 ];
 
 export interface RuleDoc {

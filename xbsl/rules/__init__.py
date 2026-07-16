@@ -11,8 +11,8 @@ from . import project, structure, yaml_schema  # noqa: F401
 # Tier B – text and conventions:
 from . import typography, whitespace  # noqa: F401
 
-# Tier C – code structure and local variables:
-from . import code_structure, locals_usage, ref_fields  # noqa: F401
+# Tier C – code structure, basic syntax and local variables:
+from . import code_structure, code_syntax, locals_usage, ref_fields  # noqa: F401
 
 # Tiers B/C – platform code-writing conventions:
 from . import (  # noqa: F401

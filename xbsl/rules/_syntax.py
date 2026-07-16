@@ -490,7 +490,11 @@ def signatures(toks: list[Token]) -> list[Signature]:
                 depth -= 1
                 k += 1
                 continue
-            if depth == 1 and expect_name and tk.kind == "IDENT":
+            # Имя параметра может совпадать с ключевым словом языка (`Запрос: HttpСервисЗапрос`,
+            # `Метод: Строка`): в позиции имени лексер всё равно отдаёт KEYWORD, поэтому здесь
+            # принимаем любое слово – иначе параметр теряется, а его ТИП принимается за
+            # следующий параметр.
+            if depth == 1 and expect_name and tk.kind in WORD_KINDS:
                 current = Param(tk, None, None, False)
                 params.append(current)
                 expect_name = False
