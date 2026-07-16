@@ -1138,3 +1138,94 @@ def test_object_info_access_handlers(tmp_path):
     )
     both = scaffold.object_info(tmp_path, name="Задачи")
     assert both["access_handlers"] == {"module": "Задачи.xbsl", "level1": True, "level2": True}
+
+
+# --- зависимость от библиотеки -----------------------------------------------------------
+
+
+def _project_yaml(tmp_path) -> Path:
+    _make_project(tmp_path)
+    return tmp_path / "vendor" / "Приложение" / "Проект.yaml"
+
+
+def test_add_dependency_creates_section(tmp_path):
+    project = _project_yaml(tmp_path)
+    result = scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "9.0.2")
+    apply_result(result)
+    # Формат раздела – из документации "Подключить библиотеку к проекту".
+    assert _valid_yaml(project.read_text(encoding="utf-8"))["Библиотеки"] == [
+        {"Имя": "CurrencyConverter", "Поставщик": "e1c", "Версия": "9.0.2"}
+    ]
+    assert any("Подсистема[::Пакет]::ИмяТипа" in note for note in result.notes)
+
+
+def test_add_dependency_version_stays_unquoted(tmp_path):
+    project = _project_yaml(tmp_path)
+    apply_result(scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "2.0"))
+    # Версия пишется без кавычек – так её пишет платформа и показывает документация,
+    # хотя разбор yaml и делает из "2.0" число.
+    assert "Версия: 2.0" in project.read_text(encoding="utf-8")
+
+
+def test_add_dependency_appends_to_existing_section(tmp_path):
+    project = _project_yaml(tmp_path)
+    apply_result(scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "2.0"))
+    apply_result(scaffold.op_add_dependency(tmp_path, "e1c", "MessageQueue", "9.0.2"))
+    libraries = _valid_yaml(project.read_text(encoding="utf-8"))["Библиотеки"]
+    assert [item["Имя"] for item in libraries] == ["CurrencyConverter", "MessageQueue"]
+
+
+def test_add_dependency_updates_version_in_place(tmp_path):
+    project = _project_yaml(tmp_path)
+    apply_result(scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "9.0.2"))
+    result = scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "9.1.0")
+    apply_result(result)
+    # Разные версии одной библиотеки внутри проекта не допускаются: запись одна, версия новая.
+    assert _valid_yaml(project.read_text(encoding="utf-8"))["Библиотеки"] == [
+        {"Имя": "CurrencyConverter", "Поставщик": "e1c", "Версия": "9.1.0"}
+    ]
+    assert result.notes == ["e1c::CurrencyConverter: версия 9.0.2 -> 9.1.0"]
+
+
+def test_add_dependency_same_version_is_noop(tmp_path):
+    _project_yaml(tmp_path)
+    apply_result(scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "2.0"))
+    result = scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "2.0")
+    assert result.changes == []
+    assert any("уже подключена" in note for note in result.notes)
+
+
+def test_add_dependency_rejects_build_version(tmp_path):
+    _project_yaml(tmp_path)
+    # 1.0-42 – версия сборки; к проекту подключается версия релиза.
+    with pytest.raises(ScaffoldError, match="версия сборки"):
+        scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "1.0-42")
+
+
+def test_add_dependency_rejects_namesake_from_other_vendor(tmp_path):
+    _project_yaml(tmp_path)
+    apply_result(scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "2.0"))
+    with pytest.raises(ScaffoldError, match="уже подключена"):
+        scaffold.op_add_dependency(tmp_path, "acme", "CurrencyConverter", "3.0")
+
+
+def test_add_dependency_reports_ambiguous_root(tmp_path):
+    apply_result(scaffold.op_new_project(tmp_path, "vendor", "Первый"))
+    apply_result(scaffold.op_new_project(tmp_path, "vendor", "Второй"))
+    with pytest.raises(ScaffoldError, match="несколько проектов"):
+        scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "2.0")
+    # Явный путь снимает неоднозначность.
+    target = tmp_path / "vendor" / "Второй" / "Проект.yaml"
+    apply_result(scaffold.op_add_dependency(
+        tmp_path, "e1c", "CurrencyConverter", "2.0", project_yaml=target
+    ))
+    assert "CurrencyConverter" in target.read_text(encoding="utf-8")
+
+
+def test_project_info_lists_libraries(tmp_path):
+    _project_yaml(tmp_path)
+    apply_result(scaffold.op_add_dependency(tmp_path, "e1c", "CurrencyConverter", "2.0"))
+    project = scaffold.project_info(tmp_path)["projects"][0]
+    assert project["libraries"] == [
+        {"Имя": "CurrencyConverter", "Поставщик": "e1c", "Версия": "2.0"}
+    ]

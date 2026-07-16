@@ -44,6 +44,7 @@ def test_mcp_meta_tools_registered(mcp_module):
     expected = {
         "meta_project_info", "meta_object_info", "meta_new_project", "meta_new_object",
         "meta_add_field", "meta_add_route", "meta_add_form", "meta_add_subsystem",
+        "meta_add_dependency",
     }
     assert expected.issubset(mcp_module.mcp.tools)
 
@@ -277,3 +278,29 @@ def test_cli_set_access(capsys, tmp_path):
     code, err = _run_cli(capsys, "set-access", str(tmp_path), "--name", "Задачи",
                          "--permission", "Чтение")
     assert code == 2 and "ПРАВО=СПОСОБ" in err["error"]
+
+
+def test_mcp_meta_add_dependency(mcp_module, tmp_path):
+    mcp_module.meta_new_project(str(tmp_path), "vendor", "Приложение")
+    res = mcp_module.meta_add_dependency(str(tmp_path), "e1c", "CurrencyConverter", "9.0.2")
+    assert res["files"][0]["created"] is False
+    text = (tmp_path / "vendor" / "Приложение" / "Проект.yaml").read_text(encoding="utf-8")
+    assert "Библиотеки:" in text and "Имя: CurrencyConverter" in text
+
+    overview = mcp_module.meta_project_info(str(tmp_path))
+    assert overview["projects"][0]["libraries"] == [
+        {"Имя": "CurrencyConverter", "Поставщик": "e1c", "Версия": "9.0.2"}
+    ]
+
+    err = mcp_module.meta_add_dependency(str(tmp_path), "e1c", "CurrencyConverter", "1.0-42")
+    assert "версия сборки" in err["error"]
+
+
+def test_cli_add_dependency(capsys, tmp_path):
+    _run_cli(capsys, "new-project", str(tmp_path), "vendor", "Приложение")
+    code, out = _run_cli(capsys, "add-dependency", str(tmp_path), "e1c", "CurrencyConverter", "2.0")
+    assert code == 0
+    assert any("Подключена библиотека e1c::CurrencyConverter" in n for n in out["notes"])
+    assert "Версия: 2.0" in (tmp_path / "vendor" / "Приложение" / "Проект.yaml").read_text(
+        encoding="utf-8"
+    )

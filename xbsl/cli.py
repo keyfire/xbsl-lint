@@ -176,7 +176,8 @@ def _apply_fixes(sources, diagnostics, args) -> int:
 
 _META_COMMANDS = (
     "new-project", "new-object", "add-field", "add-route", "add-form",
-    "add-subsystem", "rename-object", "set-access", "object-info", "project-info",
+    "add-subsystem", "add-dependency", "rename-object", "set-access",
+    "object-info", "project-info",
 )
 _SERVER_COMMANDS = ("lsp", "mcp", "web")
 
@@ -237,6 +238,15 @@ def _scaffold_parser() -> argparse.ArgumentParser:
     p.add_argument("--representation")
     p.add_argument("--no-auto-interface", action="store_true")
     p.add_argument("--uses", help="имена подсистем через запятую")
+
+    p = sub.add_parser(
+        "add-dependency", help="подключить библиотеку к проекту (раздел Библиотеки Проект.yaml)"
+    )
+    p.add_argument("root")
+    p.add_argument("vendor", help="поставщик библиотеки")
+    p.add_argument("name", help="имя библиотеки")
+    p.add_argument("version", help="версия релиза библиотеки, например 2.0")
+    p.add_argument("--path", help="Проект.yaml (при нескольких проектах под корнем)")
 
     p = sub.add_parser(
         "rename-object",
@@ -329,6 +339,11 @@ def _scaffold_main(argv: list[str]) -> int:
                 representation=args.representation,
                 auto_interface=not args.no_auto_interface,
                 uses=args.uses.split(",") if args.uses else None,
+            )
+        elif args.command == "add-dependency":
+            result = scaffold.op_add_dependency(
+                Path(args.root), args.vendor, args.name, args.version,
+                project_yaml=Path(args.path) if args.path else None,
             )
         elif args.command == "set-access":
             perms = {}

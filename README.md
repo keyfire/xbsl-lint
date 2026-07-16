@@ -295,6 +295,7 @@ xbsl add-form . --name Товары --forms list-cards     # list form as a card
 xbsl new-object ... HttpСервис Каталог --routes "GET /, POST /, GET /{id}"
 xbsl add-route  .../Каталог.yaml "DELETE /{id}"      # url template + handler stub
 xbsl add-subsystem vendor/App Задачи
+xbsl add-dependency . e1c CurrencyConverter 2.0      # library into the project's Библиотеки
 xbsl rename-object . Товары Номенклатура             # rename files + update references
 xbsl set-access . --name Товары --default РазрешеноАутентифицированным
 xbsl object-info . --name Товары                     # fields, tabulars, forms, namespace
@@ -314,6 +315,14 @@ switches it to `ПроизвольнаяКарточка` with the image above t
 fields, dates formatted; notes report what landed on the card and what did not.
 `--card-min-width` sets the grid column width (default 400, 250 with a photo) and
 `--card-placeholder` the image shown when the photo is empty.
+
+`add-dependency` attaches a library – the `Библиотеки` section of `Проект.yaml` (`Имя`,
+`Поставщик`, `Версия`). The version is the library's **release** version: a release is issued
+in the control panel, and a build version with a suffix (`1.0-42`) is rejected. Different
+versions of one library within a project are not allowed, so attaching an already attached
+library updates the version of the existing entry. What is attached now – `project-info`
+(`projects[].libraries`). The vendor, name, version and the qualified type names of a library
+come from parsing its archive: `elemctl inspect <file.xlib>`.
 
 `set-access` edits `КонтрольДоступа.Разрешения` in place, aware of what each kind allows:
 `--default` sets the ПоУмолчанию right, `--permission Чтение=РазрешеноВсем` an individual one
@@ -405,8 +414,9 @@ claude mcp add xbsl -- xbsl-mcp
 Tools: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`; documentation search –
 `docs_search(query)`, `docs_page(id)`, `docs_symbol(name)` (needs the `docs.sqlite` database, see
 above); metadata scaffolding – `meta_new_project`, `meta_new_object`, `meta_add_field`,
-`meta_add_route`, `meta_add_form`, `meta_add_subsystem`, `meta_rename_object` (with a
-`dry_run` plan mode), `meta_set_access`, `meta_object_info`, `meta_project_info`.
+`meta_add_route`, `meta_add_form`, `meta_add_subsystem`, `meta_add_dependency`,
+`meta_rename_object` (with a `dry_run` plan mode), `meta_set_access`, `meta_object_info`,
+`meta_project_info`.
 Every writing `meta_*` tool applies the changes and returns the lint of the written files in the
 same response – creation and validation in one round trip. The core and the CLI do not require
 `mcp` – it lives only in the `[mcp]` extra.

@@ -550,7 +550,10 @@ def find_projects(root: Path) -> list[dict]:
             p.parent.name for p in project_dir.rglob(SUBSYSTEM_FILE)
             if not any(part.startswith(".") for part in p.relative_to(project_dir).parts)
         )
-        out.append({"vendor": vendor, "name": name, "dir": project_dir, "subsystems": subsystems})
+        out.append({
+            "vendor": vendor, "name": name, "dir": project_dir, "subsystems": subsystems,
+            "libraries": project_libraries(text),
+        })
     return out
 
 
@@ -1150,6 +1153,102 @@ def op_new_project(
         result.notes.append(
             "Библиотека не разворачивается как самостоятельное приложение – подключается через Импорт"
         )
+    return result
+
+
+# --- операция: зависимость от библиотеки -------------------------------------------------
+
+LIBRARIES_SECTION = "Библиотеки"
+# Версия релиза библиотеки – только числа через точку. Версия СБОРКИ имеет суффикс через
+# дефис ("1.0-42"), и подключить её нельзя: к проекту подключается релиз.
+_RELEASE_VERSION_RE = re.compile(r"^\d+(\.\d+)*$")
+
+
+def project_libraries(text: str) -> list[dict[str, str]]:
+    """Подключённые библиотеки – элементы раздела Библиотеки файла Проект.yaml."""
+    return section_items(text, LIBRARIES_SECTION, top_level=True)
+
+
+def _find_project_yaml(root: Path) -> Path:
+    projects = find_projects(Path(root))
+    if not projects:
+        raise ScaffoldError(f"Под корнем {root} не найден {PROJECT_FILE}")
+    if len(projects) > 1:
+        listed = ", ".join(f"{p['vendor']}::{p['name']}" for p in projects)
+        raise ScaffoldError(
+            f"Под корнем {root} несколько проектов ({listed}) – укажите project_yaml"
+        )
+    return projects[0]["dir"] / PROJECT_FILE
+
+
+def op_add_dependency(
+    root: Path,
+    vendor: str,
+    name: str,
+    version: str,
+    *,
+    project_yaml: Path | None = None,
+    reader=None,
+) -> ScaffoldResult:
+    """Подключить библиотеку к проекту – раздел Библиотеки файла Проект.yaml.
+
+    Элемент раздела – Имя, Поставщик, Версия (документация "Подключить библиотеку к
+    проекту"). Разные версии одной библиотеки внутри проекта не допускаются, поэтому
+    повторное подключение обновляет версию, а не добавляет вторую запись.
+
+    Версия – это версия РЕЛИЗА библиотеки: релиз выпускается в панели управления, через
+    API этот шаг не автоматизируется. Метаданные библиотеки (поставщик, имя, версия) даёт
+    разбор её архива: elemctl inspect.
+    """
+    vendor = _check_identifier(vendor, "поставщика библиотеки")
+    name = _check_identifier(name, "библиотеки")
+    version = version.strip()
+    if not _RELEASE_VERSION_RE.match(version):
+        raise ScaffoldError(
+            f"Недопустимая версия релиза библиотеки: '{version}' – нужны числа через точку "
+            "(версия сборки с суффиксом, например 1.0-42, к проекту не подключается)"
+        )
+    path = Path(project_yaml) if project_yaml else _find_project_yaml(Path(root))
+    text, nl = _load_for_edit(path, reader)
+    result = ScaffoldResult()
+
+    for item in project_libraries(text):
+        if item.get("Имя") != name:
+            continue
+        item_vendor = item.get("Поставщик", "")
+        if item_vendor != vendor:
+            raise ScaffoldError(
+                f"К проекту уже подключена библиотека {item_vendor}::{name}, "
+                f"подключается {vendor}::{name} – в пространстве имён типов они не "
+                "различаются; отключите лишнюю вручную"
+            )
+        current = item.get("Версия", "")
+        if current == version:
+            result.notes.append(f"Библиотека {vendor}::{name} уже подключена, версия {version}")
+            return result
+        offset = find_section_item_offset(text, LIBRARIES_SECTION, name)
+        if offset is None:
+            raise ScaffoldError(
+                f"Библиотека '{name}' записана в {path.name} в свёрнутом виде – "
+                "обновите версию вручную"
+            )
+        block_end = offset + len(_block_at(text, offset))
+        new_text, _ = _set_mapping_value(text, offset, block_end, "", "Версия", version, nl)
+        result.changes.append(FileChange(path, new_text, created=False))
+        result.notes.append(f"{vendor}::{name}: версия {current} -> {version}")
+        return result
+
+    lines = [f"Имя: {name}", f"Поставщик: {vendor}", f"Версия: {version}"]
+    edit = insert_item_edit(text, LIBRARIES_SECTION, lines, nl, top_level=True)
+    new_text = apply_edit(text, edit)
+    cursor = _cursor_at(new_text, edit.start + len(edit.new_text))
+    result.changes.append(FileChange(path, new_text, created=False, cursor=cursor))
+    result.notes.append(f"Подключена библиотека {vendor}::{name} {version}")
+    result.notes.append(
+        f"Типы библиотеки с ОбластьВидимости: Глобально доступны как "
+        f"{vendor}::{name}::Подсистема[::Пакет]::ИмяТипа; полное имя подсистемы "
+        "указывается в Использование подсистемы и в импорт"
+    )
     return result
 
 

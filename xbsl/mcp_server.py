@@ -321,6 +321,36 @@ def meta_add_form(
 
 
 @mcp.tool()
+def meta_add_dependency(
+    root: str,
+    vendor: str,
+    name: str,
+    version: str,
+    project_yaml: str | None = None,
+) -> dict:
+    """Attach a library to the project – the Библиотеки section of Проект.yaml.
+
+    version is the library's RELEASE version (digits and dots, e.g. "2.0"), not a build
+    version ("1.0-42"): a release is issued in the control panel and that step has no API.
+    Different versions of one library within a project are not allowed, so attaching an
+    already attached library updates its version in place.
+
+    The library's vendor/name/version and the qualified names of the types it exports come
+    from parsing its archive: `elemctl inspect <file.xlib>`. Currently attached libraries
+    are listed by meta_project_info (projects[].libraries).
+
+    After attaching, types with ОбластьВидимости: Глобально are addressed as
+    vendor::name::Подсистема[::Пакет]::ИмяТипа; the qualified subsystem name goes into
+    Использование of a subsystem and into импорт.
+    """
+    return _meta(
+        scaffold.op_add_dependency,
+        Path(root), vendor, name, version,
+        project_yaml=Path(project_yaml) if project_yaml else None,
+    )
+
+
+@mcp.tool()
 def meta_set_access(
     root: str,
     name: str | None = None,
