@@ -145,10 +145,20 @@ def test_disable_flag_parsing(monkeypatch, value, expected):
     assert plugins.disabled() is expected
 
 
-def test_data_root_source_reports_origin(tmp_path):
-    """data_root_source различает --data-dir и встроенные данные (для --where)."""
+def test_data_root_source_reports_origin(tmp_path, monkeypatch):
+    """data_root_source различает встроенные данные, плагин и --data-dir (для --where).
+
+    Точки расширения подменяются фейком: на машине с установленным пакетом данных
+    настоящий плагин перебивал бы встроенные данные, и проверка зависела бы от окружения.
+    """
+    monkeypatch.setattr(plugins, "entry_points", _fake_entry_points())
     assert dataset.data_root_source() == "встроенные данные пакета"
-    dataset.set_data_root(_make_root(tmp_path))
+
+    data_ep = _StubEP("данные", plugins.DATA_GROUP, _make_root(tmp_path / "плагин"))
+    monkeypatch.setattr(plugins, "entry_points", _fake_entry_points(data_ep))
+    assert dataset.data_root_source() == "плагин (точка расширения xbsllint.data)"
+
+    dataset.set_data_root(_make_root(tmp_path / "cli"))
     assert dataset.data_root_source() == "--data-dir"
 
 
