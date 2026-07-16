@@ -84,12 +84,16 @@ def _detect_indent(body_slice: str, header_indent: int) -> tuple[str, str]:
     return " " * (header_indent + 4), " " * (header_indent + 8)
 
 
-def _section_bounds(text: str, section: str) -> tuple[int, int, int] | None:
-    """(отступ заголовка, конец строки заголовка, конец тела) секции верхнего уровня или None.
+def _section_bounds(text: str, section: str, top_level: bool = False) -> tuple[int, int, int] | None:
+    """(отступ заголовка, конец строки заголовка, конец тела) секции или None.
 
     Конец тела – конец последней непустой строки с отступом больше отступа заголовка.
+    top_level=True – искать только заголовок без отступа: иначе одноимённая ВЛОЖЕННАЯ секция
+    (`Реквизиты` внутри табличной части) будет принята за секцию объекта. Вызовы по срезу
+    блока (реквизиты ТЧ, Разрешения внутри КонтрольДоступа) ищут с любым отступом.
     """
-    header = re.search(rf"^([ \t]*){re.escape(section)}:[ \t]*\r?$", text, re.M)
+    indent_pattern = "()" if top_level else "([ \t]*)"
+    header = re.search(rf"^{indent_pattern}{re.escape(section)}:[ \t]*\r?$", text, re.M)
     if header is None:
         return None
     header_indent = len(header.group(1))
@@ -110,18 +114,20 @@ def _section_bounds(text: str, section: str) -> tuple[int, int, int] | None:
     return header_indent, header_line_end, body_end
 
 
-def insert_item_edit(text: str, section: str, item_lines: list[str], nl: str = "\n") -> TextEdit:
-    """Точечная вставка нового элемента (набор строк-полей) в конец секции верхнего уровня.
+def insert_item_edit(text: str, section: str, item_lines: list[str], nl: str = "\n",
+                     top_level: bool = False) -> TextEdit:
+    """Точечная вставка нового элемента (набор строк-полей) в конец секции.
 
-    Нет секции – дописывается в конец файла. Порт insertItemEdit из расширения VS Code
-    (metadataCore.ts) с одним отличием: перевод строки задаётся параметром, чтобы правка
-    не смешивала стили в CRLF-файлах.
+    Нет секции – дописывается в конец файла. top_level=True – только секция без отступа
+    (иначе реквизит объекта уедет во вложенную секцию табличной части). Порт insertItemEdit
+    из расширения VS Code (metadataCore.ts) с одним отличием: перевод строки задаётся
+    параметром, чтобы правка не смешивала стили в CRLF-файлах.
     """
 
     def body(item: str, fld: str) -> str:
         return f"{item}-{nl}" + nl.join(f"{fld}{line}" for line in item_lines)
 
-    bounds = _section_bounds(text, section)
+    bounds = _section_bounds(text, section, top_level)
     if bounds is None:
         tail = "" if (not text or text.endswith("\n")) else nl
         new = f"{tail}{section}:{nl}{body('    ', '        ')}{nl}"
@@ -177,13 +183,14 @@ def insert_nested_item_edit(
     return TextEdit(block_offset + content_end, block_offset + content_end, new)
 
 
-def section_items(text: str, section: str) -> list[dict[str, str]]:
-    """Скалярные поля элементов секции верхнего уровня (для проверок дублей и обзора).
+def section_items(text: str, section: str, top_level: bool = False) -> list[dict[str, str]]:
+    """Скалярные поля элементов секции (для проверок дублей и обзора).
 
     Элемент – блок за "-" на минимальном отступе тела секции; вложенные секции элемента
     (Реквизиты ТЧ, Методы шаблона) в словарь не попадают, их поля – глубже отступа полей.
+    top_level=True – только секция объекта, без отступа (см. _section_bounds).
     """
-    bounds = _section_bounds(text, section)
+    bounds = _section_bounds(text, section, top_level)
     if bounds is None:
         return []
     _, header_line_end, body_end = bounds
@@ -224,9 +231,13 @@ def section_items(text: str, section: str) -> list[dict[str, str]]:
     return items
 
 
-def find_section_item_offset(text: str, section: str, name: str) -> int | None:
-    """Смещение первого ключа элемента секции с Имя == name (для вложенных вставок)."""
-    bounds = _section_bounds(text, section)
+def find_section_item_offset(text: str, section: str, name: str,
+                             top_level: bool = True) -> int | None:
+    """Смещение первого ключа элемента секции с Имя == name (для вложенных вставок).
+
+    Ищется в секции объекта (без отступа): вызывающие адресуют ТабличныеЧасти и ШаблоныUrl.
+    """
+    bounds = _section_bounds(text, section, top_level)
     if bounds is None:
         return None
     _, header_line_end, body_end = bounds
@@ -625,7 +636,7 @@ def object_info(root: Path, name: str | None = None, yaml_path: Path | None = No
         text = hit.text
 
     fields = []
-    for item in section_items(text, "Реквизиты"):
+    for item in section_items(text, "Реквизиты", top_level=True):
         fields.append({"name": item.get("Имя", "?"), "type": item.get("Тип", "")})
     declared = {f["name"] for f in fields}
     standard = [f for f in _STANDARD_FIELDS.get(hit.kind, []) if f["name"] not in declared]
@@ -634,13 +645,13 @@ def object_info(root: Path, name: str | None = None, yaml_path: Path | None = No
     tabulars = [
         {
             "name": item.get("Имя", "?"),
-            "fields": [],
+            "fields": _tabular_fields(text, item.get("Имя", "")),
         }
-        for item in section_items(text, "ТабличныеЧасти")
+        for item in section_items(text, "ТабличныеЧасти", top_level=True)
     ]
     hierarchies = [
         {"name": h.get("Имя", ""), "field": h.get("ПолеРодителя", "")}
-        for h in section_items(text, "ДополнительныеИерархии")
+        for h in section_items(text, "ДополнительныеИерархии", top_level=True)
     ]
     is_hierarchical = bool(re.search(r"^Иерархический:\s*Истина", text, re.M))
 
@@ -672,13 +683,27 @@ def object_info(root: Path, name: str | None = None, yaml_path: Path | None = No
         "additional_hierarchies": hierarchies,
         "report_params": [
             {"name": p.get("Имя", "?"), "type": p.get("Тип", "")}
-            for p in section_items(text, "ПараметрыЗапроса")
+            for p in section_items(text, "ПараметрыЗапроса", top_level=True)
         ],
         "sections": {
-            kind: [i.get("Имя", "?") for i in section_items(text, _SECTION_SPECS[kind]["section"])]
+            kind: [i.get("Имя", "?") for i in section_items(text, _SECTION_SPECS[kind]["section"], top_level=True)]
             for kind in KIND_SECTIONS.get(hit.kind, ())
         },
     }
+
+
+def _tabular_fields(text: str, tc_name: str) -> list[dict]:
+    """Реквизиты табличной части: они лежат во вложенной секции её блока, а не наверху."""
+    if not tc_name:
+        return []
+    offset = find_section_item_offset(text, "ТабличныеЧасти", tc_name)
+    if offset is None:
+        return []
+    block = _block_at(text, offset)
+    return [
+        {"name": item.get("Имя", "?"), "type": item.get("Тип", "")}
+        for item in section_items(block, "Реквизиты")
+    ]
 
 
 def _existing(directory: Path, filename: str) -> str | None:
@@ -930,7 +955,7 @@ def op_add_field(
         raise ScaffoldError(
             f"У вида {kind} нет секции для '{field_kind}'; доступны: {', '.join(allowed)}"
         )
-    existing = {i.get("Имя") for i in section_items(text, spec["section"])}
+    existing = {i.get("Имя") for i in section_items(text, spec["section"], top_level=True)}
     if name in existing:
         raise ScaffoldError(f"'{name}' уже есть в секции {spec['section']} файла {yaml_path.name}")
     template = _KIND_SECTION_LINES.get((kind, field_kind), spec["lines"])
@@ -938,7 +963,7 @@ def op_add_field(
         line.format(uuid=new_uuid(), uuid2=new_uuid(), name=name, type=type_)
         for line in template
     ]
-    edit = insert_item_edit(text, spec["section"], lines, nl)
+    edit = insert_item_edit(text, spec["section"], lines, nl, top_level=True)
     new_text = apply_edit(text, edit)
     cursor = _cursor_at(new_text, edit.start + len(edit.new_text))
     return ScaffoldResult([FileChange(yaml_path, new_text, created=False, cursor=cursor)])
@@ -1273,13 +1298,13 @@ def op_add_route(yaml_path: Path, routes: str, *, reader=None) -> ScaffoldResult
     used = set(declared) | set(re.findall(r"Обработчик:\s*(\S+)", text))
     # Занятые имена шаблонов: имя – ключ шаблона (по нему платформа хранит разрешения,
     # его отдаёт Запрос.ИмяШаблона, и по нему же ищется блок для дополнения ниже).
-    used_templates = {i.get("Имя", "") for i in section_items(text, "ШаблоныUrl")}
+    used_templates = {i.get("Имя", "") for i in section_items(text, "ШаблоныUrl", top_level=True)}
 
     result = ScaffoldResult()
     added: list[tuple[str, str, str]] = []  # (метод, шаблон, обработчик)
     for path, methods in parse_routes(routes):
         template = next(
-            (i for i in section_items(text, "ШаблоныUrl") if i.get("Шаблон") == path), None
+            (i for i in section_items(text, "ШаблоныUrl", top_level=True) if i.get("Шаблон") == path), None
         )
         if template is not None:
             offset = find_section_item_offset(text, "ШаблоныUrl", template.get("Имя", ""))
@@ -1300,7 +1325,8 @@ def op_add_route(yaml_path: Path, routes: str, *, reader=None) -> ScaffoldResult
             method_handlers = [(m, assign_handler(m, path, used)) for m in methods]
             template_name_ = assign_template_name(path, used_templates)
             edit = insert_item_edit(
-                text, "ШаблоныUrl", _template_lines(path, method_handlers, template_name_), nl
+                text, "ШаблоныUrl", _template_lines(path, method_handlers, template_name_), nl,
+                top_level=True,
             )
             text = apply_edit(text, edit)
             added += [(m, path, handler) for m, handler in method_handlers]
@@ -1442,7 +1468,14 @@ def _form_fields(info: dict) -> list[dict]:
     return fields
 
 
-def _tabular_table_lines(obj: str, tc_name: str, indent: str, panels: bool) -> list[str]:
+def _tabular_table_lines(obj: str, tc_name: str, indent: str, panels: bool,
+                         fields: list[dict] | None = None) -> list[str]:
+    """Таблица табличной части: источник, колонки по её реквизитам и команды строк.
+
+    Колонки обязательны – "Необходимо задать Колонки (колонки таблицы) и Источник"
+    (документация "Компонент интерфейса Таблица"): без них таблица показывает пустые строки.
+    ПолеЗначения задаёт и сортировку по колонке, поэтому пишется вместе с Заголовком.
+    """
     lines = [
         f"{indent}Тип: Таблица<ИсточникДанныхМассив<{obj}.{tc_name}>>",
         f"{indent}Имя: {tc_name}",
@@ -1457,6 +1490,17 @@ def _tabular_table_lines(obj: str, tc_name: str, indent: str, panels: bool) -> l
     lines += [
         f"{indent}Источник:",
         f"{indent}    Данные: =Объект.{tc_name}",
+    ]
+    if fields:
+        lines.append(f"{indent}Колонки:")
+        for field in fields:
+            lines += [
+                f"{indent}    -",
+                f"{indent}        Тип: СтандартнаяКолонкаТаблицы<{obj}.{tc_name}>",
+                f"{indent}        Заголовок: {field['name']}",
+                f"{indent}        ПолеЗначения: {field['name']}",
+            ]
+    lines += [
         f"{indent}Команды:",
         f"{indent}    Тип: ФрагментКомандногоИнтерфейса",
         f"{indent}    Элементы:",
@@ -1518,8 +1562,18 @@ def object_form_yaml(info: dict, uid: str) -> str:
         "            ШиринаВКолонках: Одинарная",
         "            Содержимое:",
     ]
+    if section_type == "РазделФормы":
+        # РазделФормы.Содержимое – Массив<Группа>: поля кладутся в область раздела, а не
+        # напрямую (у Группы содержимое – Массив<Компонент>, там обёртка не нужна).
+        lines += [
+            "                -",
+            "                    Содержимое:",
+        ]
+        field_indent = " " * 24
+    else:
+        field_indent = " " * 16
     for f in fields:
-        lines += _form_field_component(f["name"], f["type"], "                ")
+        lines += _form_field_component(f["name"], f["type"], field_indent)
     lines.append("        ДополнительныеРазделы:")
     for tc in tabulars:
         tc_name = tc["name"]
@@ -1536,7 +1590,7 @@ def object_form_yaml(info: dict, uid: str) -> str:
                 "                        РастягиватьПоГоризонтали: Истина",
                 "                        ШиринаВКолонках: Четверная",
                 "                        Содержимое:",
-            ] + _tabular_table_lines(obj, tc_name, " " * 28, panels=True)
+            ] + _tabular_table_lines(obj, tc_name, " " * 28, panels=True, fields=tc["fields"])
         else:
             lines += [
                 "            -",
@@ -1545,7 +1599,9 @@ def object_form_yaml(info: dict, uid: str) -> str:
                 "                Содержимое:",
                 "                    -",
                 "                        Содержимое:",
-            ] + [" " * 28 + "-"] + _tabular_table_lines(obj, tc_name, " " * 32, panels=False)
+            ] + [" " * 28 + "-"] + _tabular_table_lines(
+                obj, tc_name, " " * 32, panels=False, fields=tc["fields"]
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -2193,7 +2249,7 @@ def access_info(text: str) -> dict | None:
     {permissions: {право: способ}, default: способ|None, calc_by: [поля]}. Отсутствие секции –
     именно None, а не пустая сводка: платформа тогда применяет РазрешеноАдминистраторам.
     """
-    bounds = _section_bounds(text, _ACCESS_SECTION)
+    bounds = _section_bounds(text, _ACCESS_SECTION, top_level=True)
     if bounds is None:
         return None
     _, header_line_end, body_end = bounds
@@ -2339,7 +2395,7 @@ def op_set_access(
 
 
 def _access_body_bounds(text: str) -> tuple[int, int]:
-    _, header_line_end, body_end = _section_bounds(text, _ACCESS_SECTION)
+    _, header_line_end, body_end = _section_bounds(text, _ACCESS_SECTION, top_level=True)
     return header_line_end, body_end
 
 

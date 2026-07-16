@@ -927,3 +927,96 @@ def test_new_project_version_follows_standard(tmp_path):
     )
     # Правило project/version требует A.B.C – генератор не должен ему противоречить.
     assert project["Версия"] == "1.0.0"
+
+
+# --- форма объекта: колонки табличной части и обёртка раздела ------------------------------
+
+
+def _doc_with_tabular(tmp_path, extra_fields: int = 0) -> Path:
+    subsystem = _make_project(tmp_path)
+    apply_result(scaffold.op_new_object(subsystem, "Документ", "Приходы"))
+    yaml_path = subsystem / "Приходы.yaml"
+    for i in range(extra_fields):
+        apply_result(scaffold.op_add_field(yaml_path, "реквизит", f"Реквизит{i}", type_="Строка"))
+    apply_result(scaffold.op_add_field(yaml_path, "табличная-часть", "Товары"))
+    apply_result(scaffold.op_add_field(yaml_path, "реквизит", "Количество", type_="Число",
+                                       tabular="Товары"))
+    return subsystem
+
+
+def test_object_info_reads_tabular_fields(tmp_path):
+    subsystem = _doc_with_tabular(tmp_path)
+    info = scaffold.object_info(tmp_path, name="Приходы")
+    tabular = info["tabulars"][0]
+    assert tabular["name"] == "Товары"
+    # Реквизит1 добавляется вместе с самой ТЧ (пустая ТЧ платформой не поддерживается).
+    assert [f["name"] for f in tabular["fields"]] == ["Реквизит1", "Количество"]
+    assert [f["type"] for f in tabular["fields"]] == ["Строка", "Число"]
+    assert subsystem  # каталог подсистемы использован
+
+
+def test_tabular_table_has_columns(tmp_path):
+    subsystem = _doc_with_tabular(tmp_path)
+    apply_result(scaffold.op_add_form(tmp_path, name="Приходы", forms=["object"]))
+    form = _valid_yaml((subsystem / "ПриходыФормаОбъекта.yaml").read_text(encoding="utf-8"))
+    section = form["Наследует"]["Содержимое"]["ДополнительныеРазделы"][0]
+    table = section["Содержимое"][0]["Содержимое"][0]
+    assert table["Тип"] == "Таблица<ИсточникДанныхМассив<Приходы.Товары>>"
+    # Колонки обязательны: без них таблица показывает пустые строки.
+    columns = table["Колонки"]
+    assert [c["Заголовок"] for c in columns] == ["Реквизит1", "Количество"]
+    # ПолеЗначения задаёт и сортировку по колонке.
+    assert [c["ПолеЗначения"] for c in columns] == ["Реквизит1", "Количество"]
+    assert columns[0]["Тип"] == "СтандартнаяКолонкаТаблицы<Приходы.Товары>"
+
+
+def test_form_section_wraps_fields_in_group(tmp_path):
+    """РазделФормы.Содержимое – Массив<Группа>: поля кладутся в область, а не напрямую."""
+    subsystem = _doc_with_tabular(tmp_path)
+    apply_result(scaffold.op_add_form(tmp_path, name="Приходы", forms=["object"]))
+    form = _valid_yaml((subsystem / "ПриходыФормаОбъекта.yaml").read_text(encoding="utf-8"))
+    section = form["Наследует"]["Содержимое"]["ОсновнойРаздел"]
+    assert section["Тип"] == "РазделФормы"
+    area = section["Содержимое"][0]
+    assert set(area) == {"Содержимое"}  # область раздела: как в эталонных формах, без Тип
+    assert [c["Имя"] for c in area["Содержимое"]] == ["Номер", "Дата"]
+
+
+def test_group_section_keeps_fields_inline(tmp_path):
+    """Ветка panels: у Группы содержимое – Массив<Компонент>, обёртка не нужна."""
+    subsystem = _doc_with_tabular(tmp_path, extra_fields=4)
+    info = scaffold.object_info(tmp_path, name="Приходы")
+    assert info["suggested_layout"] == "panels"
+    apply_result(scaffold.op_add_form(tmp_path, name="Приходы", forms=["object"]))
+    form = _valid_yaml((subsystem / "ПриходыФормаОбъекта.yaml").read_text(encoding="utf-8"))
+    section = form["Наследует"]["Содержимое"]["ОсновнойРаздел"]
+    assert section["Тип"] == "Группа"
+    assert all("Тип" in c for c in section["Содержимое"])  # поля лежат прямо в группе
+
+
+def test_object_attribute_never_lands_in_tabular(tmp_path):
+    """Реквизит объекта пишется в секцию объекта, даже если своей секции ещё нет.
+
+    Ловушка: у документа с табличной частью есть ВЛОЖЕННАЯ секция `Реквизиты`, и поиск
+    секции по любому отступу принимал её за секцию объекта – реквизит уезжал в ТЧ, а поля
+    ТЧ считались полями объекта.
+    """
+    apply_result(scaffold.op_new_object(tmp_path, "Документ", "Приходы"))
+    yaml_path = tmp_path / "Приходы.yaml"
+    apply_result(scaffold.op_add_field(yaml_path, "табличная-часть", "Товары"))
+    apply_result(scaffold.op_add_field(yaml_path, "реквизит", "Контрагент", type_="Строка"))
+    apply_result(scaffold.op_add_field(yaml_path, "реквизит", "Цена", type_="Число",
+                                       tabular="Товары"))
+
+    parsed = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
+    assert [f["Имя"] for f in parsed["Реквизиты"]] == ["Контрагент"]
+    assert [f["Имя"] for f in parsed["ТабличныеЧасти"][0]["Реквизиты"]] == ["Реквизит1", "Цена"]
+
+    info = scaffold.object_info(tmp_path, name="Приходы")
+    assert [f["name"] for f in info["fields"]] == ["Номер", "Дата", "Контрагент"]
+    assert [f["name"] for f in info["tabulars"][0]["fields"]] == ["Реквизит1", "Цена"]
+
+    # Имя, занятое в табличной части, не считается дублем реквизита объекта.
+    apply_result(scaffold.op_add_field(yaml_path, "реквизит", "Реквизит1", type_="Строка"))
+    parsed = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
+    assert [f["Имя"] for f in parsed["Реквизиты"]] == ["Контрагент", "Реквизит1"]
