@@ -118,12 +118,12 @@ function runProcess(command: string, args: string[], opts: RunOptions): RunHandl
 function describeSpawnError(command: string, e: unknown): string {
   const err = e as NodeJS.ErrnoException;
   if (err && err.code === "ENOENT") {
-    return vscode.l10n.t('linter executable "{0}" not found. Install xbsllint (pip install xbsllint) or set xbsl.linter.command / xbsl.linter.pythonPath.', command);
+    return vscode.l10n.t('engine executable "{0}" not found. Install xbsl (pip install xbsl) or set xbsl.linter.command / xbsl.linter.pythonPath.', command);
   }
   return vscode.l10n.t('failed to start the linter "{0}": {1}', command, err && err.message ? err.message : String(e));
 }
 
-// Check one buffer via `xbsllint --stdin` (per-file rules only).
+// Check one buffer via `xbsl --stdin` (per-file rules only).
 export function lintBuffer(
   text: string,
   filename: string,
@@ -133,7 +133,7 @@ export function lintBuffer(
   return runProcess(cfg.command, buildArgs(filename, cfg), { cwd, stdin: text }).result;
 }
 
-// Check a whole path on disk via `xbsllint <path>` (includes cross-file rules).
+// Check a whole path on disk via `xbsl <path>` (includes cross-file rules).
 // Returns a handle so the caller can cancel a run that a newer save has made stale.
 export function lintPath(
   target: string,
@@ -152,7 +152,7 @@ export function makeDiagnostic(d: RawDiag, lineText: string | undefined): vscode
   const over = ruleOverride(d.rule);
   const severity = over && over !== "off" ? severityFor(over) : severityCode(d.severity);
   const diag = new vscode.Diagnostic(range, d.message, severity);
-  diag.source = "xbsllint";
+  diag.source = "xbsl";
   diag.code = docCode(d.rule); // у правила-стандарта значок правила становится ссылкой на документ
   return diag;
 }

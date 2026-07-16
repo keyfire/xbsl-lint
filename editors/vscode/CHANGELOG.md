@@ -1,11 +1,28 @@
 # Changelog
 
-[Русский](https://github.com/keyfire/xbsl-lint/blob/main/editors/vscode/CHANGELOG.ru.md) · **English**
+[Русский](https://github.com/keyfire/xbsl/blob/main/editors/vscode/CHANGELOG.ru.md) · **English**
 
 > Metadata names (yaml keys such as `Реквизиты` or `Многострочная`) exist in Russian only – the platform
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.19.0
+
+- The engine (and the whole project) is renamed **xbsl-lint → xbsl**: the default engine
+  command is now `xbsl` (`pip install xbsl`); the LSP server is `xbsl-lsp`, spawned as
+  `<python> -m xbsl.lsp` when the interpreter is set. Diagnostics are labeled `xbsl`
+  (findings from a pre-rename engine are still recognized); the legacy `xbsllint*` commands
+  keep working as aliases, and the baseline file keeps its `.xbsllint-baseline` name.
+- The metadata tree creates through the engine (0.16+): "Add <class>", "+" (attribute /
+  dimension / resource / value / parameter / field / tabular section, including attributes
+  of a tabular section), "Add subsystem" and "Add object form" call the engine's scaffolding
+  (LSP `xbsl/meta*` requests, or the CLI subcommands in the CLI mode) and apply the returned
+  changes through a single undoable edit. Templates no longer live in the extension.
+- "Add object form" now offers the object form or the object + list pair, and the engine
+  generates them populated from the object's attributes (standard Наименование / Номер /
+  Дата included, hierarchy supported) and registers them in the owner's `Интерфейс` itself.
+- The same scaffolding is exposed to AI agents through the engine's `meta_*` MCP tools –
+  creation and lint of the result in one call.
 ## 0.18.2
 
 - README: the baseline-exclusion example now quotes the English diagnostic text (run the

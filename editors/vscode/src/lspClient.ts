@@ -1,5 +1,5 @@
 // Экспериментальный LSP-режим (xbsl.lsp.enabled): вместо вызовов CLI на каждое событие
-// расширение поднимает долгоживущий сервер xbsllint-lsp (extra [lsp] пакета xbsllint) и
+// расширение поднимает долгоживущий сервер xbsl-lsp (extra [lsp] пакета xbsl) и
 // отдаёт ему диагностику, навигацию, автодополнение, hover и quick-fix. Данные Элемента и
 // индекс проекта живут в памяти сервера - отклик на набор текста не платит за старт
 // интерпретатора.
@@ -48,7 +48,7 @@ interface SpawnPlan {
 }
 
 // Чем запускать сервер: явная команда из настройки, иначе интерпретатор из
-// xbsl.linter.pythonPath (модулем), иначе xbsllint-lsp из PATH.
+// xbsl.linter.pythonPath (модулем), иначе xbsl-lsp из PATH.
 function spawnPlan(cfg: vscode.WorkspaceConfiguration): SpawnPlan {
   const explicit = (cfg.get<string>("lsp.command") || "").trim();
   if (explicit) {
@@ -56,9 +56,9 @@ function spawnPlan(cfg: vscode.WorkspaceConfiguration): SpawnPlan {
   }
   const python = (cfg.get<string>("linter.pythonPath") || "").trim();
   if (python) {
-    return { command: python, args: ["-m", "xbsllint.lsp"] };
+    return { command: python, args: ["-m", "xbsl.lsp"] };
   }
-  return { command: "xbsllint-lsp", args: [] };
+  return { command: "xbsl-lsp", args: [] };
 }
 
 // Собирает клиента по ТЕКУЩИМ настройкам и состоянию диска: перезапуск линтера создаёт
@@ -145,17 +145,17 @@ export async function activateLsp(
     if (!chosenExplicitly) {
       return false;  // режим не выбирали - молча работаем как раньше (CLI), подробности в панели вывода
     }
-    const install = vscode.l10n.t("Install xbsllint[lsp]");
+    const install = vscode.l10n.t("Install xbsl[lsp]");
     void vscode.window
       .showErrorMessage(
         vscode.l10n.t(
-          'XBSL: failed to start xbsllint-lsp. Install the linter with the [lsp] extra (pip install "xbsllint[lsp]") or set the command in the xbsl.lsp.command setting. The extension keeps working in the regular mode (CLI).'
+          'XBSL: failed to start xbsl-lsp. Install the engine with the [lsp] extra (pip install "xbsl[lsp]") or set the command in the xbsl.lsp.command setting. The extension keeps working in the regular mode (CLI).'
         ),
         install
       )
       .then((pick) => {
         if (pick === install) {
-          runInstallTask("xbsllint[lsp]", pipInstallCommand("xbsllint[lsp]"), "workbench.action.reloadWindow");
+          runInstallTask("xbsl[lsp]", pipInstallCommand("xbsl[lsp]"), "workbench.action.reloadWindow");
         }
       });
     return false;

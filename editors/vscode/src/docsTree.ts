@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { DocNode, docsSearch, docsTree } from "./docsClient";
+import { isXbslSource } from "./report";
 import { openForSymbol, openPage, setDocsOpenListener } from "./docsPanel";
 import { ruleDoc, ruleOfCode } from "./ruleDocs";
 
@@ -155,7 +156,7 @@ class RuleDocActionProvider implements vscode.CodeActionProvider {
     const actions: vscode.CodeAction[] = [];
     const seen = new Set<string>();
     for (const d of context.diagnostics) {
-      if (d.source !== "xbsllint") {
+      if (!isXbslSource(d)) {
         continue; // только диагностики линтера
       }
       const rule = ruleOfCode(d.code);

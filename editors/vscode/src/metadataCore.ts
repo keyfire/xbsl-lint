@@ -310,23 +310,11 @@ export function describeStandardAttr(text: string, kind: string, name: string): 
   };
 }
 
-// -- шаблон нового объекта ------------------------------------------------------------------
-
-// Минимальное валидное описание объекта: Вид + Ид + Имя + ОбластьВидимости, плюс доп. строки по
-// виду (напр. Окружение у общего модуля, КорневойUrl у HTTP-сервиса). Дальше объект дополняется.
-export function newObjectYaml(kind: string, uuid: string, name: string, extraLines: string[] = []): string {
-  return (
-    [`ВидЭлемента: ${kind}`, `Ид: ${uuid}`, `Имя: ${name}`, `ОбластьВидимости: ВПроекте`, ...extraLines].join("\n") +
-    "\n"
-  );
-}
-
-// Минимальное описание подсистемы (имя подсистемы = имя папки, в yaml его нет).
-export function newSubsystemYaml(name: string): string {
-  return `Интерфейс:\n    ВключатьВАвтоИнтерфейс: Истина\n    Представление: ${name}\n`;
-}
-
 // -- вставка нового элемента секции ---------------------------------------------------------
+//
+// Шаблоны новых объектов/подсистем и вставки дерева живут в движке (xbsl.scaffold) – дерево
+// зовёт его через LSP/CLI (engineMeta.ts). Здесь осталась только точечная вставка для панели
+// свойств: материализация стандартного реквизита правится по открытому буферу локально.
 
 function lineEndOf(text: string, offset: number): number {
   const nl = text.indexOf("\n", offset);
@@ -380,52 +368,4 @@ export function insertItemEdit(text: string, section: string, itemLines: string[
   }
   const { item, field } = detectIndent(text.slice(headerLineEnd, bodyEnd), headerIndentLen);
   return { start: insertAt, end: insertAt, newText: `\n${body(item, field)}` };
-}
-
-// Вставка нового реквизита во ВЛОЖЕННУЮ секцию Реквизиты табличной части. tabularOffset – смещение
-// map табличной части (её первый ключ). Границы блока ТЧ вычисляем сами: до первой непустой строки с
-// отступом меньше отступа полей ТЧ (следующая ТЧ или другая секция). Обычно секция Реквизиты у ТЧ уже
-// есть (создаётся со стартовым реквизитом) – тогда переиспользуем insertItemEdit на подстроке блока;
-// если нет – дописываем секцию вложенной в конец содержимого ТЧ.
-export function insertTabularAttrEdit(text: string, tabularOffset: number, itemLines: string[]): TextEdit {
-  const lineStart = text.lastIndexOf("\n", tabularOffset - 1) + 1;
-  const fieldIndent = tabularOffset - lineStart; // столбец полей ТЧ (напр. 8)
-  let blockEnd = text.length;
-  let pos = lineEndOf(text, tabularOffset);
-  while (pos < text.length) {
-    const ls = pos + 1;
-    const le = lineEndOf(text, ls);
-    const line = text.slice(ls, le);
-    if (line.trim() !== "" && LINE_INDENT.exec(line)![1].length < fieldIndent) {
-      blockEnd = ls;
-      break;
-    }
-    pos = le;
-  }
-  const block = text.slice(tabularOffset, blockEnd);
-  const hasReq = new RegExp(`^[ \\t]{${fieldIndent}}Реквизиты:[ \\t]*\\r?$`, "m").test(block);
-  if (hasReq) {
-    // Первая (и единственная в блоке ТЧ) секция Реквизиты – это реквизиты этой ТЧ.
-    const sub = insertItemEdit(block, "Реквизиты", itemLines);
-    return { start: tabularOffset + sub.start, end: tabularOffset + sub.end, newText: sub.newText };
-  }
-  // Нет секции Реквизиты – дописываем её вложенной в конец содержимого ТЧ.
-  const req = " ".repeat(fieldIndent);
-  const item = " ".repeat(fieldIndent + 4);
-  const field = " ".repeat(fieldIndent + 8);
-  let contentEnd = 0;
-  let p = 0;
-  while (p < block.length) {
-    const nl = block.indexOf("\n", p);
-    const end = nl === -1 ? block.length : nl;
-    if (block.slice(p, end).trim() !== "") {
-      contentEnd = end;
-    }
-    if (nl === -1) {
-      break;
-    }
-    p = nl + 1;
-  }
-  const body = itemLines.map((l) => `${field}${l}`).join("\n");
-  return { start: tabularOffset + contentEnd, end: tabularOffset + contentEnd, newText: `\n${req}Реквизиты:\n${item}-\n${body}` };
 }

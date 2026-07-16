@@ -26,13 +26,19 @@ export interface RawReport {
 }
 
 export interface LinterConfig {
-  command: string; // executable: "xbsllint", or a Python interpreter when usePython is set
-  usePython: boolean; // when true, invoke `<command> -m xbsllint`
+  command: string; // executable: "xbsl", or a Python interpreter when usePython is set
+  usePython: boolean; // when true, invoke `<command> -m xbsl`
   dataDir?: string;
   lang?: string; // "ru" | "en"
   select?: string;
   ignore?: string;
   baseline?: string; // an EXISTING baseline file: excluded findings are suppressed
+}
+
+// Наша ли диагностика: новый движок подписывает их source "xbsl", движок до переименования –
+// "xbsllint"; принимаем оба, чтобы действия работали и со старым установленным движком.
+export function isXbslSource(diag: { source?: string }): boolean {
+  return diag.source === "xbsl" || diag.source === "xbsllint";
 }
 
 export function parseReport(stdout: string): RawReport {
@@ -58,7 +64,7 @@ export function severityCode(severity: string): 0 | 1 | 2 | 3 {
 }
 
 export function buildArgs(filename: string, cfg: LinterConfig): string[] {
-  const args = cfg.usePython ? ["-m", "xbsllint"] : [];
+  const args = cfg.usePython ? ["-m", "xbsl"] : [];
   args.push("--stdin", "--filename", filename, "--format", "json");
   if (cfg.lang) {
     args.push("--lang", cfg.lang);
@@ -80,7 +86,7 @@ export function buildArgs(filename: string, cfg: LinterConfig): string[] {
 
 // Command line for checking a whole path on disk (the "lint project" command).
 export function buildPathArgs(target: string, cfg: LinterConfig): string[] {
-  const args = cfg.usePython ? ["-m", "xbsllint"] : [];
+  const args = cfg.usePython ? ["-m", "xbsl"] : [];
   args.push("--format", "json");
   if (cfg.lang) {
     args.push("--lang", cfg.lang);

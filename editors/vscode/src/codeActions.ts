@@ -3,7 +3,7 @@
 // feeds the Source Action menu and `editor.codeActionsOnSave` (idiomatic fix-on-save).
 
 import * as vscode from "vscode";
-import { RawDiag } from "./report";
+import { isXbslSource, RawDiag } from "./report";
 import { anchorKey, collectFixes, fixIndex, FixItem, selectNonOverlapping } from "./codeActionsCore";
 
 // A version-stamped snapshot of a document's fixable diagnostics.
@@ -61,7 +61,7 @@ export class XbslCodeActionProvider implements vscode.CodeActionProvider {
     if (wantQuickFix) {
       const index = fixIndex(diags);
       for (const diag of context.diagnostics) {
-        if (diag.source !== "xbsllint" || typeof diag.code !== "string") {
+        if (!isXbslSource(diag) || typeof diag.code !== "string") {
           continue;
         }
         const key = anchorKey(diag.range.start.line + 1, diag.range.start.character + 1, diag.code);
@@ -88,7 +88,7 @@ export class XbslCodeActionProvider implements vscode.CodeActionProvider {
     if (wantFixAll) {
       const all = selectNonOverlapping(collectFixes(diags));
       if (all.length > 0) {
-        const action = new vscode.CodeAction(vscode.l10n.t("Fix all (xbsllint)"), FIX_ALL_KIND);
+        const action = new vscode.CodeAction(vscode.l10n.t("Fix all (xbsl)"), FIX_ALL_KIND);
         action.edit = new vscode.WorkspaceEdit();
         action.edit.set(document.uri, editsFor(document, all));
         actions.push(action);

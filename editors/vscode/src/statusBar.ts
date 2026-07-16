@@ -1,4 +1,4 @@
-// Статус-бар (справа внизу): версия расширения и линтера xbsllint + режим дополнения (обычный CLI /
+// Статус-бар (справа внизу): версия расширения и движка xbsl + режим дополнения (обычный CLI /
 // LSP). Нужно, чтобы при разработке сразу видеть, какая сборка активна, и не путать старую с новой.
 // Версию линтера получаем вызовом "<линтер> --version"; при неудаче показываем "?".
 
@@ -40,7 +40,7 @@ function builtAgo(builtAt: number): string {
 
 function linterVersion(cfg: LinterConfig): Promise<string | undefined> {
   return new Promise((resolve) => {
-    const args = [...(cfg.usePython ? ["-m", "xbsllint"] : []), "--version"];
+    const args = [...(cfg.usePython ? ["-m", "xbsl"] : []), "--version"];
     let child;
     try {
       child = spawn(cfg.command, args);
@@ -79,7 +79,7 @@ export function registerStatusBar(
 
   const line = (): string =>
     vscode.l10n.t(
-      "Extension XBSL {0} (build {3}, built {4}) · linter xbsllint {1} · completion: {2}",
+      "Extension XBSL {0} (build {3}, built {4}) · engine xbsl {1} · completion: {2}",
       extVersion,
       linter,
       lspOn ? vscode.l10n.t("LSP") : vscode.l10n.t("CLI index"),

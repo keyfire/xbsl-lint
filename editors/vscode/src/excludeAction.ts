@@ -1,6 +1,6 @@
 // "Исключить проверку" с лампочки находки: спрашивает причину и записывает идентичность
 // находки (файл + правило + сообщение) в файл базлайна – тот же, которым CI гасит
-// исключённое (`xbsllint ... --baseline`). Работает в обоих режимах: и над диагностикой
+// исключённое (`xbsl ... --baseline`). Работает в обоих режимах: и над диагностикой
 // CLI-прогонов, и над диагностикой LSP-сервера – провайдеру достаточно самой находки и
 // документа, а обновление картины делает переданный колбэк relint.
 
@@ -8,6 +8,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { addExclusion, toPosix } from "./baselineCore";
+import { isXbslSource } from "./report";
 
 const EXCLUDE_COMMAND = "xbsl.excludeFinding";
 const DEFAULT_BASELINE = ".xbsllint-baseline";
@@ -56,7 +57,7 @@ class ExcludeActionProvider implements vscode.CodeActionProvider {
     }
     const actions: vscode.CodeAction[] = [];
     for (const diag of context.diagnostics) {
-      if (diag.source !== "xbsllint") {
+      if (!isXbslSource(diag)) {
         continue;
       }
       const rule = ruleIdOf(diag);

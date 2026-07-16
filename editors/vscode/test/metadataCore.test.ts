@@ -7,9 +7,6 @@ import {
   describeMetaNode,
   describeStandardAttr,
   insertItemEdit,
-  insertTabularAttrEdit,
-  newObjectYaml,
-  newSubsystemYaml,
   parseInternals,
 } from "../src/metadataCore";
 
@@ -207,30 +204,6 @@ test("insertItemEdit: табличная часть с вложенными ре
   assert.deepStrictEqual(added.children!.map((c) => c.name), ["Кол"]);
 });
 
-test("insertTabularAttrEdit: реквизит в существующую секцию табличной части", () => {
-  const it = parseInternals(CATALOG)!;
-  const edit = insertTabularAttrEdit(CATALOG, it.tabulars[0].offset!, ["Ид: q1", "Имя: Цена", "Тип: Число"]);
-  const out = apply(CATALOG, edit);
-  assert.ok(parses(out), "результат должен парситься");
-  const строки = parseInternals(out)!.tabulars.find((t) => t.name === "Строки")!;
-  assert.deepStrictEqual(строки.children!.map((c) => c.name), ["Количество", "Цена"]);
-});
-
-test("insertTabularAttrEdit: создаёт секцию Реквизиты у табличной части без неё", () => {
-  const doc = `ВидЭлемента: Справочник
-Ид: a
-Имя: Т
-ТабличныеЧасти:
-    -
-        Ид: t1
-        Имя: Пустая
-`;
-  const it = parseInternals(doc)!;
-  const out = apply(doc, insertTabularAttrEdit(doc, it.tabulars[0].offset!, ["Ид: r1", "Имя: Первый", "Тип: Строка"]));
-  assert.ok(parses(out), "результат должен парситься");
-  assert.deepStrictEqual(parseInternals(out)!.tabulars[0].children!.map((c) => c.name), ["Первый"]);
-});
-
 test("insertItemEdit: отсутствующая секция дописывается в конец файла", () => {
   const out = apply(REGISTER, insertItemEdit(REGISTER, "Реквизиты", attr("attr-uuid", "Комментарий")));
   assert.ok(parses(out), "результат должен парситься");
@@ -240,36 +213,8 @@ test("insertItemEdit: отсутствующая секция дописывае
   assert.deepStrictEqual(it.resources.map((r) => r.name), ["Курс"]);
 });
 
-// --- newObjectYaml ------------------------------------------------------------------------
-
-test("newObjectYaml: минимальный справочник парсится и несёт Вид/Имя", () => {
-  const y = newObjectYaml("Справочник", "obj-uuid", "Клиенты");
-  assert.ok(parses(y), "результат должен парситься");
-  const doc = parseDocument(y).toJS();
-  assert.strictEqual(doc.ВидЭлемента, "Справочник");
-  assert.strictEqual(doc.Имя, "Клиенты");
-  assert.strictEqual(doc.ОбластьВидимости, "ВПроекте");
-});
-
-test("newObjectYaml: доп. строки вида (Окружение общего модуля)", () => {
-  const y = newObjectYaml("ОбщийМодуль", "m-uuid", "Утилиты", ["Окружение: Сервер"]);
-  assert.ok(parses(y));
-  assert.strictEqual(parseDocument(y).toJS().Окружение, "Сервер");
-});
-
-test("newObjectYaml: общая форма – вложенный Наследует парсится", () => {
-  const y = newObjectYaml("КомпонентИнтерфейса", "f-uuid", "МояФорма", [
-    "Наследует:",
-    "    Тип: Форма",
-    "    Содержимое:",
-    "        Тип: Группа",
-    "        Компоновка: Вертикальная",
-  ]);
-  assert.ok(parses(y), "результат должен парситься");
-  const doc = parseDocument(y).toJS();
-  assert.strictEqual(doc.Наследует.Тип, "Форма");
-  assert.strictEqual(doc.Наследует.Содержимое.Тип, "Группа");
-});
+// Шаблоны новых объектов, подсистем и вставки табличных частей переехали в движок
+// (xbsl/scaffold.py) и проверяются его pytest-тестами (tests/test_scaffold.py).
 
 test("describeMetaNode: объект – заголовок, Ид/Вид только чтение, ОбластьВидимости = select", () => {
   const it = parseInternals(CATALOG)!;
@@ -336,12 +281,6 @@ test("describeStandardAttr: материализованный берёт сво
   assert.ok(d.offset >= 0, "материализован – реальное смещение узла");
   const byKey = Object.fromEntries(d.rows.map((r) => [r.key, r]));
   assert.strictEqual(byKey["Длина"].value, "250");
-});
-
-test("newSubsystemYaml: парсится, несёт Представление", () => {
-  const y = newSubsystemYaml("Продажи");
-  assert.ok(parses(y));
-  assert.strictEqual(parseDocument(y).toJS().Интерфейс.Представление, "Продажи");
 });
 
 // -----------------------------------------------------------------------------

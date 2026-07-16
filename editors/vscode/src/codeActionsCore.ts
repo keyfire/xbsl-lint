@@ -41,7 +41,7 @@ export function collectFixes(diags: RawDiag[]): FixItem[] {
 }
 
 // Non-overlapping selection for "fix all" / fix-on-save: earliest start wins, ties by the
-// longer span. Mirrors the engine's fixer so the editor and `xbsllint --fix` agree.
+// longer span. Mirrors the engine's fixer so the editor and `xbsl --fix` agree.
 export function selectNonOverlapping(fixes: FixItem[]): FixItem[] {
   const sorted = [...fixes].sort(
     (a, b) => a.start - b.start || b.end - b.start - (a.end - a.start)

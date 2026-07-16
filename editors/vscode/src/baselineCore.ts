@@ -1,7 +1,7 @@
 // Pure core of the baseline exclusions (no vscode import), unit-tested under plain Node:
 // parsing the linter's baseline JSON and adding one excluded finding with its reason.
 //
-// The file format belongs to the engine (xbsllint/baseline.py): {meta, files: {path:
+// The file format belongs to the engine (xbsl/baseline.py): {meta, files: {path:
 // {rule: {message: count | {count, reason}}}}}, identity paths POSIX-relative to the
 // baseline file's directory. This module mirrors it: bare counts stay bare, an exclusion
 // made from the editor always carries a reason. Keys are kept sorted the way the engine
@@ -21,13 +21,13 @@ export interface BaselineFile {
   files: Record<string, RuleMap>;
 }
 
-// Mirrors the meta the engine writes (xbsllint/baseline.py, build()).
+// Mirrors the meta the engine writes (xbsl/baseline.py, build()).
 const META = {
-  tool: "xbsllint",
+  tool: "xbsl",
   format: 1,
   note:
     "исключённые находки: путь -> правило -> сообщение -> количество или" +
-    " {count, reason}; файл создаётся xbsllint --write-baseline, исключение" +
+    " {count, reason}; файл создаётся xbsl --write-baseline, исключение" +
     " с причиной добавляет расширение VS Code (или правка руками)",
 };
 

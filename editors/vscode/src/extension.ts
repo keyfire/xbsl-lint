@@ -76,7 +76,7 @@ interface Settings {
 function readSettings(resource?: vscode.Uri): Settings {
   const c = vscode.workspace.getConfiguration("xbsl", resource ?? null);
   const python = (c.get<string>("linter.pythonPath") || "").trim();
-  const command = (c.get<string>("linter.command") || "xbsllint").trim();
+  const command = (c.get<string>("linter.command") || "xbsl").trim();
   const lang = (c.get<string>("linter.lang") || "").trim();
   return {
     linter: {
@@ -167,12 +167,12 @@ function reportProblem(message: string, notFound = false): void {
     return;
   }
   warnedOnce = true;
-  const install = notFound ? vscode.l10n.t("Install xbsllint") : undefined;
+  const install = notFound ? vscode.l10n.t("Install xbsl") : undefined;
   const showLog = vscode.l10n.t("Show log");
   const buttons = install ? [install, showLog] : [showLog];
   void vscode.window.showErrorMessage(`XBSL: ${message}`, ...buttons).then((pick) => {
     if (install && pick === install) {
-      runInstallTask("xbsllint", pipInstallCommand("xbsllint"), "xbsl.restartLinter");
+      runInstallTask("xbsl", pipInstallCommand("xbsl"), "xbsl.restartLinter");
     } else if (pick) {
       output.show(true);
     }
@@ -417,7 +417,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Версии расширения/линтера и режим дополнения в статус-баре (до LSP-ветки – виден в обоих режимах).
   const statusBar = registerStatusBar(context, (resource) => readSettings(resource).linter);
 
-  // LSP-режим (по умолчанию): всё делает долгоживущий сервер xbsllint-lsp - он же даёт hover и
+  // LSP-режим (по умолчанию): всё делает долгоживущий сервер xbsl-lsp - он же даёт hover и
   // дополнение по типам. При неудачном старте продолжаем в обычном режиме (CLI); о неудаче
   // сообщаем, только если режим выбран явно, иначе у поставивших линтер без extra [lsp] всплывало
   // бы окно с ошибкой на ровном месте.

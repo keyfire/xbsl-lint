@@ -1,13 +1,13 @@
 # XBSL for VS Code
 
-**English** · [Русский](https://github.com/keyfire/xbsl-lint/blob/main/editors/vscode/README.ru.md)
+**English** · [Русский](https://github.com/keyfire/xbsl/blob/main/editors/vscode/README.ru.md)
 
 Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`), powered by the
-[xbsllint](https://github.com/keyfire/xbsl-lint) linter.
+[xbsl](https://github.com/keyfire/xbsl) linter.
 
-![XBSL: live diagnostics, Quick Fix and per-rule configuration](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/lint-quickfix.gif)
+![XBSL: live diagnostics, Quick Fix and per-rule configuration](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/lint-quickfix.gif)
 
-> Want to try everything on a toy project? Open the [`demo/`](https://github.com/keyfire/xbsl-lint/tree/main/demo)
+> Want to try everything on a toy project? Open the [`demo/`](https://github.com/keyfire/xbsl/tree/main/demo)
 > folder of the repository – a tiny 1C:Element app with a form and a handful of deliberate findings.
 
 ## Features
@@ -24,11 +24,11 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
 - **Whole-project check** – the command *XBSL: check the whole project* runs the same
   workspace-wide check on demand.
 - **Go to definition, find all references and completion across the project** – powered by a project
-  index built by the linter (`xbsllint --index`). See [Navigation and completion](#navigation-and-completion).
+  index built by the linter (`xbsl --index`). See [Navigation and completion](#navigation-and-completion).
 - **Quick Fix for mechanical findings** – a lightbulb on a fixable diagnostic (trailing
   whitespace, typography characters) applies the exact edit the linter reports; a *fix all*
   source action (`source.fixAll.xbsl`) fixes the whole file and can run on save via
-  `editor.codeActionsOnSave`. Needs `xbsllint` ≥ 0.7.1. See [Quick Fix](#quick-fix).
+  `editor.codeActionsOnSave`. Needs `xbsl` ≥ 0.7.1. See [Quick Fix](#quick-fix).
 - **Deploy to the stand** – the *XBSL: deploy the project (elemctl)* command (and a cloud
   button in the editor title of `.xbsl` files) runs `elemctl deploy` in a terminal task:
   build from sources → upload → apply → restart → verification that the apply actually took
@@ -50,23 +50,23 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
 
 ## Requirements
 
-The extension is a thin client over the `xbsllint` CLI – it does not bundle a checker. You need:
+The extension is a thin client over the `xbsl` CLI – it does not bundle a checker. You need:
 
-1. **Python 3.10+** and the linter: `pip install xbsllint`. If the linter is missing,
+1. **Python 3.10+** and the linter: `pip install xbsl`. If the linter is missing,
    the extension offers to install it right from the error message.
 2. **Element language data** – generated once from your 1C:Element distribution, see
-   [step 1 of the linter README](https://github.com/keyfire/xbsl-lint#step-1-generate-the-language-data).
+   [step 1 of the linter README](https://github.com/keyfire/xbsl#step-1-generate-the-language-data).
    Without it most rules cannot run; the extension surfaces the linter's error once.
 
-By default the extension calls `xbsllint` from `PATH`. Point it elsewhere with
+By default the extension calls `xbsl` from `PATH`. Point it elsewhere with
 `xbsl.linter.command` (an executable) or `xbsl.linter.pythonPath` (an interpreter – the linter is
-then invoked as `<python> -m xbsllint`).
+then invoked as `<python> -m xbsl`).
 
 ## Navigation and completion
 
 The extension asks the linter for a project index once on activation and rebuilds it (debounced,
 one process at a time) whenever a `.xbsl`/`.yaml` file is saved. The index command is probed as
-`xbsllint index <root>` first, then `xbsllint --index <root>` as a fallback. If the installed
+`xbsl index <root>` first, then `xbsl --index <root>` as a fallback. If the installed
 linter does not support the index yet, navigation silently stays off – details go to the *XBSL*
 output channel, no popups.
 
@@ -128,7 +128,7 @@ keywords are understood in both languages (`var`/`пер`, `new`/`новый`):
 
 The members of stdlib types come from the Element data (the `--data-dir` root), everything else
 from the project index. A name in scope beats a type of the same name: once a variable `List` is
-declared, `List.` is about its type, not about the `List` component. Requires `xbsllint` >= 0.10.0.
+declared, `List.` is about its type, not about the `List` component. Requires `xbsl` >= 0.10.0.
 
 Known limits – by design: outside LSP mode the index knows declarations, not types (no completion
 after variables). Type inference for arbitrary expressions and for dotted chains deeper than one
@@ -141,25 +141,25 @@ Findings the linter can repair mechanically carry a fix; the extension turns it 
 
 - A **lightbulb on the diagnostic** (`Ctrl+.`) – *Fix: `<rule>`* – applies the exact edit:
   trailing whitespace removed, em dash → en dash, `…` → `...`, curly quotes → straight.
-- A **fix-all source action** – *Fix all (xbsllint)* – repairs every fixable finding in the
+- A **fix-all source action** – *Fix all (xbsl)* – repairs every fixable finding in the
   file in one edit. Run it on save by adding to your settings:
 
   ```json
   "editor.codeActionsOnSave": { "source.fixAll.xbsl": "explicit" }
   ```
 
-Fixes need a linter that emits them in its JSON (`xbsllint` ≥ 0.7.1). Only unambiguous edits are
+Fixes need a linter that emits them in its JSON (`xbsl` ≥ 0.7.1). Only unambiguous edits are
 offered, and only against the exact text they were computed on – a version-stamped snapshot guards
 against applying an offset to text that changed since the last lint. Whole-file fixes (mixed
-newlines) are left to `xbsllint --fix` on the command line.
+newlines) are left to `xbsl --fix` on the command line.
 
 ## Settings
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `xbsl.linter.run` | `onType` | When to lint: `onType` (debounced) / `onSave` / `off`. |
-| `xbsl.linter.command` | `xbsllint` | Linter executable (PATH or absolute path). |
-| `xbsl.linter.pythonPath` | – | Python interpreter; when set, runs `<python> -m xbsllint`. |
+| `xbsl.linter.command` | `xbsl` | Linter executable (PATH or absolute path). |
+| `xbsl.linter.pythonPath` | – | Python interpreter; when set, runs `<python> -m xbsl`. |
 | `xbsl.linter.dataDir` | – | Element data root (folder with `index.json`); empty = auto-resolved. |
 | `xbsl.linter.lang` | auto | Diagnostic language: ` ` (auto) / `ru` / `en`. |
 | `xbsl.linter.select` | – | Only these rules (ids, groups, or tier letters `A`–`D`). |
@@ -171,7 +171,7 @@ newlines) are left to `xbsllint --fix` on the command line.
 | `xbsl.workspaceLint` | `true` | Full workspace run on every save of a `.xbsl`/`.yaml` file. |
 | `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 | `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |
-| `xbsl.groups.*` | `default` | A dropdown per rule group (code, yaml, project, naming, style, typography, whitespace, encoding, structure, form, query): the rules' own levels, one level for the whole group, or `off`. The **naming** group covers the names of project elements per the platform standard (needs `xbsllint` >= 0.11.0). See [Rules](#rules-levels-and-disabling). |
+| `xbsl.groups.*` | `default` | A dropdown per rule group (code, yaml, project, naming, style, typography, whitespace, encoding, structure, form, query): the rules' own levels, one level for the whole group, or `off`. The **naming** group covers the names of project elements per the platform standard (needs `xbsl` >= 0.11.0). See [Rules](#rules-levels-and-disabling). |
 | `xbsl.deploy.*` | – | The deploy command settings – documented in the [XBSL Debug README](https://github.com/keyfire/elemctl/tree/main/editors/vscode#deploy-from-vs-code) of the elemctl project. |
 
 ## Rules: levels and disabling
@@ -198,11 +198,11 @@ baseline): `<rule>`"** action in its lightbulb (`Ctrl+.`): type the reason, and 
 identity (file + rule + message) is recorded in the baseline file together with it. Only that
 one finding is excluded – the rule keeps checking every other file and name (to silence a
 whole rule, use "Configure rule..." instead). The finding disappears from the editor, and a
-CI gate over the same file (`xbsllint ... --baseline`) stops reporting it too.
+CI gate over the same file (`xbsl ... --baseline`) stops reporting it too.
 
 The file is `.xbsllint-baseline` in the workspace folder (created on the first exclusion),
 or wherever `xbsl.baseline` points. The reason stays next to the frozen finding, and
-`xbsllint --write-baseline` keeps it on a rewrite:
+`xbsl --write-baseline` keeps it on a rewrite:
 
 ```json
 "app/Полезное.yaml": {
@@ -219,13 +219,13 @@ text, so the baseline is bound to the output language – write and check it und
 
 ## LSP mode (default)
 
-The extension runs everything through a long-living `xbsllint-lsp` server instead of spawning
+The extension runs everything through a long-living `xbsl-lsp` server instead of spawning
 the CLI per event: the Element language data and the project index stay resident, so
 as-you-type diagnostics respond in milliseconds, **hover** appears (a card for a project
 object, method or form component), and so does
 [type-aware completion](#navigation-and-completion). Definition, project-wide diagnostics on
 save and quick fixes work as before, just faster. Requires the linter installed with the
-`[lsp]` extra (`pip install "xbsllint[lsp]"`); the server is found as `xbsllint-lsp` on
+`[lsp]` extra (`pip install "xbsl[lsp]"`); the server is found as `xbsl-lsp` on
 `PATH`, via `xbsl.linter.pythonPath` (run as a module), or by the explicit
 `xbsl.lsp.command`.
 
@@ -245,7 +245,7 @@ global theme and other languages stay untouched; the extension manages only its 
 
 ## Form preview
 
-![Form preview: wireframe, themes and live updates](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/form-preview.gif)
+![Form preview: wireframe, themes and live updates](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-preview.gif)
 
 The command **XBSL: form preview** (`xbsl.previewForm`, also a preview button in the editor
 title of form yamls – files whose element kind is an interface component, `КомпонентИнтерфейса`)
@@ -260,7 +260,7 @@ The panel follows the active yaml editor and re-renders as you type (debounced).
 has a zoom (−/+, 125% by default) and a theme picker: light (the platform web client look,
 the default), dark, or the editor theme – the choice is remembered.
 
-![Properties panel: select an element, edit via dropdowns, the yaml follows](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/props-panel.gif)
+![Properties panel: select an element, edit via dropdowns, the yaml follows](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/props-panel.gif)
 
 **Properties panel.** A click on an element selects it and opens a separate **Properties**
 panel (its own tab – drag it below or aside, wherever suits), like the platform web editor:
@@ -278,7 +278,7 @@ faithful, exact sizes and styles are not (explicit label colors and font sizes a
 
 ## Metadata explorer
 
-![Metadata explorer: the tree, the properties panel, grouping by subsystem](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/metadata-tree.gif)
+![Metadata explorer: the tree, the properties panel, grouping by subsystem](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/metadata-tree.gif)
 
 A dedicated **1C:Element** icon in the Activity Bar opens a tree of the project metadata – like the
 platform designer, but inside VS Code.
@@ -316,10 +316,16 @@ structure, Add client event, Add command-interface fragment, Add client-work par
 form): it asks a name and a subsystem (folder), writes a minimal valid yaml (a fresh id; a paired
 `.xbsl` for module kinds) and opens it. Classes are shown even when the project has none of them yet.
 In the subtree groups a **"+"** adds an attribute / dimension / resource / value / parameter / field /
-tabular section; a catalog/document has **Add object form** (creates the object form and registers it
-in the object).
+tabular section; a catalog/document has **Add object form**: the engine generates a form populated
+from the object's attributes (optionally a list form with columns too) and registers it in the
+owner's `Интерфейс`.
 
-![Creating an object from the tree: a new catalog and its attribute](https://raw.githubusercontent.com/keyfire/xbsl-lint/main/editors/vscode/images/metadata-create.gif)
+The templates and yaml edits are computed by the engine (`xbsl` 0.16+): the same operations are
+available to agents through its `meta_*` MCP tools and to any editor through the `xbsl/meta*` LSP
+requests or the CLI subcommands – the tree only gathers parameters and applies the returned
+changes (regular undo works).
+
+![Creating an object from the tree: a new catalog and its attribute](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/metadata-create.gif)
 
 **Subsystems.** A **Subsystems** branch lists the subsystem folders (a click opens the subsystem
 file); **Add subsystem** creates a folder with a subsystem file. The project root has **Filter by
@@ -391,8 +397,8 @@ method or an ambiguous name a pick-list of candidates is shown, ranked by the re
 (so `Задание.Настроить` prefers the scheduled-job pages, not a guide topic).
 
 The data comes from the linter's LSP server, so it needs [LSP mode](#lsp-mode-default) and the
-documentation database built from your distribution (`xbsllint` ≥ 0.12.0, see
-[the linter README](https://github.com/keyfire/xbsl-lint#documentation-searching-the-element-reference)).
+documentation database built from your distribution (`xbsl` ≥ 0.12.0, see
+[the linter README](https://github.com/keyfire/xbsl#documentation-searching-the-element-reference)).
 In the regular (CLI) mode the view reports that the documentation is available in LSP mode.
 
 ## Deploy
@@ -424,10 +430,10 @@ of the [elemctl](https://github.com/keyfire/elemctl) project
 Two producers feed one diagnostic collection, and the split is by buffer state:
 
 - **While you type** (dirty buffer) the extension runs
-  `xbsllint --stdin --filename <name> --format json` on the live text – per-file rules only,
+  `xbsl --stdin --filename <name> --format json` on the live text – per-file rules only,
   fast, debounced. Its result replaces the diagnostics of *that buffer only*.
 - **When you save** any `.xbsl`/`.yaml` file, the extension runs
-  `xbsllint <workspace folder> --format json` in the background (debounced, at most one run
+  `xbsl <workspace folder> --format json` in the background (debounced, at most one run
   at a time; a save during a run cancels the now-stale run and starts over). The result covers
   per-file *and* project-scope rules, so it replaces the diagnostics of *every* file in the
   folder – except buffers that are dirty again by then: those stay with their live `--stdin`
@@ -455,4 +461,4 @@ Press **F5** in VS Code to launch an Extension Development Host with the extensi
 
 ## License
 
-MIT – see the [repository](https://github.com/keyfire/xbsl-lint).
+MIT – see the [repository](https://github.com/keyfire/xbsl).

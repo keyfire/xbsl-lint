@@ -1,8 +1,8 @@
 {
   "name": "xbsl",
   "displayName": "XBSL (1C:Element)",
-  "description": "Syntax highlighting and on-the-fly linting for 1C:Element sources (.xbsl) via xbsllint.",
-  "version": "0.18.2",
+  "description": "1C:Element (XBSL) tooling: syntax highlighting, linting, navigation, docs and metadata scaffolding via the xbsl engine.",
+  "version": "0.19.0",
   "publisher": "keyfire",
   "license": "MIT",
   "icon": "icon.png",
@@ -683,7 +683,7 @@
           },
           "xbsl.linter.command": {
             "type": "string",
-            "default": "xbsllint",
+            "default": "xbsl",
             "scope": "resource",
             "description": "%config.linter.command%"
           },

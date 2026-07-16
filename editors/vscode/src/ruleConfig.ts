@@ -8,6 +8,7 @@
 // находке – управление не отходя от строки.
 
 import * as vscode from "vscode";
+import { isXbslSource } from "./report";
 
 export type RuleLevel = "off" | "error" | "warning" | "info" | "hint";
 const LEVELS: readonly RuleLevel[] = ["error", "warning", "info", "hint", "off"];
@@ -112,7 +113,7 @@ export function applyOverride(diag: vscode.Diagnostic, resource?: vscode.Uri): v
 
 const CONFIGURE_COMMAND = "xbsl.configureRule";
 
-// Пункт "Настроить правило ..." на каждой находке xbsllint (поверх quick-fix-правок).
+// Пункт "Настроить правило ..." на каждой находке xbsl (поверх quick-fix-правок).
 class ConfigureRuleProvider implements vscode.CodeActionProvider {
   provideCodeActions(
     document: vscode.TextDocument,
@@ -122,7 +123,7 @@ class ConfigureRuleProvider implements vscode.CodeActionProvider {
     const actions: vscode.CodeAction[] = [];
     const seen = new Set<string>();
     for (const d of context.diagnostics) {
-      if (d.source !== "xbsllint") {
+      if (!isXbslSource(d)) {
         continue;
       }
       const rule = ruleOf(d);

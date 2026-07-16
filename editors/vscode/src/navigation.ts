@@ -123,7 +123,7 @@ class IndexCache {
     const cfg = this.getLinter(this.folder.uri);
     const root = this.getRoot(this.folder);
     for (const variant of INDEX_COMMAND_VARIANTS) {
-      const args = [...(cfg.usePython ? ["-m", "xbsllint"] : []), ...variant(root)];
+      const args = [...(cfg.usePython ? ["-m", "xbsl"] : []), ...variant(root)];
       const shown = `${cfg.command} ${args.join(" ")}`;
       const run = await runRaw(cfg.command, args, root);
       if (run.error) {

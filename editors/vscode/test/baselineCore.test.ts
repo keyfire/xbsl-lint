@@ -29,7 +29,7 @@ test("exclusion into a missing file creates the engine-shaped payload", () => {
     count: 1,
     reason: "историческое имя",
   });
-  assert.strictEqual(data.meta.tool, "xbsllint");
+  assert.strictEqual(data.meta.tool, "xbsl");
   assert.strictEqual(data.meta.format, 1);
   assert.ok(text.endsWith("\n"));
 });
