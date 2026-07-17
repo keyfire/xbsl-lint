@@ -332,7 +332,8 @@ def test_completion_components_and_methods():
 def test_completion_yaml_type():
     labels = [e["label"] for e in c("    Тип: ", language_id="yaml")]
     assert labels == ["Товар", "ВидТовара"]
-    assert c("просто текст") is None
+    # в yaml вне значения Тип контекст неизвестен (ветка голых имён - только для xbsl)
+    assert c("просто текст", language_id="yaml") is None
 
 
 МОДУЛЬ = """@НаСервере
@@ -590,3 +591,35 @@ def test_completion_yaml_struct_attributes():
         file_stem="Модуль", local_vars={"Данные": "ДанныеРасширения"},
     )
     assert [e["label"] for e in entries] == ["Идентификатор"]
+
+
+def test_completion_bare_name_top_level():
+    # голое имя (без точки): переменные, методы своего модуля, объекты проекта,
+    # типы модулей, глобальный контекст и типы stdlib
+    idx = dict(INDEX)
+    idx["struct_members"] = {"ДанныеРасширения": {"properties": ["Идентификатор"]}}
+    lookup = IndexLookup(idx)
+    entries = resolve_completions(
+        lookup, language_id="xbsl", line_prefix="    знч ТелоЗапроса = Сериа",
+        file_stem="ГлавнаяФорма",
+        stdlib_members={"СериализацияJson": {"methods": ["ЗаписатьОбъект"]}, "Массив": {}},
+        stdlib_globals=["Сообщить"],
+        local_vars={"Данные": "ДанныеРасширения"},
+    )
+    got = {e["label"]: e["kind"] for e in entries}
+    assert got["СериализацияJson"] == "object"      # тип stdlib
+    assert got["Сообщить"] == "method"              # глобальный контекст
+    assert got["Данные"] == "field"                 # видимая переменная
+    assert got["Обновить"] == "method"              # метод своего модуля
+    assert got["Товар"] == "object"                 # объект проекта
+    assert got["ВидТовара"] == "enum"
+    assert got["ДанныеРасширения"] == "localType"   # тип модуля
+
+
+def test_completion_bare_name_not_after_dot():
+    # после точки ветка голых имён не срабатывает - там свои контексты
+    entries = resolve_completions(
+        LOOKUP, language_id="xbsl", line_prefix="    знч Х = Неведомое.Что",
+        file_stem="ГлавнаяФорма", stdlib_members={"Массив": {}}, stdlib_globals=["Сообщить"],
+    )
+    assert entries is None

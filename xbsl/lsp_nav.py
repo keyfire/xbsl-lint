@@ -406,6 +406,7 @@ def resolve_completions(
     file_stem: str,
     in_query: bool = False,
     stdlib_members: Optional[dict] = None,
+    stdlib_globals: Optional[list] = None,
     local_vars: Optional[dict] = None,
     query_tables: Optional[dict] = None,
     query_rows: Optional[dict] = None,
@@ -474,6 +475,39 @@ def resolve_completions(
             }
             for o in lookup.objects()
         ]
+    # A bare name (no dot before it): the top-level scope - visible variables, the
+    # module's own methods, project objects and module types, stdlib types and globals.
+    # The editor filters by the typed prefix itself.
+    if language_id == "xbsl" and re.search(
+        rf"(?:^|[^.\wА-Яа-яЁё])(?:{IDENT})?$", line_prefix,
+    ):
+        entries: list[dict] = []
+        seen: set = set()
+
+        def add(label: str, kind: str, detail: str, snippet: Optional[str] = None) -> None:
+            if label and label not in seen:
+                seen.add(label)
+                e = {"label": label, "kind": kind, "detail": detail}
+                if snippet:
+                    e["snippet"] = snippet
+                entries.append(e)
+
+        for v, t in (local_vars or {}).items():
+            add(v, "field", f"переменная: {t}")
+        for m in lookup.methods_by_module(file_stem):
+            name = m.get("name", "")
+            add(name, "method", "метод модуля", f"{name}($0)")
+        for o in lookup.objects():
+            kind = o.get("kind", "")
+            add(o.get("name", ""), "enum" if kind == "Перечисление" else "object", kind)
+        for s_name in (lookup.index.get("struct_members") or {}):
+            add(s_name, "localType", "тип модуля")
+        for g in stdlib_globals or ():
+            add(str(g), "method", "глобальный контекст", f"{g}($0)")
+        for t_name in (stdlib_members or {}):
+            if "." not in t_name:  # facets are members of their aggregate, not bare names
+                add(t_name, "object", "тип stdlib")
+        return entries or None
     return None
 
 

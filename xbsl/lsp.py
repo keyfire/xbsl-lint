@@ -450,6 +450,7 @@ def _make_server() -> "LanguageServer":
             file_stem=path.stem,
             in_query=in_query,
             stdlib_members=stdlib_members,
+            stdlib_globals=catalog.get("globals") or [],
             local_vars=local_vars,
             query_tables=query_tables,
             query_rows=query_rows,
