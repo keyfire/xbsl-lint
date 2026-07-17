@@ -3,7 +3,7 @@
 [English](https://github.com/keyfire/xbsl/blob/main/docs/RULES.md) · **Русский**
 
 Полный перечень проверок линтера. Файл дополняется при добавлении правил; актуальный
-список в рантайме – `xbsl list-rules` (или MCP `list_rules`). Сейчас правил: 79.
+список в рантайме – `xbsl list-rules` (или MCP `list_rules`). Сейчас правил: 80.
 
 ## Граница: линтер дополняет компилятор, но не заменяет его
 
@@ -109,6 +109,7 @@
 |---|---|---|---|---|---|
 | `yaml/choice-needs-static-list` | warning | вкл | файл | ВыборЗначения без статичного СпискаВыбора | [доки](https://1cmycloud.com/docs/help/stdlib/element/xbsl/Std/Interface/CommonComponents/ValueChoice_ru/) |
 | `code/unknown-type` | warning | вкл | проект | Неизвестный тип | – |
+| `code/undefined-name` | warning | выкл | проект | Неизвестное имя в выражении (опечатки вида `Адресар` вместо `Адреса`); включится по умолчанию после дособора stdlib-каталога | – |
 | `code/unknown-object-type` | warning | вкл | проект | Неизвестный тип объекта проекта | – |
 | `yaml/unknown-type` | warning | вкл | проект | Неизвестный тип в yaml | – |
 | `yaml/dynlist-missing-field` | warning | вкл | проект | Нет поля динамического списка | [доки](https://1cmycloud.com/docs/help/topics/dynamic-list/) |

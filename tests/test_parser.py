@@ -385,3 +385,68 @@ def test_rule_caps_error_cascade():
     lines = "".join(f"    Ф{i}(незакрыто\n" for i in range(30))
     found = _rule_diags(f"метод А()\n{lines};\n")
     assert 0 < len(found) <= 11
+
+
+# --- правило code/undefined-name -----------------------------------------------------------
+
+
+def _undef(code: str, extra_yaml: str | None = None) -> list:
+    from xbsl.engine import load_text, run_sources
+
+    sources = [load_text("Модуль.xbsl", code)]
+    if extra_yaml is not None:
+        sources.append(load_text("Модуль.yaml", extra_yaml))
+    return list(run_sources(sources, select={"code/undefined-name"}))
+
+
+def test_undefined_name_catches_the_screenshot_typo():
+    # параметр Адреса, в цикле Адресар - компилятор откажет, теперь видит и линтер
+    diags = _undef(
+        "метод ТелоПравки(Адреса: Массив<Строка>): Строка\n"
+        "    пер Строки = \"\"\n"
+        "    для Адрес из Адресар\n"
+        "        Строки = Строки + Адрес\n"
+        "    ;\n"
+        "    возврат Строки\n"
+        ";\n"
+    )
+    assert len(diags) == 1
+    assert "Адресар" in diags[0].message and "Адреса" in diags[0].message  # подсказка
+
+
+def test_undefined_name_knows_scopes():
+    diags = _undef(
+        "конст ЛИМИТ = 10\n"
+        "метод А(Парам: Число)\n"
+        "    знч Локал = Парам + ЛИМИТ\n"
+        "    для Инд = 0 по Локал\n"
+        "        Б(Инд)\n"
+        "    ;\n"
+        "    попытка\n"
+        "        Б(0)\n"
+        "    поймать Ош: ИсключениеВыполнения\n"
+        "        Б(Ош.Код)\n"
+        "    ;\n"
+        "    Список.Обойти(х -> Б(х))\n"
+        ";\n"
+        "метод Б(Ч: Число)\n"
+        ";\n",
+        extra_yaml="ВидЭлемента: Справочник\nИмя: Список\n",
+    )
+    assert diags == [], [d.message for d in diags]
+
+
+def test_undefined_name_reads_component_yaml():
+    # свойство из парного yaml и член унаследованного типа доступны голым именем
+    diags = _undef(
+        "метод ПриНажатии()\n"
+        "    Титул = \"х\"\n"
+        "    Закрыть()\n"
+        ";\n",
+        extra_yaml=(
+            "ВидЭлемента: КомпонентИнтерфейса\nИмя: Модуль\n"
+            "Наследует:\n    Тип: Форма\n"
+            "Свойства:\n    -\n        Имя: Титул\n        Тип: Строка\n"
+        ),
+    )
+    assert diags == [], [d.message for d in diags]

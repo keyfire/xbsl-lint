@@ -3,7 +3,7 @@
 **English** · [Русский](https://github.com/keyfire/xbsl/blob/main/docs/RULES.ru.md)
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 79 rules.
+runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 80 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -109,6 +109,7 @@ the execution model (client/server), form handlers, properties and queries.
 |---|---|---|---|---|---|
 | `yaml/choice-needs-static-list` | warning | on | file | ВыборЗначения without a static СписокВыбора | [docs](https://1cmycloud.com/docs/help/stdlib/element/xbsl/Std/Interface/CommonComponents/ValueChoice_ru/) |
 | `code/unknown-type` | warning | on | project | Unknown type | – |
+| `code/undefined-name` | warning | off | project | Undefined name in an expression (typos like `Адресар` for `Адреса`); on by default once the stdlib catalog is completed | – |
 | `code/unknown-object-type` | warning | on | project | Unknown project-object type | – |
 | `yaml/unknown-type` | warning | on | project | Unknown type in yaml | – |
 | `yaml/dynlist-missing-field` | warning | on | project | Missing dynamic-list field | [docs](https://1cmycloud.com/docs/help/topics/dynamic-list/) |
