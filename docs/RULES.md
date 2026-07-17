@@ -3,15 +3,19 @@
 **English** · [Русский](https://github.com/keyfire/xbsl/blob/main/docs/RULES.ru.md)
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 84 rules.
+runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 85 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
-The linter works over text and the project model, without type inference. It catches what the
-Element compiler does not check or reports unclearly (conventions, typography, structure,
-references to non-existent types and objects), but NOT what needs type inference: a redundant
-cast, an unclosed resource, a return-type mismatch. Code correctness is verified by the
-server-side compilation on deploy; the linter runs before it and removes common mistakes early.
+The linter works over text, the AST and the project model, with first-hop type knowledge
+only (the declared nominal types of variables - no inference of expression types). It
+catches what the Element compiler does not check or reports unclearly (conventions,
+typography, structure, references to non-existent types and objects) plus the provable
+signature-level mistakes (a return not matching the method signature, a wrong argument
+count of a local call, a non-exception in `поймать`, a missing member of a plain stdlib
+type), but NOT what needs full inference: a redundant cast, an unclosed resource, the
+type of a returned value. Code correctness is verified by the server-side compilation on
+deploy; the linter runs before it and removes common mistakes early.
 
 ## How to read the table
 
@@ -113,6 +117,7 @@ the execution model (client/server), form handlers, properties and queries.
 | `yaml/choice-needs-static-list` | warning | on | file | ВыборЗначения without a static СписокВыбора | [docs](https://1cmycloud.com/docs/help/stdlib/element/xbsl/Std/Interface/CommonComponents/ValueChoice_ru/) |
 | `code/unknown-type` | warning | on | project | Unknown type | – |
 | `code/catch-non-exception` | error | on | file | The type in `поймать` is not an exception (a stdlib non-exception or a local `структура`) - the compiler rejects such code | [docs](https://1cmycloud.com/docs/help/topics/exceptions/) |
+| `code/unknown-member` | error | on | file | A member access on a variable of a known plain stdlib type that the type does not have (first hop, typos get a hint) | – |
 | `code/undefined-name` | error | on | project | Undefined name in an expression (typos like `Адресар` for `Адреса`) - the compiler rejects such code | – |
 | `code/unknown-object-type` | warning | on | project | Unknown project-object type | – |
 | `yaml/unknown-type` | warning | on | project | Unknown type in yaml | – |

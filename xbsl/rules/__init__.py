@@ -49,6 +49,7 @@ from . import (  # noqa: F401
     reserved_names,
     semantics,
     size_stretch,
+    unknown_members,
     unused_methods,
     yaml_imports,
     yaml_properties,
