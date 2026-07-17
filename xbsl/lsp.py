@@ -464,6 +464,9 @@ def _make_server() -> "LanguageServer":
             file_stem=path.stem,
             in_query=in_query,
             stdlib_members=stdlib_members,
+            # The full name catalog, not just the types that have members: a component type
+            # without a member page (`АвтоматическаяГруппа`) is still a valid `Тип:` value.
+            stdlib_names=catalog.get("names") or [],
             stdlib_globals=catalog.get("globals") or [],
             local_vars=local_vars,
             query_tables=query_tables,

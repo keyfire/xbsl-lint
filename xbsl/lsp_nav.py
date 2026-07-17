@@ -19,6 +19,12 @@ NOT_BEFORE = r"[^.0-9A-Za-zА-Яа-яЁё_]"
 _CHAIN_RE = re.compile(rf"{IDENT}(?:\.{IDENT})*")
 # A trailing comment after the value is allowed - it is not part of the name.
 _HANDLER_RE = re.compile(rf"^(\s*Обработчик\s*:\s*)({IDENT})\s*(?:#.*)?$")
+_BARE_NAME_RE = re.compile(IDENT)
+# A `Тип:` value in yaml up to the cursor. The value is a type EXPRESSION, so the cursor may
+# sit inside generic brackets or after a separator (`Тип: Таблица<Динамич`), not only at the
+# first bare name. Anything outside the expression alphabet (a binding `=...`, a comment)
+# breaks the match instead of guessing, as in the yaml/unknown-type rule.
+_YAML_TYPE_RE = re.compile(r"(?:^|\s)Тип\s*:\s*[\w\s.,<>|?]*$")
 
 
 class IndexLookup:
@@ -333,6 +339,40 @@ def _object_member_entries(lookup: IndexLookup, name: str) -> Optional[list[dict
     return entries
 
 
+def _yaml_type_entries(lookup: IndexLookup, stdlib_names: Optional[Any]) -> list[dict]:
+    """Type names offered for a `Тип:` value in yaml.
+
+    The same three sources the yaml/unknown-type rule accepts as the root of a type
+    expression: the platform catalog (a component type - `СтандартнаяКолонкаТаблицы`,
+    `ПолеВвода` - lives only there), the project objects and the module-declared types.
+    """
+    entries: list[dict] = []
+    seen: set[str] = set()
+
+    def add(label: str, kind: str, detail: str) -> None:
+        if label and label not in seen:
+            seen.add(label)
+            entries.append({"label": label, "kind": kind, "detail": detail})
+
+    for o in lookup.objects():
+        kind = o.get("kind", "")
+        add(o.get("name", ""), "enum" if kind == "Перечисление" else "object", kind)
+    for s_name in lookup.index.get("struct_members") or {}:
+        add(str(s_name), "localType", "тип модуля")
+    for name in _stdlib_type_names(stdlib_names):
+        add(name, "object", "тип платформы")
+    return entries
+
+
+def _stdlib_type_names(stdlib_names: Optional[Any]) -> list[str]:
+    """Bare type names of the catalog: a facet (`ДвоичныйОбъект.Ссылка`) is a member of its
+    aggregate rather than a name of its own, and the catalog's non-name markers are dropped."""
+    return [
+        str(n) for n in stdlib_names or ()
+        if _BARE_NAME_RE.fullmatch(str(n))
+    ]
+
+
 def _match_end(prefix: str, pattern: str) -> Optional[re.Match]:
     return re.search(rf"(?:^|{NOT_BEFORE}){pattern}$", prefix)
 
@@ -411,6 +451,7 @@ def resolve_completions(
     query_tables: Optional[dict] = None,
     query_rows: Optional[dict] = None,
     expr_type: Optional[str] = None,
+    stdlib_names: Optional[Any] = None,
 ) -> Optional[list[dict]]:
     """Completion items [{label, kind, detail}] for the context, or None if it is unknown."""
     # A dot after a call: `ЗапросКБД.Выполнить().` - the caller inferred the chain type
@@ -466,15 +507,8 @@ def resolve_completions(
         # members come from the linter dataset's type_members, keyed there under both name forms.
         members = (stdlib_members or {}).get(token)
         return _stdlib_entries(members) if members else None
-    if language_id == "yaml" and re.search(rf"(?:^|\s)Тип\s*:\s*(?:{IDENT})?$", line_prefix):
-        return [
-            {
-                "label": o.get("name", ""),
-                "kind": "enum" if o.get("kind") == "Перечисление" else "object",
-                "detail": o.get("kind", ""),
-            }
-            for o in lookup.objects()
-        ]
+    if language_id == "yaml" and _YAML_TYPE_RE.search(line_prefix):
+        return _yaml_type_entries(lookup, stdlib_names or stdlib_members) or None
     # A bare name (no dot before it): the top-level scope - visible variables, the
     # module's own methods, project objects and module types, stdlib types and globals.
     # The editor filters by the typed prefix itself.
@@ -504,9 +538,8 @@ def resolve_completions(
             add(s_name, "localType", "тип модуля")
         for g in stdlib_globals or ():
             add(str(g), "method", "глобальный контекст", f"{g}($0)")
-        for t_name in (stdlib_members or {}):
-            if "." not in t_name:  # facets are members of their aggregate, not bare names
-                add(t_name, "object", "тип stdlib")
+        for t_name in _stdlib_type_names(stdlib_names or stdlib_members):
+            add(t_name, "object", "тип stdlib")
         return entries or None
     return None
 

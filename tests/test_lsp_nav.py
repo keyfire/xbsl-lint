@@ -336,6 +336,29 @@ def test_completion_yaml_type():
     assert c("просто текст", language_id="yaml") is None
 
 
+def _yaml_type(prefix):
+    return resolve_completions(
+        LOOKUP, language_id="yaml", line_prefix=prefix, file_stem="ГлавнаяФорма",
+        stdlib_names=["СтандартнаяКолонкаТаблицы", "Таблица", "АвтоматическаяГруппа",
+                      "ДвоичныйОбъект.Ссылка", "~~Стд::Геопозиционирование~~"],
+    )
+
+
+def test_completion_yaml_type_offers_platform_catalog():
+    # тип компонента живёт только в каталоге платформы, среди объектов проекта его нет
+    labels = {e["label"] for e in _yaml_type("        Тип: С")}
+    assert {"СтандартнаяКолонкаТаблицы", "АвтоматическаяГруппа", "Товар"} <= labels
+    # фасет - член своего агрегата, а не голое имя; не-имена каталога отброшены
+    assert "ДвоичныйОбъект.Ссылка" not in labels
+    assert not [x for x in labels if x.startswith("~~")]
+
+
+def test_completion_yaml_type_inside_generics():
+    # значение Тип - выражение: курсор может стоять внутри скобок, а не только у корня
+    labels = {e["label"] for e in _yaml_type("    Тип: СтандартнаяКолонкаТаблицы<Табл")}
+    assert "Таблица" in labels
+
+
 МОДУЛЬ = """@НаСервере
 метод Загрузить(Ключи: Массив<Строка>, Лимит: Число): Число
     пер Список = новый Массив<СводкаАкция>()
