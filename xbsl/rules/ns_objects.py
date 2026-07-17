@@ -155,8 +155,8 @@ def _ns_mapper(source: SourceFile) -> dict | None:
         fact: dict = {}
         nm = data.get("Имя")
         if data.get("ВидЭлемента") and isinstance(nm, str):
-            # ИмяТипаДанныхСтроки динамического списка - такой же член формы, как
-            # табличная часть (см. semantics._row_type_names).
+            # A dynamic list's ИмяТипаДанныхСтроки is as much a member of the form as
+            # a tabular section is (see semantics._row_type_names).
             members = sorted(_row_type_names(data))
             if isinstance(data.get("ТабличныеЧасти"), list):
                 members += [

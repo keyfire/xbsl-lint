@@ -109,7 +109,7 @@ def _requires_static_list(type_value: str) -> bool:
 
 
 def _choice_nodes(node, out: list[tuple[str, bool]]) -> None:
-    """(значение Тип, есть ли СписокВыбора) of every ВыборЗначения node, in document order."""
+    """(the Тип value, whether СписокВыбора is present) of every ВыборЗначения node, in document order."""
     if isinstance(node, dict):
         t = node.get("Тип")
         if isinstance(t, str) and (t == _CHOICE or t.startswith(_CHOICE + "<")):

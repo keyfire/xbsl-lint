@@ -23,10 +23,10 @@ class _AliasLoader(importlib.abc.Loader):
     def __init__(self, target: str) -> None:
         self._target = target
 
-    def create_module(self, spec):  # noqa: ANN001 - сигнатура протокола импорта
+    def create_module(self, spec):  # noqa: ANN001 - the import protocol signature
         return importlib.import_module(self._target)
 
-    def exec_module(self, module) -> None:  # noqa: ANN001 - модуль уже выполнен
+    def exec_module(self, module) -> None:  # noqa: ANN001 - the module is already executed
         pass
 
 
@@ -35,8 +35,8 @@ class _AliasFinder(importlib.abc.MetaPathFinder):
         if fullname != _PREFIX and not fullname.startswith(_PREFIX + "."):
             return None
         if fullname.endswith(".__main__"):
-            # runpy (python -m xbsllint) должен получить обычный спек с исходником:
-            # штатный поиск найдёт xbsl/__main__.py через __path__ подменённого пакета.
+            # runpy (python -m xbsllint) must get a regular spec with a source file: the
+            # standard search finds xbsl/__main__.py via the aliased package's __path__.
             return None
         real = "xbsl" + fullname[len(_PREFIX):]
         return importlib.machinery.ModuleSpec(fullname, _AliasLoader(real))

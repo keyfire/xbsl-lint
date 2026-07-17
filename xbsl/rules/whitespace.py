@@ -19,8 +19,9 @@ MESSAGES = {
         "ru": "Хвостовые пробелы в конце строки.",
         "en": "Trailing whitespace at the end of the line.",
     },
-    # Строка целиком из пробелов – формально тот же хвост, но говорить про "конец строки"
-    # там не о чем: кода на строке нет вовсе, и сообщение сбивало с толку.
+    # A line of nothing but spaces is formally the same trailing tail, but talking about
+    # the "end of the line" is pointless there: the line has no code at all, and the
+    # generic message used to confuse.
     "whitespace/trailing.blank": {
         "ru": "Строка состоит только из пробелов – убрать отступ у пустой строки.",
         "en": "The line contains nothing but whitespace – drop the indent of a blank line.",

@@ -82,7 +82,7 @@ _DECL_KW = ("VAL", "VAR", "CONST", "REQ", "CATCH", "FOR")
 
 
 def _project_enums(sources: list[SourceFile]) -> dict[str, set[str]]:
-    """Имя перечисления проекта -> имена его элементов (yaml Элементы[].Имя)."""
+    """Project enumeration name -> the names of its elements (yaml Элементы[].Имя)."""
     enums: dict[str, set[str]] = {}
     for s in sources:
         if s.kind != "yaml":

@@ -83,7 +83,7 @@ def loop_header(source: SourceFile) -> Iterable[Diagnostic]:
             continue
         j = _next_word(toks, i)
         if j >= n or toks[j].kind not in WORD_KINDS:
-            continue  # не заголовок цикла в узнаваемом виде – не гадаем
+            continue  # not a loop header in a recognizable shape - no guessing
         name = toks[j]
         k = _next_word(toks, j)
         if k >= n:
