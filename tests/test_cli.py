@@ -75,13 +75,13 @@ def test_json_and_text_on_disk(tmp_path, capsys):
 def test_discover_skips_hidden_directories(tmp_path):
     # Скрытые каталоги (git worktree в .claude, .git) держат копии исходников: их файлы
     # не должны попадать в обход, иначе межфайловые правила видят дубли.
-    visible = tmp_path / "e1c" / "app" / "А.yaml"
+    visible = tmp_path / "acme" / "app" / "А.yaml"
     visible.parent.mkdir(parents=True)
     visible.write_text("Ид: 1\n", encoding="utf-8")
-    hidden = tmp_path / ".claude" / "worktrees" / "T-1" / "e1c" / "app" / "А.yaml"
+    hidden = tmp_path / ".claude" / "worktrees" / "T-1" / "acme" / "app" / "А.yaml"
     hidden.parent.mkdir(parents=True)
     hidden.write_text("Ид: 1\n", encoding="utf-8")
-    dotfile = tmp_path / "e1c" / "app" / ".служебный.yaml"
+    dotfile = tmp_path / "acme" / "app" / ".служебный.yaml"
     dotfile.write_text("мусор\n", encoding="utf-8")
 
     found = cli.discover([str(tmp_path)])
@@ -95,7 +95,7 @@ def test_discover_scans_root_inside_hidden_directory(tmp_path):
     # Сам корень может лежать в скрытом каталоге (открытый worktree) – это нормально,
     # фильтр действует только на компоненты НИЖЕ корня.
     root = tmp_path / ".claude" / "worktrees" / "T-1"
-    f = root / "e1c" / "app" / "А.yaml"
+    f = root / "acme" / "app" / "А.yaml"
     f.parent.mkdir(parents=True)
     f.write_text("Ид: 1\n", encoding="utf-8")
 

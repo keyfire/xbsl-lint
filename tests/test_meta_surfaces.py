@@ -283,25 +283,25 @@ def test_cli_set_access(capsys, tmp_path):
 @pytest.mark.needs_data  # линт записанного Проект.xbsl токенизирует - нужен language.json
 def test_mcp_meta_add_dependency(mcp_module, tmp_path):
     mcp_module.meta_new_project(str(tmp_path), "vendor", "Приложение")
-    res = mcp_module.meta_add_dependency(str(tmp_path), "e1c", "CurrencyConverter", "9.0.2")
+    res = mcp_module.meta_add_dependency(str(tmp_path), "acme", "CurrencyConverter", "9.0.2")
     assert res["files"][0]["created"] is False
     text = (tmp_path / "vendor" / "Приложение" / "Проект.yaml").read_text(encoding="utf-8")
     assert "Библиотеки:" in text and "Имя: CurrencyConverter" in text
 
     overview = mcp_module.meta_project_info(str(tmp_path))
     assert overview["projects"][0]["libraries"] == [
-        {"Имя": "CurrencyConverter", "Поставщик": "e1c", "Версия": "9.0.2"}
+        {"Имя": "CurrencyConverter", "Поставщик": "acme", "Версия": "9.0.2"}
     ]
 
-    err = mcp_module.meta_add_dependency(str(tmp_path), "e1c", "CurrencyConverter", "1.0-42")
+    err = mcp_module.meta_add_dependency(str(tmp_path), "acme", "CurrencyConverter", "1.0-42")
     assert "версия сборки" in err["error"]
 
 
 def test_cli_add_dependency(capsys, tmp_path):
     _run_cli(capsys, "new-project", str(tmp_path), "vendor", "Приложение")
-    code, out = _run_cli(capsys, "add-dependency", str(tmp_path), "e1c", "CurrencyConverter", "2.0")
+    code, out = _run_cli(capsys, "add-dependency", str(tmp_path), "acme", "CurrencyConverter", "2.0")
     assert code == 0
-    assert any("Подключена библиотека e1c::CurrencyConverter" in n for n in out["notes"])
+    assert any("Подключена библиотека acme::CurrencyConverter" in n for n in out["notes"])
     assert "Версия: 2.0" in (tmp_path / "vendor" / "Приложение" / "Проект.yaml").read_text(
         encoding="utf-8"
     )

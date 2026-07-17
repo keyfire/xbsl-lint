@@ -127,7 +127,7 @@ lint:
         python tools/extract_grammar.py  --dist "$ELEMENT_DIST"
         python tools/extract_stdlib.py   --dist "$ELEMENT_DIST"
         python tools/extract_metamodel.py --dist "$ELEMENT_DIST"
-    - run: xbsl e1c/          # fails the job on any error-severity finding
+    - run: xbsl acme/          # fails the job on any error-severity finding
 ```
 
 ### GitLab CI (Code Quality widget)
@@ -141,7 +141,7 @@ the job gates the pipeline (drop the gate with a trailing `|| true` if you want 
 lint:
   script:
     - pip install xbsl
-    - xbsl --format codeclimate e1c/ > gl-code-quality-report.json
+    - xbsl --format codeclimate acme/ > gl-code-quality-report.json
   artifacts:
     when: always
     reports:
@@ -204,8 +204,8 @@ To enable a rule over code that already violates it without drowning in legacy f
 current findings into a baseline and hold only new code to the rule:
 
 ```sh
-xbsl e1c/app --enable style --write-baseline baseline.json   # freeze the debt once
-xbsl e1c/app --enable style --baseline baseline.json         # only NEW findings surface
+xbsl acme/app --enable style --write-baseline baseline.json   # freeze the debt once
+xbsl acme/app --enable style --baseline baseline.json         # only NEW findings surface
 ```
 
 A finding's identity is `(file, rule, message)` with an allowed count, so moving a line keeps its
@@ -247,7 +247,7 @@ xbsl add-form . --name Товары --forms list-cards     # list form as a card
 xbsl new-object ... HttpСервис Каталог --routes "GET /, POST /, GET /{id}"
 xbsl add-route  .../Каталог.yaml "DELETE /{id}"      # url template + handler stub
 xbsl add-subsystem vendor/App Задачи
-xbsl add-dependency . e1c CurrencyConverter 2.0      # library into the project's Библиотеки
+xbsl add-dependency . acme CurrencyConverter 2.0      # library into the project's Библиотеки
 xbsl rename-object . Товары Номенклатура             # rename files + update references
 xbsl set-access . --name Товары --default РазрешеноАутентифицированным
 xbsl object-info . --name Товары                     # fields, tabulars, forms, namespace

@@ -149,8 +149,8 @@ nullable): корень обязан быть известным типом – 
 текущие находки замораживают в базлайн и спрашивают по правилу только с нового кода:
 
 ```sh
-xbsl e1c/app --enable style --write-baseline baseline.json   # заморозить долг один раз
-xbsl e1c/app --enable style --baseline baseline.json         # всплывает только НОВОЕ
+xbsl acme/app --enable style --write-baseline baseline.json   # заморозить долг один раз
+xbsl acme/app --enable style --baseline baseline.json         # всплывает только НОВОЕ
 ```
 
 Идентичность находки – `(файл, правило, сообщение)` с допустимым количеством: перенос строки
@@ -193,7 +193,7 @@ xbsl add-form . --name Товары --forms list-cards     # форма спис
 xbsl new-object ... HttpСервис Каталог --routes "GET /, POST /, GET /{id}"
 xbsl add-route  .../Каталог.yaml "DELETE /{id}"      # шаблон URL + заготовка обработчика
 xbsl add-subsystem vendor/Приложение Задачи
-xbsl add-dependency . e1c CurrencyConverter 2.0      # библиотека в раздел Библиотеки проекта
+xbsl add-dependency . acme CurrencyConverter 2.0      # библиотека в раздел Библиотеки проекта
 xbsl rename-object . Товары Номенклатура             # файлы + ссылки по всему проекту
 xbsl set-access . --name Товары --default РазрешеноАутентифицированным
 xbsl object-info . --name Товары                     # реквизиты, ТЧ, формы, namespace
