@@ -20,6 +20,9 @@
   extend the builtin set; the file format is the one 1C:EDT exports.
 - Templates need the LSP mode (`xbsl.lsp.enabled`, on by default); the CLI-index mode does
   not offer them.
+- Engine rule `security/hardcoded-secret` (error, on): a key or a password written as a
+  literal. Found live keys in real sources; the settings group `xbsl.groups.security`
+  switches the group off.
 
 ## 0.21.1
 

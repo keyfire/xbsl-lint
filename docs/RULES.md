@@ -3,7 +3,7 @@
 **English** · [Русский](https://github.com/keyfire/xbsl/blob/main/docs/RULES.ru.md)
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 86 rules.
+runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 87 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -53,10 +53,12 @@ The file exists, parses, the object has a unique UUID, the name matches the file
 
 ### Tier B - text and conventions
 
-Encoding, newlines, whitespace, typography (dashes, quotes, ellipsis), line length.
+Encoding, newlines, whitespace, typography (dashes, quotes, ellipsis), line length, secrets
+in the sources.
 
 | Rule | Severity | Default | Scope | What it checks | Docs |
 |---|---|---|---|---|---|
+| `security/hardcoded-secret` | error | on | file | A key or a password as a literal | – |
 | `typography/em-dash` | info | off | file | Em dash in a comment | – |
 | `typography/ellipsis` | warning | on | file | Ellipsis character in a comment | – |
 | `typography/curly-quotes` | warning | on | file | Curly quotes | – |

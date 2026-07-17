@@ -9,7 +9,7 @@ modules that need to be imported (and thereby activated).
 from . import project, structure, yaml_schema  # noqa: F401
 
 # Tier B – text and conventions:
-from . import typography, whitespace  # noqa: F401
+from . import security, typography, whitespace  # noqa: F401
 
 # Tier C – code structure, basic syntax and local variables:
 from . import (  # noqa: F401

@@ -87,6 +87,7 @@
   "config.groups.typography": "Typography in comments and code: em dash, the ellipsis character, curly quotes and guillemets. Defaults: 2 rules at warning, 2 at info.",
   "config.groups.whitespace": "Whitespace: trailing spaces and mixed newlines. Default: warning.",
   "config.groups.encoding": "File encoding (UTF-8). Default: error.",
+  "config.groups.security": "Secrets in the sources: a key or a password as a literal. Default: error.",
   "config.groups.structure": "Source structure: the Name.yaml + Name.xbsl pair. Default: warning.",
   "config.groups.form": "Forms: a yaml Обработчик: must point to an existing method. Default: warning.",
   "config.groups.query": "Query DSL checks (the Query{...} blocks): tables of FROM/JOIN against the project objects.",

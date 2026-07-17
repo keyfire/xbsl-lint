@@ -1101,6 +1101,29 @@
             "scope": "resource",
             "order": 11,
             "description": "%config.groups.project%"
+          },
+          "xbsl.groups.security": {
+            "type": "string",
+            "enum": [
+              "default",
+              "error",
+              "warning",
+              "info",
+              "hint",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%config.groups.enum.default%",
+              "%config.groups.enum.error%",
+              "%config.groups.enum.warning%",
+              "%config.groups.enum.info%",
+              "%config.groups.enum.hint%",
+              "%config.groups.enum.off%"
+            ],
+            "default": "default",
+            "scope": "resource",
+            "order": 12,
+            "description": "%config.groups.security%"
           }
         }
       }
