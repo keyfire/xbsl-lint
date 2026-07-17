@@ -3,7 +3,7 @@
 **English** · [Русский](https://github.com/keyfire/xbsl/blob/main/docs/RULES.ru.md)
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 80 rules.
+runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 81 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -72,6 +72,7 @@ are off by default (accumulated debt, `info`): enable them with `--select style`
 | Rule | Severity | Default | Scope | What it checks | Docs |
 |---|---|---|---|---|---|
 | `code/parse-error` | error | on | file | Syntax error (a full parse against the platform grammar) | [docs](https://1cmycloud.com/docs/help/topics/general-design/) |
+| `code/statement-no-effect` | warning | on | file | Expression statement with no effect: the value is dropped (often a keyword typo like `возрат 5`) | – |
 | `code/brackets` | error | on | file | Unbalanced brackets () [] {} | – |
 | `code/blocks` | error | on | file | Unbalanced blocks and ';' | [docs](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/ternary-and-or` | error | on | file | Compound ternary condition without parentheses | [docs](https://1cmycloud.com/docs/help/topics/question-mark-operation/) |
