@@ -331,6 +331,36 @@ async function ensureView(): Promise<void> {
   await vscode.commands.executeCommand(`${VIEW_TYPE}.focus`);
 }
 
+type PropsNode = { yamlPath?: string; offset?: number; stdKind?: string; stdName?: string };
+
+// Узел годится в цель панели: объект/поле с offset либо стандартный реквизит.
+function setTarget(node: PropsNode): boolean {
+  if (!node.yamlPath) {
+    return false;
+  }
+  if (node.stdKind && node.stdName) {
+    target = { uri: vscode.Uri.file(node.yamlPath), offset: node.offset ?? -1, std: { kind: node.stdKind, name: node.stdName } };
+    return true;
+  }
+  if (node.offset !== undefined) {
+    target = { uri: vscode.Uri.file(node.yamlPath), offset: node.offset };
+    return true;
+  }
+  return false;
+}
+
+// Тихое обновление по смене выделения в дереве (мышь, стрелки, программный reveal):
+// панель следует за выделением, только когда уже видна – выделение не открывает
+// файлы и не дёргает сайдбар.
+export function updatePropsFromSelection(node: PropsNode | undefined): void {
+  if (!node || !view || !view.visible) {
+    return;
+  }
+  if (setTarget(node)) {
+    void render();
+  }
+}
+
 // Открыть панель свойств для узла дерева (yamlPath + offset). typeCandidates (из провайдера
 // дерева) наполняет комбобокс Тип; без него поле Тип остаётся вводом текста.
 export function registerMetadataProps(
@@ -342,22 +372,12 @@ export function registerMetadataProps(
     vscode.window.registerWebviewViewProvider(VIEW_TYPE, new MetaPropsViewProvider(context), {
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.commands.registerCommand(
-      "xbsl.metadata.props",
-      async (node?: { yamlPath?: string; offset?: number; stdKind?: string; stdName?: string }) => {
-        if (!node?.yamlPath) {
-          return;
-        }
-        if (node.stdKind && node.stdName) {
-          target = { uri: vscode.Uri.file(node.yamlPath), offset: node.offset ?? -1, std: { kind: node.stdKind, name: node.stdName } };
-        } else if (node.offset !== undefined) {
-          target = { uri: vscode.Uri.file(node.yamlPath), offset: node.offset };
-        } else {
-          return;
-        }
-        await ensureView();
-        await render();
+    vscode.commands.registerCommand("xbsl.metadata.props", async (node?: PropsNode) => {
+      if (!node || !setTarget(node)) {
+        return;
       }
-    )
+      await ensureView();
+      await render();
+    })
   );
 }

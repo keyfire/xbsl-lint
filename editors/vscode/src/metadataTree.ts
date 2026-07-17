@@ -18,6 +18,7 @@ import {
   parseInternals,
   standardAttrNames,
 } from "./metadataCore";
+import { updatePropsFromSelection } from "./metadataProps";
 
 // Вид элемента -> группа в дереве + codicon. Несколько видов могут делить одну группу. Название
 // группы – английский ключ: он и группирует, и служит ключом l10n (в англ. UI бандл не грузится и
@@ -1351,6 +1352,9 @@ export function registerMetadataTree(
   context.subscriptions.push(
     view,
     watcher,
+    // Панель свойств следует за выделением в дереве (мышь, стрелки, программный
+    // reveal), если она уже открыта; открывает её по-прежнему клик или пункт "Свойства".
+    view.onDidChangeSelection((e) => updatePropsFromSelection(e.selection[0])),
     // Обратная навигация: активный редактор описания/модуля/формы – показать его элемент в дереве.
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor && editor.document.uri.scheme === "file") {

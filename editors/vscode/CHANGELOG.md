@@ -6,6 +6,12 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.21.1
+
+- The properties view follows the tree selection (mouse, arrow keys, reveal from the
+  active editor) when it is already open; opening it is still a click on a node or the
+  "Properties" context-menu item. Selection alone never opens files or moves focus.
+
 ## 0.21.0
 
 - Object properties from the metadata tree live in a sidebar view (below the tree and the
