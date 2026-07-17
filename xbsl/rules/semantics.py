@@ -38,6 +38,7 @@ checked.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from functools import lru_cache
 
@@ -80,18 +81,36 @@ def _stdlib_names() -> frozenset[str]:
         return frozenset()
 
 
+# Имя объекта ради _project_object_names добывается регексами, а не полным разбором yaml:
+# в профиле целопроектного прогона yaml.load всех описаний ради двух верхнеуровневых полей
+# был самой дорогой строкой (конструктор PyYAML остаётся питоньим даже с libyaml).
+_TOP_KIND_RE = re.compile(r"^ВидЭлемента:", re.M)
+_TOP_NAME_RE = re.compile(r"^Имя:[ \t]*(['\"]?)([^\r\n#]*?)\1[ \t]*(?:#.*)?\r?$", re.M)
+_MISSING = object()
+
+
+def _object_name_fast(s: SourceFile) -> str | None:
+    """Имя объекта метаданных (файл с ВидЭлемента) без полного разбора yaml, с кэшем."""
+    cached = s.cache.get("object_name_fast", _MISSING)
+    if cached is not _MISSING:
+        return cached
+    name = None
+    if _TOP_KIND_RE.search(s.text):
+        m = _TOP_NAME_RE.search(s.text)
+        if m and m.group(2):
+            name = m.group(2)
+    s.cache["object_name_fast"] = name
+    return name
+
+
 def _project_object_names(sources: list[SourceFile]) -> set[str]:
     names: set[str] = set()
-    if not _HAVE_YAML:
-        return names
     for s in sources:
         if s.kind != "yaml":
             continue
-        data, err = _parsed(s)
-        if err is None and isinstance(data, dict) and data.get("ВидЭлемента"):
-            nm = data.get("Имя")
-            if isinstance(nm, str):
-                names.add(nm)
+        nm = _object_name_fast(s)
+        if nm is not None:
+            names.add(nm)
     return names
 
 

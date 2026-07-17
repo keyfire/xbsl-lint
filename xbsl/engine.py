@@ -275,14 +275,17 @@ _PARALLEL_MIN_FILES = 120
 
 
 def _worker_lint(payload: tuple) -> list[Diagnostic]:
-    paths, select, ignore, enable, lang, element_version = payload
+    """Задача воркера: файловые правила на шарде файлов ЛИБО группа проектных правил
+    на всём проекте (kind == "project"; идентификаторы правил приходят готовым select)."""
+    kind, paths, select, ignore, enable, lang, element_version = payload
     from xbsl import dataset, i18n
 
     i18n.set_lang(lang)
     if element_version:
         dataset.set_version(element_version)
     sources = [load(Path(p)) for p in paths]
-    return run_sources(sources, select=select, ignore=ignore, enable=enable, scopes=("file",))
+    scopes = ("project",) if kind == "project" else ("file",)
+    return run_sources(sources, select=select, ignore=ignore, enable=enable, scopes=scopes)
 
 
 def resolve_jobs(jobs: int, file_count: int) -> int:
@@ -321,19 +324,30 @@ def run_parallel(
 
     from xbsl import i18n
 
-    chunks = [[str(p) for p in paths[i::workers]] for i in range(workers)]
-    payloads = [
-        (chunk, select, ignore, enable, lang or i18n.current_lang(), element_version)
+    lang = lang or i18n.current_lang()
+    all_paths = [str(p) for p in paths]
+
+    # Проектные правила шардируются группами: каждая группа-воркер сама грузит весь проект
+    # (это дублирование подготовки, зато самые тяжёлые правила перестают быть
+    # последовательным потолком). Групп немного: подготовка в каждой не бесплатна.
+    project_ids = [r.id for r in active_rules(select, ignore, enable) if r.scope == "project"]
+    group_count = min(4, workers, len(project_ids)) if project_ids else 0
+    project_groups = [set(project_ids[i::group_count]) for i in range(group_count)]
+
+    file_workers = max(1, workers - group_count)
+    chunks = [[str(p) for p in paths[i::file_workers]] for i in range(file_workers)]
+    payloads: list[tuple] = [
+        ("file", chunk, select, ignore, enable, lang, element_version)
         for chunk in chunks if chunk
+    ]
+    payloads += [
+        ("project", all_paths, group, None, None, lang, element_version)
+        for group in project_groups
     ]
     diags: list[Diagnostic] = []
     with ProcessPoolExecutor(max_workers=workers) as pool:
         for part in pool.map(_worker_lint, payloads):
             diags.extend(part)
-    # Проектные правила – по всем файлам сразу, в родителе.
-    sources = [load(p) for p in paths]
-    diags.extend(run_sources(sources, select=select, ignore=ignore, enable=enable,
-                             scopes=("project",)))
     return sorted(diags, key=lambda d: (d.path, d.line, d.col, d.rule_id))
 
 
