@@ -7,15 +7,28 @@ runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 87 r
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
-The linter works over text, the AST and the project model, with first-hop type knowledge
-only (the declared nominal types of variables - no inference of expression types). It
-catches what the Element compiler does not check or reports unclearly (conventions,
-typography, structure, references to non-existent types and objects) plus the provable
-signature-level mistakes (a return not matching the method signature, a wrong argument
-count of a local call, a non-exception in `поймать`, a missing member of a plain stdlib
-type), but NOT what needs full inference: a redundant cast, an unclosed resource, the
-type of a returned value. Code correctness is verified by the server-side compilation on
-deploy; the linter runs before it and removes common mistakes early.
+The linter works over text, the AST and the project model. Its rules know types at the first
+hop: the declared nominal type of a variable and its members, the project objects and the
+types they generate, enumeration values, the global types of the linked libraries (from the
+`.xlib` archive) - but they do not infer the type of an expression. The engine does infer
+chain types, only that feeds hover and completion in the editor, not the checks.
+
+Some of the findings the compiler would catch as well: an unknown type, an argument count, a
+non-exception in `поймать`, a return not matching the signature. The linter's value there is
+not that it sees more, but that it sees them **earlier** - in seconds on your own machine,
+before the build and the deploy, pointing at the exact spot. The rest the compiler never
+checks at all: code-writing conventions, typography, project structure (duplicate `Ид`,
+file pairing), unused variables, secrets in the sources.
+
+What the linter does not do is anything that needs full inference of expression types: a
+redundant cast, an unclosed resource, whether the TYPE of a returned value matches the
+signature. That last one is worth separating: a structural mismatch (a value in a void
+method, a bare `возврат` in a typed one) is caught by `code/return-mismatch`, while a
+`возврат` of a string from a method declared `: Число` slips through - telling that apart
+needs the expression's type.
+
+Code correctness is verified by the server-side compilation on deploy; the linter runs before
+it and removes common mistakes early.
 
 ## How to read the table
 
