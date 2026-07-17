@@ -35,6 +35,7 @@ _DATA_DEPENDENT = {
     "test_parser",  # парсер сидит на лексере, а тот – на language.json
     "test_statement_no_effect",  # правило разбирает код парсером
     "test_return_mismatch",  # правило разбирает код парсером
+    "test_catch_exceptions",  # правилу нужен каталог stdlib
 }
 
 

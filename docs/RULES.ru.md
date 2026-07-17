@@ -3,7 +3,7 @@
 [English](https://github.com/keyfire/xbsl/blob/main/docs/RULES.md) · **Русский**
 
 Полный перечень проверок линтера. Файл дополняется при добавлении правил; актуальный
-список в рантайме – `xbsl list-rules` (или MCP `list_rules`). Сейчас правил: 82.
+список в рантайме – `xbsl list-rules` (или MCP `list_rules`). Сейчас правил: 83.
 
 ## Граница: линтер дополняет компилятор, но не заменяет его
 
@@ -73,7 +73,7 @@
 |---|---|---|---|---|---|
 | `code/parse-error` | error | вкл | файл | Синтаксическая ошибка (полный разбор по грамматике платформы) | [доки](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/statement-no-effect` | warning | вкл | файл | Оператор-выражение без эффекта: значение отбрасывается (часто опечатка в ключевом слове вида `возрат 5`) | – |
-| `code/return-mismatch` | error | вкл | файл | Возврат не по сигнатуре метода (значение в методе-ничто, пустой `возврат` в типизированном) – компилятор такой код отвергает | – |
+| `code/return-mismatch` | error | вкл | файл | Возврат не по сигнатуре метода (значение в методе-ничто, пустой `возврат` в типизированном) – компилятор такой код отвергает | [доки](https://1cmycloud.com/docs/help/topics/methods-in-built-in-script-language/) |
 | `code/brackets` | error | вкл | файл | Дисбаланс скобок () [] {} | – |
 | `code/blocks` | error | вкл | файл | Дисбаланс блоков и ';' | [доки](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/ternary-and-or` | error | вкл | файл | Составное условие тернарного оператора без скобок | [доки](https://1cmycloud.com/docs/help/topics/question-mark-operation/) |
@@ -111,6 +111,7 @@
 |---|---|---|---|---|---|
 | `yaml/choice-needs-static-list` | warning | вкл | файл | ВыборЗначения без статичного СпискаВыбора | [доки](https://1cmycloud.com/docs/help/stdlib/element/xbsl/Std/Interface/CommonComponents/ValueChoice_ru/) |
 | `code/unknown-type` | warning | вкл | проект | Неизвестный тип | – |
+| `code/catch-non-exception` | error | вкл | файл | Тип в `поймать` не исключение (stdlib-тип без сигнатуры исключения или локальная `структура`) – компилятор такой код отвергает | [доки](https://1cmycloud.com/docs/help/topics/exceptions/) |
 | `code/undefined-name` | error | вкл | проект | Неизвестное имя в выражении (опечатки вида `Адресар` вместо `Адреса`) – компилятор такой код отвергает | – |
 | `code/unknown-object-type` | warning | вкл | проект | Неизвестный тип объекта проекта | – |
 | `yaml/unknown-type` | warning | вкл | проект | Неизвестный тип в yaml | – |

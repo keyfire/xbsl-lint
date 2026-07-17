@@ -3,7 +3,7 @@
 **English** · [Русский](https://github.com/keyfire/xbsl/blob/main/docs/RULES.ru.md)
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 82 rules.
+runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 83 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -73,7 +73,7 @@ are off by default (accumulated debt, `info`): enable them with `--select style`
 |---|---|---|---|---|---|
 | `code/parse-error` | error | on | file | Syntax error (a full parse against the platform grammar) | [docs](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/statement-no-effect` | warning | on | file | Expression statement with no effect: the value is dropped (often a keyword typo like `возрат 5`) | – |
-| `code/return-mismatch` | error | on | file | Return does not match the method signature (a value in a void method, a bare `возврат` in a typed one) - the compiler rejects such code | – |
+| `code/return-mismatch` | error | on | file | Return does not match the method signature (a value in a void method, a bare `возврат` in a typed one) - the compiler rejects such code | [docs](https://1cmycloud.com/docs/help/topics/methods-in-built-in-script-language/) |
 | `code/brackets` | error | on | file | Unbalanced brackets () [] {} | – |
 | `code/blocks` | error | on | file | Unbalanced blocks and ';' | [docs](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/ternary-and-or` | error | on | file | Compound ternary condition without parentheses | [docs](https://1cmycloud.com/docs/help/topics/question-mark-operation/) |
@@ -111,6 +111,7 @@ the execution model (client/server), form handlers, properties and queries.
 |---|---|---|---|---|---|
 | `yaml/choice-needs-static-list` | warning | on | file | ВыборЗначения without a static СписокВыбора | [docs](https://1cmycloud.com/docs/help/stdlib/element/xbsl/Std/Interface/CommonComponents/ValueChoice_ru/) |
 | `code/unknown-type` | warning | on | project | Unknown type | – |
+| `code/catch-non-exception` | error | on | file | The type in `поймать` is not an exception (a stdlib non-exception or a local `структура`) - the compiler rejects such code | [docs](https://1cmycloud.com/docs/help/topics/exceptions/) |
 | `code/undefined-name` | error | on | project | Undefined name in an expression (typos like `Адресар` for `Адреса`) - the compiler rejects such code | – |
 | `code/unknown-object-type` | warning | on | project | Unknown project-object type | – |
 | `yaml/unknown-type` | warning | on | project | Unknown type in yaml | – |

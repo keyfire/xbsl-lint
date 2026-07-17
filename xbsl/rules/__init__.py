@@ -34,6 +34,7 @@ from . import (  # noqa: F401
 
 # Tier D – semantics over stdlib, forms and the metamodel:
 from . import (  # noqa: F401
+    catch_exceptions,
     choice_list,
     dynlist_fields,
     enum_nullable,

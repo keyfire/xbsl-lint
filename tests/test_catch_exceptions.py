@@ -1,0 +1,68 @@
+"""Тесты правила code/catch-non-exception: тип в 'поймать' обязан быть исключением.
+
+Правило доказывает только негатив: находка требует, чтобы тип был ИЗВЕСТЕН как
+не-исключение (stdlib-тип без сигнатуры исключения или локальная 'структура').
+"""
+
+from __future__ import annotations
+
+from xbsl.diagnostics import Diagnostic
+from xbsl.engine import load_text, run_sources
+
+
+def _lint(code: str) -> list[Diagnostic]:
+    src = load_text("Модуль.xbsl", code)
+    return list(run_sources([src], select={"code/catch-non-exception"}, scopes=("file",)))
+
+
+def _try(catch: str) -> str:
+    return (
+        "метод Тест()\n"
+        "    попытка\n"
+        "        Ф()\n"
+        f"    поймать Ошибка: {catch}\n"
+        "        Сообщить(Ошибка.Описание)\n"
+        "    ;\n"
+        ";\n"
+    )
+
+
+def test_stdlib_non_exception_is_flagged():
+    diags = _lint(_try("Строка"))
+    assert len(diags) == 1
+    assert "Строка" in diags[0].message
+
+
+def test_stdlib_exceptions_pass():
+    assert _lint(_try("Исключение")) == []
+    assert _lint(_try("ИсключениеHttp")) == []
+
+
+def test_local_structure_is_flagged_and_local_exception_passes():
+    base = (
+        "структура Точка\n"
+        "    знч Х: Число = 0\n"
+        ";\n"
+        "исключение ИсключениеСвоё\n"
+        ";\n"
+    )
+    assert len(_lint(base + _try("Точка"))) == 1
+    assert _lint(base + _try("ИсключениеСвоё")) == []
+
+
+def test_unknown_project_type_is_silent():
+    # тип из другого модуля правилу не виден - не наговариваем
+    assert _lint(_try("ЧужоеИсключениеПроекта")) == []
+
+
+def test_catch_without_type_is_fine():
+    diags = _lint(
+        "метод Тест()\n"
+        "    попытка\n"
+        "        Ф()\n"
+        "    поймать Ошибка\n"
+        "        Сообщить(Ошибка.Описание)\n"
+        "    ;\n"
+        ";\n"
+    )
+    assert diags == []
