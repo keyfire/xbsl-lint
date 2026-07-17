@@ -9,15 +9,18 @@ Left alone on purpose:
 - calls with named arguments (`Имя = значение` - the named-parameters mechanics);
 - callee names shadowed by a local declaration or parameter anywhere in the module
   (a variable may hold a lambda with its own arity);
-- duplicate method names (broken anyway - the compiler reports it);
-- cross-module calls (need the project index - a later stage).
+- duplicate method names (broken anyway - the compiler reports it).
+
+Cross-module calls (`Модуль.Метод(...)`) are covered by the project-scope twin
+`code/call-arity-cross` below - it resolves the base name to another module of the
+project and checks against that module's signatures.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 
-from xbsl import i18n
+from xbsl import dataset, i18n
 from xbsl import parser as P
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
@@ -36,6 +39,10 @@ MESSAGES = {
     "code/call-arity.too-few": {
         "ru": "Вызов {name}: передано аргументов – {got}, методу нужно не меньше {min}",
         "en": "Call of {name}: {got} arguments passed, the method needs at least {min}",
+    },
+    "code/call-arity-cross.title": {
+        "ru": "Число аргументов кросс-модульного вызова не по сигнатуре",
+        "en": "Argument count of a cross-module call does not match the signature",
     },
 }
 i18n.register(MESSAGES)
@@ -246,3 +253,112 @@ def call_arity(source: SourceFile) -> Iterable[Diagnostic]:
                 source.rel, line, col, "code/call-arity", Severity.ERROR,
                 i18n.t("code/call-arity.too-few", name=name, got=got, min=required),
             )
+
+
+@rule(
+    "code/call-arity-cross", "code/call-arity-cross.title", "D",
+    scope="project", severity=Severity.ERROR,
+)
+def call_arity_cross(sources: list[SourceFile]) -> Iterable[Diagnostic]:
+    """`Модуль.Метод(...)` must fit the target module's method signature.
+
+    Signatures come from the project's own module files (the file stem is the callable
+    name; dotted stems - object modules and other satellites - are not callable by name).
+    A finding needs the base name to resolve to exactly one clean project module and the
+    method to exist there. Skipped: stdlib name shadows (Пользователи), duplicated module
+    or method names, named arguments, bases shadowed by any local declaration, broken
+    files (both as callers and as signature sources).
+    """
+    try:
+        stdlib_names = set(dataset.load_json("stdlib.json").get("names", ()))
+    except Exception:  # noqa: BLE001
+        return  # without the catalog a project module cannot be told from a stdlib shadow
+    # Module name -> {method: (required, total)}; None marks an unusable name
+    # (a parse-broken file or twin modules in different directories).
+    module_sigs: dict[str, dict[str, tuple[int, int]] | None] = {}
+    parsed: list[tuple[SourceFile, P.Module]] = []
+    for s in sources:
+        if s.kind != "xbsl":
+            continue
+        stem = s.rel.replace("\\", "/").rsplit("/", 1)[-1].removesuffix(".xbsl")
+        module, errors = parse(s)
+        if not errors:
+            parsed.append((s, module))
+        if "." in stem:
+            continue
+        if errors or stem in module_sigs:
+            module_sigs[stem] = None
+            continue
+        sigs: dict[str, tuple[int, int]] = {}
+        dupes: set[str] = set()
+        for m in module.members:
+            if isinstance(m, P.Method):
+                if m.name in sigs:
+                    dupes.add(m.name)
+                sigs[m.name] = _signature(m)
+        for d in dupes:
+            sigs.pop(d, None)
+        module_sigs[stem] = sigs
+    if not any(module_sigs.values()):
+        return
+
+    for s, module in parsed:
+        own: set[str] = set()  # this module's members: the file-scope rule's territory
+        calls: list[P.Call] = []
+        declared: set[str] = set()
+        for m in module.members:
+            if isinstance(m, (P.Method, P.Structure, P.Enum, P.ObjectField)):
+                own.add(m.name)
+            if isinstance(m, P.Method):
+                declared.update(p.name for p in m.params)
+                for p in m.params:
+                    _walk_expr(p.default, calls, declared)
+                _walk_body(m.body, calls, declared)
+            elif isinstance(m, P.ObjectField):
+                if m.init is not None:
+                    _walk_expr(m.init, calls, declared)
+            elif isinstance(m, (P.Structure, P.Enum)):
+                subs = m.members if isinstance(m, P.Structure) else m.methods
+                for sub in subs:
+                    if isinstance(sub, P.Method):
+                        declared.update(p.name for p in sub.params)
+                        _walk_body(sub.body, calls, declared)
+                    elif isinstance(sub, P.ObjectField) and sub.init is not None:
+                        _walk_expr(sub.init, calls, declared)
+        if not calls:
+            continue
+        lm = linemap(s)
+        for call in calls:
+            callee = call.callee
+            if not (
+                isinstance(callee, P.Member)
+                and isinstance(callee.obj, P.Name)
+                and not callee.safe
+            ):
+                continue
+            base = callee.obj.name
+            if "::" in base or base in declared or base in own or base in stdlib_names:
+                continue
+            target = module_sigs.get(base)
+            if not target:
+                continue
+            sig = target.get(callee.name)
+            if sig is None:
+                continue  # no such method there - not this rule's business
+            if any(arg.name is not None for arg in call.args):
+                continue
+            required, total = sig
+            got = len(call.args)
+            name = f"{base}.{callee.name}"
+            if got > total:
+                line, col = lm.linecol(call.start)
+                yield Diagnostic(
+                    s.rel, line, col, "code/call-arity-cross", Severity.ERROR,
+                    i18n.t("code/call-arity.too-many", name=name, got=got, max=total),
+                )
+            elif got < required:
+                line, col = lm.linecol(call.start)
+                yield Diagnostic(
+                    s.rel, line, col, "code/call-arity-cross", Severity.ERROR,
+                    i18n.t("code/call-arity.too-few", name=name, got=got, min=required),
+                )

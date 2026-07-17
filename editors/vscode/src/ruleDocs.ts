@@ -91,6 +91,7 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   { match: (r) => r === "code/ref-field-needs-req", page: "topics/structure", anchor: "синтаксис" },
   { match: (r) => r === "code/return-mismatch", page: METHODS, anchor: "определение-метода" },
   { match: (r) => r === "code/call-arity", page: METHODS, anchor: "определение-метода" },
+  { match: (r) => r === "code/call-arity-cross", page: METHODS, anchor: "определение-метода" },
   { match: (r) => r === "code/catch-non-exception", page: "topics/exceptions" },
   { match: (r) => r === "code/unknown-enum-value", page: ENUM, anchor: "элементы" },
 

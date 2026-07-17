@@ -3,7 +3,7 @@
 [English](https://github.com/keyfire/xbsl/blob/main/docs/RULES.md) · **Русский**
 
 Полный перечень проверок линтера. Файл дополняется при добавлении правил; актуальный
-список в рантайме – `xbsl list-rules` (или MCP `list_rules`). Сейчас правил: 85.
+список в рантайме – `xbsl list-rules` (или MCP `list_rules`). Сейчас правил: 86.
 
 ## Граница: линтер дополняет компилятор, но не заменяет его
 
@@ -118,6 +118,7 @@
 | `code/unknown-type` | warning | вкл | проект | Неизвестный тип | – |
 | `code/catch-non-exception` | error | вкл | файл | Тип в `поймать` не исключение (stdlib-тип без сигнатуры исключения или локальная `структура`) – компилятор такой код отвергает | [доки](https://1cmycloud.com/docs/help/topics/exceptions/) |
 | `code/unknown-member` | error | вкл | файл | Обращение к отсутствующему члену переменной известного простого stdlib-типа (первый шаг цепочки, у опечаток подсказка) | – |
+| `code/call-arity-cross` | error | вкл | проект | Число аргументов вызова `Модуль.Метод(...)` вне диапазона сигнатуры модуля-адресата | [доки](https://1cmycloud.com/docs/help/topics/methods-in-built-in-script-language/) |
 | `code/undefined-name` | error | вкл | проект | Неизвестное имя в выражении (опечатки вида `Адресар` вместо `Адреса`) – компилятор такой код отвергает | – |
 | `code/unknown-object-type` | warning | вкл | проект | Неизвестный тип объекта проекта | – |
 | `yaml/unknown-type` | warning | вкл | проект | Неизвестный тип в yaml | – |
