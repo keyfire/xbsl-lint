@@ -29,9 +29,223 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from xbsl import i18n
 from xbsl.lexer import Token, tokens
 
 __all__ = ["parse", "parse_text", "ParseError", "Module"]
+
+
+# Parser diagnostics. Messages are resolved at ParseError creation time (the language is
+# pinned for the whole run, and the AST cache lives within one run, so cached errors
+# cannot leak a stale language). Every emit site has its own full key - no fragments to
+# glue, and tests/test_i18n.py checks the ru/en parity automatically.
+MESSAGES = {
+    "parser.unexpected-module-code": {
+        "ru": i18n.t("parser.unexpected-module-code"),
+        "en": "Unexpected code at the module level",
+    },
+    "parser.annotation-needs-member": {
+        "ru": i18n.t("parser.annotation-needs-member"),
+        "en": "After an annotation expected a method, structure, enum or constant",
+    },
+    "parser.expected-module-member": {
+        "ru": i18n.t("parser.expected-module-member"),
+        "en": "Expected an import, method, structure, enum or module constant",
+    },
+    "parser.expected-import-name": {
+        "ru": i18n.t("parser.expected-import-name"),
+        "en": "Expected a subsystem name after 'импорт'",
+    },
+    "parser.expected-method-kw": {
+        "ru": i18n.t("parser.expected-method-kw"),
+        "en": "Expected 'метод'",
+    },
+    "parser.expected-method-name": {
+        "ru": i18n.t("parser.expected-method-name"),
+        "en": "Expected a method name",
+    },
+    "parser.expected-param-name": {
+        "ru": i18n.t("parser.expected-param-name"),
+        "en": "Expected a parameter name",
+    },
+    "parser.expected-struct-name": {
+        "ru": i18n.t("parser.expected-struct-name"),
+        "en": "Expected a structure name",
+    },
+    "parser.expected-struct-member": {
+        "ru": i18n.t("parser.expected-struct-member"),
+        "en": "Expected a field, constructor or method of the structure",
+    },
+    "parser.expected-field-kw": {
+        "ru": i18n.t("parser.expected-field-kw"),
+        "en": "Expected 'знч', 'пер' or 'исп'",
+    },
+    "parser.expected-field-name": {
+        "ru": i18n.t("parser.expected-field-name"),
+        "en": "Expected a field name",
+    },
+    "parser.expected-enum-name": {
+        "ru": i18n.t("parser.expected-enum-name"),
+        "en": "Expected an enum name",
+    },
+    "parser.expected-enum-value": {
+        "ru": i18n.t("parser.expected-enum-value"),
+        "en": "Expected an enum value",
+    },
+    "parser.expected-const-name": {
+        "ru": i18n.t("parser.expected-const-name"),
+        "en": "Expected a module constant name",
+    },
+    "parser.expected-type-name": {
+        "ru": i18n.t("parser.expected-type-name"),
+        "en": "Expected a type name",
+    },
+    "parser.statement-unparsed": {
+        "ru": i18n.t("parser.statement-unparsed"),
+        "en": "Cannot parse the statement",
+    },
+    "parser.duplicate-else": {
+        "ru": i18n.t("parser.duplicate-else"),
+        "en": "Duplicate 'иначе' branch",
+    },
+    "parser.expected-loop-var": {
+        "ru": i18n.t("parser.expected-loop-var"),
+        "en": "Expected a loop variable name",
+    },
+    "parser.expected-po-in-for": {
+        "ru": i18n.t("parser.expected-po-in-for"),
+        "en": "Expected 'по' in the 'для' loop",
+    },
+    "parser.expected-catch-var": {
+        "ru": i18n.t("parser.expected-catch-var"),
+        "en": "Expected an exception variable name",
+    },
+    "parser.expected-var-name": {
+        "ru": i18n.t("parser.expected-var-name"),
+        "en": "Expected a variable name",
+    },
+    "parser.decl-needs-type-or-value": {
+        "ru": i18n.t("parser.decl-needs-type-or-value"),
+        "en": "A declaration needs a type or an initial value",
+    },
+    "parser.expected-expr-after-assign": {
+        "ru": i18n.t("parser.expected-expr-after-assign"),
+        "en": "Expected an expression after the assignment",
+    },
+    "parser.expected-dot-in-method-ref": {
+        "ru": i18n.t("parser.expected-dot-in-method-ref"),
+        "en": "Expected '.' in the method reference",
+    },
+    "parser.expected-name-in-method-ref": {
+        "ru": i18n.t("parser.expected-name-in-method-ref"),
+        "en": "Expected a name in the method reference",
+    },
+    "parser.expected-name-after-colons": {
+        "ru": i18n.t("parser.expected-name-after-colons"),
+        "en": "Expected a name after '::'",
+    },
+    "parser.expected-name-after-dot": {
+        "ru": i18n.t("parser.expected-name-after-dot"),
+        "en": "Expected a name after '.'",
+    },
+    "parser.expected-expr": {
+        "ru": i18n.t("parser.expected-expr"),
+        "en": "Expected an expression",
+    },
+    "parser.expected-type-after-new": {
+        "ru": i18n.t("parser.expected-type-after-new"),
+        "en": "Expected a type name after 'новый'",
+    },
+    "parser.expected-gt-in-type-literal": {
+        "ru": i18n.t("parser.expected-gt-in-type-literal"),
+        "en": "Expected '>' in the type literal",
+    },
+    "parser.expected-rparen-annotation": {
+        "ru": "Ожидается ')' после параметров аннотации",
+        "en": "Expected ')' after the annotation parameters",
+    },
+    "parser.expected-lparen-method": {
+        "ru": "Ожидается '(' после имени метода",
+        "en": "Expected '(' after the method name",
+    },
+    "parser.expected-rparen-params": {
+        "ru": "Ожидается ')' после параметров",
+        "en": "Expected ')' after the parameters",
+    },
+    "parser.expected-semicolon-struct": {
+        "ru": "Ожидается ';' в конце структуры",
+        "en": "Expected ';' at the end of the structure",
+    },
+    "parser.expected-semicolon-enum": {
+        "ru": "Ожидается ';' в конце перечисления",
+        "en": "Expected ';' at the end of the enum",
+    },
+    "parser.expected-semicolon-if": {
+        "ru": "Ожидается ';' в конце 'если'",
+        "en": "Expected ';' at the end of 'если'",
+    },
+    "parser.expected-semicolon-case": {
+        "ru": "Ожидается ';' в конце 'выбор'",
+        "en": "Expected ';' at the end of 'выбор'",
+    },
+    "parser.expected-eq-in-for": {
+        "ru": "Ожидается '=' в цикле 'для'",
+        "en": "Expected '=' in the 'для' loop",
+    },
+    "parser.expected-colon-catch": {
+        "ru": "Ожидается ':' после переменной 'поймать'",
+        "en": "Expected ':' after the 'поймать' variable",
+    },
+    "parser.expected-semicolon-try": {
+        "ru": "Ожидается ';' в конце 'попытка'",
+        "en": "Expected ';' at the end of 'попытка'",
+    },
+    "parser.expected-colon-ternary": {
+        "ru": "Ожидается ':' в тернарном операторе",
+        "en": "Expected ':' in the ternary operator",
+    },
+    "parser.expected-rbracket-index": {
+        "ru": "Ожидается ']' после индекса",
+        "en": "Expected ']' after the index",
+    },
+    "parser.expected-rparen-call": {
+        "ru": "Ожидается ')' после аргументов вызова",
+        "en": "Expected ')' after the call arguments",
+    },
+    "parser.expected-rparen-paren": {
+        "ru": "Ожидается ')' после выражения в скобках",
+        "en": "Expected ')' after the parenthesized expression",
+    },
+    "parser.expected-rbracket-array": {
+        "ru": "Ожидается ']' в конце литерала массива",
+        "en": "Expected ']' at the end of the array literal",
+    },
+    "parser.expected-rbrace-map": {
+        "ru": "Ожидается '}}' в конце литерала коллекции",
+        "en": "Expected '}}' at the end of the collection literal",
+    },
+    "parser.expected-semicolon-method": {
+        "ru": "Ожидается ';' в конце метода",
+        "en": "Expected ';' at the end of the method",
+    },
+    "parser.expected-semicolon-while": {
+        "ru": "Ожидается ';' в конце 'пока'",
+        "en": "Expected ';' at the end of 'пока'",
+    },
+    "parser.expected-semicolon-for": {
+        "ru": "Ожидается ';' в конце 'для'",
+        "en": "Expected ';' at the end of 'для'",
+    },
+    "parser.expected-semicolon-scope": {
+        "ru": "Ожидается ';' в конце 'область'",
+        "en": "Expected ';' at the end of 'область'",
+    },
+    "parser.expected-semicolon-lambda": {
+        "ru": "Ожидается ';' в конце лямбды",
+        "en": "Expected ';' at the end of the lambda",
+    },
+}
+i18n.register(MESSAGES)
 
 
 # --- AST -------------------------------------------------------------------------------
@@ -474,10 +688,10 @@ class _Parser:
             return self.advance()
         return None
 
-    def expect_op(self, val: str, what: str) -> Token | None:
+    def expect_op(self, val: str, key: str) -> Token | None:
         t = self.eat_op(val)
         if t is None:
-            self.error(f"Ожидается '{val}' {what}")
+            self.error(i18n.t(key))
         return t
 
     def error(self, message: str, tok: Token | None = None) -> None:
@@ -517,7 +731,7 @@ class _Parser:
             before = self.pos
             self.module_member(module)
             if self.pos == before:  # nothing consumed - report and step over
-                self.error("Неожиданный код на уровне модуля")
+                self.error(i18n.t("parser.unexpected-module-code"))
                 self.advance()
         module.end = self.peek().end
         return module, self.errors
@@ -542,9 +756,9 @@ class _Parser:
         elif self.at_kw("VAL", "VAR", "USE", "CONST"):
             module.members.append(self.module_const(annotations))
         elif annotations:
-            self.error("После аннотации ожидается метод, структура, перечисление или константа")
+            self.error(i18n.t("parser.annotation-needs-member"))
         else:
-            self.error("Ожидается импорт, метод, структура, перечисление или константа модуля")
+            self.error(i18n.t("parser.expected-module-member"))
             self.recover_to_module_member()
 
     def recover_to_module_member(self) -> None:
@@ -562,7 +776,7 @@ class _Parser:
         while True:
             name = self.eat_name()
             if name is None:
-                self.error("Ожидается имя подсистемы после 'импорт'")
+                self.error(i18n.t("parser.expected-import-name"))
                 break
             parts.append(name.value)
             if not self.eat_op("::"):
@@ -608,7 +822,7 @@ class _Parser:
                 args.append(self.expression())
             if not self.eat_op(","):
                 break
-        self.expect_op(")", "после параметров аннотации")
+        self.expect_op(")", "parser.expected-rparen-annotation")
         return args
 
     # --- module members ---
@@ -620,11 +834,11 @@ class _Parser:
         if is_abstract:
             self.eat_kw("STATIC")
         if not self.eat_kw("METHOD"):
-            self.error("Ожидается 'метод'")
+            self.error(i18n.t("parser.expected-method-kw"))
         name_tok = self.eat_name()
         name = name_tok.value if name_tok else ""
         if name_tok is None:
-            self.error("Ожидается имя метода")
+            self.error(i18n.t("parser.expected-method-name"))
         params = self.parameters()
         return_type = None
         if self.eat_op(":"):
@@ -632,20 +846,20 @@ class _Parser:
                 return_type = self.compound_type()
         body: list[Stmt] = []
         if not is_abstract:
-            body = self.statements_until_semicolon("метода")
+            body = self.statements_until_semicolon("parser.expected-semicolon-method")
         end = self.toks[self.pos - 1].end
         return Method(start, end, name, params, return_type, body,
                       is_static=is_static, is_abstract=is_abstract, annotations=annotations)
 
     def parameters(self) -> list[Param]:
         params: list[Param] = []
-        if not self.expect_op("(", "после имени метода"):
+        if not self.expect_op("(", "parser.expected-lparen-method"):
             return params
         while not self.at_end() and not self.at_op(")"):
             anns = self.annotations()
             name_tok = self.eat_name()
             if name_tok is None:
-                self.error("Ожидается имя параметра")
+                self.error(i18n.t("parser.expected-param-name"))
                 break
             ptype = self.compound_type() if self.eat_op(":") else None
             default = self.expression() if self.eat_op("=") else None
@@ -655,7 +869,7 @@ class _Parser:
                 name_tok.value, ptype, default, anns,
             ))
             self.eat_op(",")  # the comma between parameters is optional in the grammar
-        self.expect_op(")", "после параметров")
+        self.expect_op(")", "parser.expected-rparen-params")
         return params
 
     def structure(self, annotations: list[Annotation]) -> Structure:
@@ -663,7 +877,7 @@ class _Parser:
         start = annotations[0].start if annotations else kw.start
         name_tok = self.eat_name()
         if name_tok is None:
-            self.error("Ожидается имя структуры")
+            self.error(i18n.t("parser.expected-struct-name"))
         node = Structure(start, start, kw.canonical or "", name_tok.value if name_tok else "",
                          annotations=annotations)
         while not self.at_end() and not self.at_op(";"):
@@ -678,11 +892,11 @@ class _Parser:
             elif self.at_kw("REQ", "VAL", "VAR", "USE"):
                 node.members.append(self.object_field(member_anns))
             else:
-                self.error("Ожидается поле, конструктор или метод структуры")
+                self.error(i18n.t("parser.expected-struct-member"))
                 self.advance()
             if self.pos == before:
                 self.advance()
-        self.expect_op(";", "в конце структуры")
+        self.expect_op(";", "parser.expected-semicolon-struct")
         node.end = self.toks[self.pos - 1].end
         return node
 
@@ -692,12 +906,12 @@ class _Parser:
         kind_tok = self.eat_kw("VAL", "VAR", "USE")
         kind = kind_tok.canonical if kind_tok else "VAL"
         if kind_tok is None:
-            self.error("Ожидается 'знч', 'пер' или 'исп'")
+            self.error(i18n.t("parser.expected-field-kw"))
         if not required:
             required = self.eat_kw("REQ") is not None
         name_tok = self.eat_name()
         if name_tok is None:
-            self.error("Ожидается имя поля")
+            self.error(i18n.t("parser.expected-field-name"))
         ftype = self.compound_type() if self.eat_op(":") else None
         init = self.expression() if self.eat_op("=") else None
         return ObjectField(start, self.toks[self.pos - 1].end, kind or "VAL",
@@ -709,7 +923,7 @@ class _Parser:
         start = annotations[0].start if annotations else kw.start
         name_tok = self.eat_name()
         if name_tok is None:
-            self.error("Ожидается имя перечисления")
+            self.error(i18n.t("parser.expected-enum-name"))
         node = Enum(start, start, name_tok.value if name_tok else "", annotations=annotations)
         while not self.at_end() and not self.at_op(";"):
             member_anns = self.annotations()
@@ -718,14 +932,14 @@ class _Parser:
                 continue
             item = self.eat_name()
             if item is None:
-                self.error("Ожидается значение перечисления")
+                self.error(i18n.t("parser.expected-enum-value"))
                 self.advance()
                 continue
             is_default = self.eat_kw("DEFAULT") is not None
             node.items.append(EnumItem(item.start, self.toks[self.pos - 1].end,
                                        item.value, is_default))
             self.eat_op(",")
-        self.expect_op(";", "в конце перечисления")
+        self.expect_op(";", "parser.expected-semicolon-enum")
         node.end = self.toks[self.pos - 1].end
         return node
 
@@ -735,7 +949,7 @@ class _Parser:
         kind_tok = self.advance()  # VAL | VAR | USE | CONST
         name_tok = self.eat_name()
         if name_tok is None:
-            self.error("Ожидается имя константы модуля")
+            self.error(i18n.t("parser.expected-const-name"))
         ftype = self.compound_type() if self.eat_op(":") else None
         init = self.expression() if self.eat_op("=") else None
         return ObjectField(start, self.toks[self.pos - 1].end,
@@ -761,7 +975,7 @@ class _Parser:
                 alt = self.type_name()
                 if alt is None:
                     if not names and not nullable:
-                        self.error("Ожидается имя типа", start_tok)
+                        self.error(i18n.t("parser.expected-type-name"), start_tok)
                         return None
                     break
                 names.append(alt[0])
@@ -843,7 +1057,7 @@ class _Parser:
 
     # --- statements ---
 
-    def statements_until_semicolon(self, what: str) -> list[Stmt]:
+    def statements_until_semicolon(self, key: str) -> list[Stmt]:
         body: list[Stmt] = []
         while not self.at_end() and not self.at_op(";"):
             before = self.pos
@@ -851,10 +1065,10 @@ class _Parser:
             if stmt is not None:
                 body.append(stmt)
             if self.pos == before:
-                self.error("Не удалось разобрать оператор")
+                self.error(i18n.t("parser.statement-unparsed"))
                 self.recover_statement()
         if not self.eat_op(";"):
-            self.error(f"Ожидается ';' в конце {what}")
+            self.error(i18n.t(key))
         return body
 
     def block_until(self, *stop_canon: str) -> list[Stmt]:
@@ -866,7 +1080,7 @@ class _Parser:
             if stmt is not None:
                 body.append(stmt)
             if self.pos == before:
-                self.error("Не удалось разобрать оператор")
+                self.error(i18n.t("parser.statement-unparsed"))
                 self.recover_statement()
         return body
 
@@ -937,9 +1151,9 @@ class _Parser:
             else:
                 else_body = self.block_until("ELSE")
                 if self.at_kw("ELSE"):
-                    self.error("Повторная ветка 'иначе'")
+                    self.error(i18n.t("parser.duplicate-else"))
                 break
-        self.expect_op(";", "в конце 'если'")
+        self.expect_op(";", "parser.expected-semicolon-if")
         return If(start, self.toks[self.pos - 1].end, branches, else_body)
 
     def case_statement(self) -> Case:
@@ -959,7 +1173,7 @@ class _Parser:
         if self.at_kw("ELSE"):
             self.advance()
             else_body = self.block_until("WHEN")
-        self.expect_op(";", "в конце 'выбор'")
+        self.expect_op(";", "parser.expected-semicolon-case")
         return Case(start, self.toks[self.pos - 1].end, subject, whens, else_body)
 
     def when_expression(self) -> Expr:
@@ -980,7 +1194,7 @@ class _Parser:
     def while_statement(self) -> While:
         start = self.advance().start
         cond = self.expression()
-        body = self.statements_until_semicolon("'пока'")
+        body = self.statements_until_semicolon("parser.expected-semicolon-while")
         return While(start, self.toks[self.pos - 1].end, cond, body)
 
     def for_statement(self) -> Stmt:
@@ -988,22 +1202,22 @@ class _Parser:
         var_tok = self.eat_name()
         var = var_tok.value if var_tok else ""
         if var_tok is None:
-            self.error("Ожидается имя переменной цикла")
+            self.error(i18n.t("parser.expected-loop-var"))
         if self.at_kw("IN"):  # для Х из Коллекция
             self.advance()
             source = self.expression()
-            body = self.statements_until_semicolon("'для'")
+            body = self.statements_until_semicolon("parser.expected-semicolon-for")
             return ForEach(start, self.toks[self.pos - 1].end, var, source, body)
-        self.expect_op("=", "в цикле 'для'")
+        self.expect_op("=", "parser.expected-eq-in-for")
         start_expr = self.expression()
         down = self.eat_kw("DOWN") is not None
         if not self.eat_kw("TO"):
-            self.error("Ожидается 'по' в цикле 'для'")
+            self.error(i18n.t("parser.expected-po-in-for"))
         to = self.expression()
         step = None
         if self.eat_kw("STEP"):
             step = self.expression()
-        body = self.statements_until_semicolon("'для'")
+        body = self.statements_until_semicolon("parser.expected-semicolon-for")
         return ForTo(start, self.toks[self.pos - 1].end, var, start_expr, down, to, step, body)
 
     def try_statement(self) -> Try:
@@ -1015,8 +1229,8 @@ class _Parser:
             name_tok = self.eat_name()
             cname = name_tok.value if name_tok else ""
             if name_tok is None:
-                self.error("Ожидается имя переменной исключения")
-            self.expect_op(":", "после переменной 'поймать'")
+                self.error(i18n.t("parser.expected-catch-var"))
+            self.expect_op(":", "parser.expected-colon-catch")
             ctype = self.compound_type()
             cbody = self.block_until("CATCH", "FINALLY")
             catches.append((cname, ctype, cbody))
@@ -1024,12 +1238,12 @@ class _Parser:
         if self.at_kw("FINALLY"):
             self.advance()
             finally_body = self.block_until("CATCH")
-        self.expect_op(";", "в конце 'попытка'")
+        self.expect_op(";", "parser.expected-semicolon-try")
         return Try(start, self.toks[self.pos - 1].end, body, catches, finally_body)
 
     def scope_statement(self) -> Scope:
         start = self.advance().start
-        body = self.statements_until_semicolon("'область'")
+        body = self.statements_until_semicolon("parser.expected-semicolon-scope")
         return Scope(start, self.toks[self.pos - 1].end, body)
 
 
@@ -1055,11 +1269,11 @@ class _Parser:
         kind_tok = self.advance()  # VAR | VAL
         name_tok = self.eat_name()
         if name_tok is None:
-            self.error("Ожидается имя переменной")
+            self.error(i18n.t("parser.expected-var-name"))
         vtype = self.compound_type() if self.eat_op(":") else None
         init = self.expression() if self.eat_op("=") else None
         if vtype is None and init is None:
-            self.error("Объявлению нужен тип или начальное значение", name_tok or kind_tok)
+            self.error(i18n.t("parser.decl-needs-type-or-value"), name_tok or kind_tok)
         return VarDecl(kind_tok.start, self.toks[self.pos - 1].end,
                        kind_tok.canonical or "", name_tok.value if name_tok else "",
                        vtype, init)
@@ -1092,7 +1306,7 @@ class _Parser:
             if not self.at_op(";") and not self.at_end():
                 value = self.expression()
             else:
-                self.error("Ожидается выражение после присваивания", op)
+                self.error(i18n.t("parser.expected-expr-after-assign"), op)
             return Assign(expr.start, self.toks[self.pos - 1].end, expr, op.value, value)
         return ExprStmt(expr.start, expr.end, expr)
 
@@ -1118,7 +1332,7 @@ class _Parser:
             self.advance()
             then = self.expression()
             otherwise = None
-            if self.expect_op(":", "в тернарном операторе"):
+            if self.expect_op(":", "parser.expected-colon-ternary"):
                 otherwise = self.expression()
             left = Ternary(left.start, self.toks[self.pos - 1].end, left, then, otherwise)
         return left
@@ -1229,14 +1443,14 @@ class _Parser:
         if self.at_kw("THIS", "GLOBAL_EN", "GLOBAL_RU"):
             self.advance()
             if not self.eat_op("."):
-                self.error("Ожидается '.' в ссылке на метод")
+                self.error(i18n.t("parser.expected-dot-in-method-ref"))
         name_tok = self.eat_name()
         if name_tok is None:
-            self.error("Ожидается имя в ссылке на метод")
+            self.error(i18n.t("parser.expected-name-in-method-ref"))
         while self.at_op("::"):
             self.advance()
             if self.eat_name() is None:
-                self.error("Ожидается имя после '::'")
+                self.error(i18n.t("parser.expected-name-after-colons"))
                 break
         while self.at_op(".") and (self.peek(1).kind == "IDENT"
                                    or (self.peek(1).kind == "KEYWORD"
@@ -1276,7 +1490,7 @@ class _Parser:
                 dot = self.advance()
                 name_tok = self.eat_name() or self.eat_kw("NEW")
                 if name_tok is None:
-                    self.error("Ожидается имя после '.'")
+                    self.error(i18n.t("parser.expected-name-after-dot"))
                     break
                 expr = Member(expr.start, name_tok.end, expr, name_tok.value,
                               safe=(dot.value == "?."))
@@ -1286,7 +1500,7 @@ class _Parser:
                 index = None
                 if not self.at_op("]"):
                     index = self.expression()
-                self.expect_op("]", "после индекса")
+                self.expect_op("]", "parser.expected-rbracket-index")
                 expr = Index(expr.start, self.toks[self.pos - 1].end, expr, index)
             elif self.at_op("!") and not self.postfix_bang_ambiguous():
                 t = self.advance()
@@ -1347,7 +1561,7 @@ class _Parser:
             args.append(CallArg(start_tok.start, self.toks[self.pos - 1].end, name, value))
             if not self.eat_op(","):
                 break
-        self.expect_op(")", "после аргументов вызова")
+        self.expect_op(")", "parser.expected-rparen-call")
         return args
 
     # --- atoms (rulestaticFeatureResolving) ---
@@ -1424,7 +1638,7 @@ class _Parser:
                     and self.peek(1).start == t.end:
                 return self.resolvable_literal()
             return self.static_feature()
-        self.error("Ожидается выражение")
+        self.error(i18n.t("parser.expected-expr"))
         return Name(t.start, t.start, "")
 
     def paren_or_lambda(self) -> Expr:
@@ -1456,7 +1670,7 @@ class _Parser:
         self.rollback(snap)
         self.advance()  # (
         inner = self.expression()
-        self.expect_op(")", "после выражения в скобках")
+        self.expect_op(")", "parser.expected-rparen-paren")
         return inner if inner.end > inner.start else inner
 
     def static_feature(self) -> Expr:
@@ -1467,7 +1681,7 @@ class _Parser:
             self.advance()
             nxt = self.eat_name()
             if nxt is None:
-                self.error("Ожидается имя после '::'")
+                self.error(i18n.t("parser.expected-name-after-colons"))
                 break
             segs.append(nxt.value)
         name = Name(start_tok.start, self.toks[self.pos - 1].end, "::".join(segs))
@@ -1484,7 +1698,7 @@ class _Parser:
         start = self.advance().start  # NEW
         t = self.type_name()
         if t is None:
-            self.error("Ожидается имя типа после 'новый'")
+            self.error(i18n.t("parser.expected-type-after-new"))
             return New(start, self.toks[self.pos - 1].end,
                        TypeRef(start, start, "", []), None)
         tref = TypeRef(start, self.toks[self.pos - 1].end, t[1], [t[0]])
@@ -1500,7 +1714,7 @@ class _Parser:
             items.append(self.expression())
             if not self.eat_op(","):
                 break
-        self.expect_op("]", "в конце литерала массива")
+        self.expect_op("]", "parser.expected-rbracket-array")
         return ArrayLit(lb.start, self.toks[self.pos - 1].end, items)
 
     def map_literal(self) -> MapLit:
@@ -1522,7 +1736,7 @@ class _Parser:
                 entries.append((key, None))
             if not self.eat_op(","):
                 break
-        self.expect_op("}", "в конце литерала коллекции")
+        self.expect_op("}", "parser.expected-rbrace-map")
         return MapLit(lb.start, self.toks[self.pos - 1].end, entries, kind)
 
     def try_lambda_full(self) -> Expr | None:
@@ -1531,7 +1745,7 @@ class _Parser:
         params = self.parameters()
         if not self.eat_op("->"):
             return None
-        body = self.statements_until_semicolon("лямбды")
+        body = self.statements_until_semicolon("parser.expected-semicolon-lambda")
         return Lambda(start, self.toks[self.pos - 1].end, params, None, body)
 
     def type_literal(self) -> Expr:
@@ -1544,7 +1758,7 @@ class _Parser:
         self.advance()
         self.type_name()
         if not self.eat_op(">"):
-            self.error("Ожидается '>' в литерале типа")
+            self.error(i18n.t("parser.expected-gt-in-type-literal"))
         end = self.toks[self.pos - 1].end
         return Literal(start_tok.start, end, "TYPE", "")
 
@@ -1591,7 +1805,7 @@ class _Parser:
             dot = self.advance()
             name_tok = self.eat_name()
             if name_tok is None:
-                self.error("Ожидается имя после '.'")
+                self.error(i18n.t("parser.expected-name-after-dot"))
                 break
             expr = Member(expr.start, name_tok.end, expr, name_tok.value, dot.value == "?.")
             expr = self.maybe_call(expr)
