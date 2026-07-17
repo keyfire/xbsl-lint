@@ -83,3 +83,9 @@ mapping in `editors/vscode/src/ruleDocs.ts` (if a platform documentation section
 does not support in native classes (class-level mutable/collection attribute defaults go
 to the module level). The modules must stay runnable as plain Python - the native build
 is an optional accelerator, never a requirement.
+
+Code comments and docstrings are written in English (the owner's decision of 2026-07-17;
+the whole xbsl/ tree was brought to this canon). Russian remains in: the bilingual i18n
+MESSAGES, argparse help texts, user-facing string literals (ScaffoldError, notes),
+generated-code templates, quotes of the platform documentation inside comments, and XBSL
+citations in backticks. Tests may keep Russian docstrings.

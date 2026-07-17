@@ -275,8 +275,8 @@ _PARALLEL_MIN_FILES = 120
 
 
 def _worker_lint(payload: tuple) -> list[Diagnostic]:
-    """Задача воркера: файловые правила на шарде файлов ЛИБО группа проектных правил
-    на всём проекте (kind == "project"; идентификаторы правил приходят готовым select)."""
+    """A worker task: the file rules on a shard of files OR a group of project rules
+    over the whole project (kind == "project"; the rule ids arrive as a ready select)."""
     kind, paths, select, ignore, enable, lang, element_version = payload
     from xbsl import dataset, i18n
 
@@ -289,7 +289,7 @@ def _worker_lint(payload: tuple) -> list[Diagnostic]:
 
 
 def resolve_jobs(jobs: int, file_count: int) -> int:
-    """Число воркеров: 0 – авто (по размеру прогона и ядрам), 1 – последовательно."""
+    """The worker count: 0 - auto (by run size and cores), 1 - sequential."""
     import os
 
     cpus = os.cpu_count() or 1
@@ -310,10 +310,10 @@ def run_parallel(
     lang: str | None = None,
     element_version: str | None = None,
 ) -> list[Diagnostic]:
-    """run() с шардированием файловых правил по процессам; проектные – в родителе.
+    """run() with the file rules sharded across processes.
 
-    Диагностики сортируются по (файл, строка, колонка) – параллельный и
-    последовательный прогоны дают одинаковый отчёт.
+    Diagnostics are sorted by (file, line, column) - the parallel and the sequential
+    runs produce the same report.
     """
     workers = resolve_jobs(jobs, len(paths))
     if workers <= 1:
@@ -327,9 +327,9 @@ def run_parallel(
     lang = lang or i18n.current_lang()
     all_paths = [str(p) for p in paths]
 
-    # Проектные правила шардируются группами: каждая группа-воркер сама грузит весь проект
-    # (это дублирование подготовки, зато самые тяжёлые правила перестают быть
-    # последовательным потолком). Групп немного: подготовка в каждой не бесплатна.
+    # The project rules shard in groups: every group-worker loads the whole project by
+    # itself (duplicated preparation, but the heaviest rules stop being the sequential
+    # ceiling). Few groups: the preparation in each one is not free.
     project_ids = [r.id for r in active_rules(select, ignore, enable) if r.scope == "project"]
     group_count = min(4, workers, len(project_ids)) if project_ids else 0
     project_groups = [set(project_ids[i::group_count]) for i in range(group_count)]

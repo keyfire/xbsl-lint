@@ -1,13 +1,14 @@
-"""Опциональная нативная сборка горячих модулей.
+"""Optional native build of the hot modules.
 
-По умолчанию пакет собирается чисто питоньим - setup.py ничего не добавляет. С env
-`XBSL_MYPYC=1` лексер и парсер компилируются mypyc'ом в C-расширения (замер на корпусе -
-кратное ускорение токенизации и разбора); нужен установленный mypy и C-компилятор
-(на Windows - MSVC Build Tools). Модули остаются обычным Python-кодом: без флага или на
-платформе без колеса всё работает как раньше - расширение лишь замещает их при импорте.
+By default the package builds pure Python - setup.py adds nothing. With the env
+`XBSL_MYPYC=1` the lexer and the parser are compiled by mypyc into C extensions (measured
+on the corpus - a multiple speedup of tokenization and parsing); an installed mypy and a
+C compiler are required (MSVC Build Tools on Windows). The modules remain ordinary Python
+code: without the flag, or on a platform without a wheel, everything works as before -
+the extension merely replaces them at import time.
 
-    XBSL_MYPYC=1 python -m build            # колесо с нативными lexer/parser
-    python setup.py build_ext --inplace     # локально, .pyd/.so рядом с исходниками
+    XBSL_MYPYC=1 python -m build            # a wheel with the native lexer/parser
+    python setup.py build_ext --inplace     # locally, .pyd/.so next to the sources
 """
 
 import os

@@ -1,23 +1,24 @@
-"""Скаффолдинг метаданных 1С:Элемент: создание объектов, полей, маршрутов, форм и проектов.
+"""1C:Element metadata scaffolding: creating objects, fields, routes, forms and projects.
 
-Модуль – единственный источник шаблонов и правок yaml/xbsl для всех поверхностей
-инструментария: MCP-инструменты meta_* (mcp_server.py), кастомные LSP-запросы xbsl/meta*
-(lsp.py) и подкоманды CLI (cli.py). Расширение VS Code – тонкий клиент этих поверхностей,
-собственной логики записи у него нет.
+This module is the single source of templates and yaml/xbsl edits for every surface
+of the toolkit: the meta_* MCP tools (mcp_server.py), the custom xbsl/meta* LSP
+requests (lsp.py) and the CLI subcommands (cli.py). The VS Code extension is a thin
+client of these surfaces and has no write logic of its own.
 
-Слои:
-    - чистые функции текста: вставка элемента секции (insert_item_edit и родня), шаблоны
-      новых объектов и форм – без файловой системы, покрыты модульными тестами;
-    - разведка проекта: лёгкий текстовый скан (проекты, подсистемы, объекты, реквизиты) –
-      те же соглашения разбора, что в индексаторе, но без построения полного индекса;
-    - операции (op_*): собирают изменения в ScaffoldResult {создаваемые файлы + полные
-      новые тексты правимых файлов}, НИЧЕГО не пишут – применение отдано вызывающему:
-      MCP/CLI пишут на диск (apply_result), редактор применяет через WorkspaceEdit;
-    - применение: apply_result сохраняет с переводами строк и BOM исходного файла.
+Layers:
+    - pure text functions: inserting a section item (insert_item_edit and friends),
+      templates of new objects and forms - no file system, covered by unit tests;
+    - project discovery: a lightweight textual scan (projects, subsystems, objects,
+      attributes) - same parsing conventions as the indexer, but without building
+      a full index;
+    - operations (op_*): collect changes into a ScaffoldResult {files to create + full
+      new texts of edited files}, write NOTHING - applying is left to the caller:
+      MCP/CLI write to disk (apply_result), the editor applies via WorkspaceEdit;
+    - applying: apply_result saves with the newlines and BOM of the source file.
 
-Разбор yaml здесь текстовый (по заголовкам секций и отступам), а не через PyYAML:
-правки должны быть точечными вставками в существующий текст, не переформатированием
-документа; парсер позиций вставки не даёт.
+Yaml parsing here is textual (by section headers and indentation), not via PyYAML:
+edits must be pinpoint insertions into the existing text, not a reformatting of the
+document; a parser does not provide insertion positions.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from xbsl import engine, fixer
 PROJECT_FILE = "Проект.yaml"
 SUBSYSTEM_FILE = "Подсистема.yaml"
 
-_WORD = "A-Za-zА-Яа-яЁё0-9_"  # класс символов идентификатора (для regex-границ слова)
+_WORD = "A-Za-zА-Яа-яЁё0-9_"  # identifier character class (for regex word boundaries)
 _IDENTIFIER = re.compile(r"^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*$")
 _KIND_RE = re.compile(r"^ВидЭлемента:\s*(\S+)", re.M)
 _NAME_RE = re.compile(r"^Имя:\s*(\S+)", re.M)
@@ -41,7 +42,7 @@ _LINE_INDENT = re.compile(r"^[ \t]*")
 
 
 class ScaffoldError(RuntimeError):
-    """Ошибка операции скаффолдинга; текст показывается пользователю как есть."""
+    """Scaffolding operation error; the text is shown to the user as is."""
 
 
 def _check_identifier(name: str, что: str) -> str:
@@ -57,7 +58,7 @@ def new_uuid() -> str:
     return str(_uuid.uuid4())
 
 
-# --- правки текста -------------------------------------------------------------------
+# --- text edits ------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -77,7 +78,7 @@ def _line_end(text: str, offset: int) -> int:
 
 
 def _detect_indent(body_slice: str, header_indent: int) -> tuple[str, str]:
-    """Отступы элемента секции по первому существующему "-" в теле; иначе – по заголовку."""
+    """Section item indents from the first existing "-" in the body; otherwise from the header."""
     m = re.search(r"^([ \t]*)-[ \t]*\r?\n([ \t]*)\S", body_slice, re.M)
     if m:
         return m.group(1), m.group(2)
@@ -85,12 +86,13 @@ def _detect_indent(body_slice: str, header_indent: int) -> tuple[str, str]:
 
 
 def _section_bounds(text: str, section: str, top_level: bool = False) -> tuple[int, int, int] | None:
-    """(отступ заголовка, конец строки заголовка, конец тела) секции или None.
+    """(header indent, end of header line, end of body) of the section, or None.
 
-    Конец тела – конец последней непустой строки с отступом больше отступа заголовка.
-    top_level=True – искать только заголовок без отступа: иначе одноимённая ВЛОЖЕННАЯ секция
-    (`Реквизиты` внутри табличной части) будет принята за секцию объекта. Вызовы по срезу
-    блока (реквизиты ТЧ, Разрешения внутри КонтрольДоступа) ищут с любым отступом.
+    The body ends at the end of the last non-blank line indented deeper than the header.
+    top_level=True - match only an unindented header: otherwise a NESTED section with the
+    same name (`Реквизиты` inside a tabular part) would be taken for the object section.
+    Calls on a block slice (tabular part attributes, Разрешения inside КонтрольДоступа)
+    search at any indent.
     """
     indent_pattern = "()" if top_level else "([ \t]*)"
     header = re.search(rf"^{indent_pattern}{re.escape(section)}:[ \t]*\r?$", text, re.M)
@@ -116,12 +118,13 @@ def _section_bounds(text: str, section: str, top_level: bool = False) -> tuple[i
 
 def insert_item_edit(text: str, section: str, item_lines: list[str], nl: str = "\n",
                      top_level: bool = False) -> TextEdit:
-    """Точечная вставка нового элемента (набор строк-полей) в конец секции.
+    """Pinpoint insertion of a new item (a set of field lines) at the end of a section.
 
-    Нет секции – дописывается в конец файла. top_level=True – только секция без отступа
-    (иначе реквизит объекта уедет во вложенную секцию табличной части). Порт insertItemEdit
-    из расширения VS Code (metadataCore.ts) с одним отличием: перевод строки задаётся
-    параметром, чтобы правка не смешивала стили в CRLF-файлах.
+    If the section is missing, it is appended at the end of the file. top_level=True -
+    only an unindented section (otherwise an object attribute would land in a nested
+    tabular part section). A port of insertItemEdit from the VS Code extension
+    (metadataCore.ts) with one difference: the newline is passed as a parameter so the
+    edit does not mix styles in CRLF files.
     """
 
     def body(item: str, fld: str) -> str:
@@ -142,10 +145,11 @@ def insert_item_edit(text: str, section: str, item_lines: list[str], nl: str = "
 def insert_nested_item_edit(
     text: str, block_offset: int, section: str, item_lines: list[str], nl: str = "\n"
 ) -> TextEdit:
-    """Вставка элемента во вложенную секцию блока-элемента (напр. Реквизиты табличной части).
+    """Insert an item into a nested section of an item block (e.g. tabular part Реквизиты).
 
-    block_offset – смещение первого ключа блока (см. find_section_item_offset). Границы блока –
-    до первой непустой строки с отступом меньше отступа полей блока. Порт insertTabularAttrEdit.
+    block_offset is the offset of the block's first key (see find_section_item_offset).
+    The block ends before the first non-blank line indented less than the block's fields.
+    A port of insertTabularAttrEdit.
     """
     line_start = text.rfind("\n", 0, block_offset) + 1
     field_indent = block_offset - line_start
@@ -164,7 +168,7 @@ def insert_nested_item_edit(
     if has_section:
         sub = insert_item_edit(block, section, item_lines, nl)
         return TextEdit(block_offset + sub.start, block_offset + sub.end, sub.new_text)
-    # Нет вложенной секции – дописываем её в конец содержимого блока.
+    # No nested section - append it at the end of the block content.
     head = " " * field_indent
     item = " " * (field_indent + 4)
     fld = " " * (field_indent + 8)
@@ -184,11 +188,12 @@ def insert_nested_item_edit(
 
 
 def section_items(text: str, section: str, top_level: bool = False) -> list[dict[str, str]]:
-    """Скалярные поля элементов секции (для проверок дублей и обзора).
+    """Scalar fields of section items (for duplicate checks and overview).
 
-    Элемент – блок за "-" на минимальном отступе тела секции; вложенные секции элемента
-    (Реквизиты ТЧ, Методы шаблона) в словарь не попадают, их поля – глубже отступа полей.
-    top_level=True – только секция объекта, без отступа (см. _section_bounds).
+    An item is a block after "-" at the minimal indent of the section body; nested item
+    sections (tabular part Реквизиты, template Методы) do not make it into the dict,
+    their fields are indented deeper than the item fields. top_level=True - only the
+    object-level section, unindented (see _section_bounds).
     """
     bounds = _section_bounds(text, section, top_level)
     if bounds is None:
@@ -213,7 +218,7 @@ def section_items(text: str, section: str, top_level: bool = False) -> list[dict
             current = {}
             field_indent = None
             rest = stripped[1:].strip()
-            if rest and ":" in rest:  # инлайновая форма "- Имя: X"
+            if rest and ":" in rest:  # inline form "- Имя: X"
                 k, _, v = rest.partition(":")
                 current[k.strip()] = v.strip()
             continue
@@ -233,9 +238,10 @@ def section_items(text: str, section: str, top_level: bool = False) -> list[dict
 
 def find_section_item_offset(text: str, section: str, name: str,
                              top_level: bool = True) -> int | None:
-    """Смещение первого ключа элемента секции с Имя == name (для вложенных вставок).
+    """Offset of the first key of the section item with Имя == name (for nested inserts).
 
-    Ищется в секции объекта (без отступа): вызывающие адресуют ТабличныеЧасти и ШаблоныUrl.
+    Searched in the object-level section (unindented): callers address ТабличныеЧасти
+    and ШаблоныUrl.
     """
     bounds = _section_bounds(text, section, top_level)
     if bounds is None:
@@ -268,7 +274,7 @@ def find_section_item_offset(text: str, section: str, name: str,
 
 
 def top_level_key_span(text: str, key: str) -> tuple[int, int] | None:
-    """(начало строки ключа, конец тела) ключа верхнего уровня со вложенным содержимым."""
+    """(start of the key line, end of body) of a top-level key with nested content."""
     m = re.search(rf"^{re.escape(key)}:[ \t]*\r?$", text, re.M)
     if m is None:
         return None
@@ -279,7 +285,7 @@ def top_level_key_span(text: str, key: str) -> tuple[int, int] | None:
     return m.start(), body_end
 
 
-# --- шаблоны новых объектов -----------------------------------------------------------
+# --- templates of new objects -----------------------------------------------------------
 
 
 def new_object_yaml(kind: str, uid: str, name: str, scope: str, extra_lines: list[str]) -> str:
@@ -288,7 +294,7 @@ def new_object_yaml(kind: str, uid: str, name: str, scope: str, extra_lines: lis
 
 
 def _expand_extra(lines: tuple[str, ...], name: str) -> list[str]:
-    """Подставить в шаблонные строки объекта имя и уникальный Ид на каждое вхождение {uuid}."""
+    """Substitute the name and a unique Ид for every {uuid} occurrence in object template lines."""
     out = []
     for line in lines:
         while "{uuid}" in line:
@@ -299,24 +305,26 @@ def _expand_extra(lines: tuple[str, ...], name: str) -> list[str]:
 
 @dataclass(frozen=True)
 class KindSpec:
-    # Умолчание видимости – платформенное: "Стандартно элемент виден только внутри своей
-    # подсистемы (ВПодсистеме)... Если хочется использовать в других подсистемах – нужно
-    # установить ВПроекте" (документация "Модульная разработка"). Инструмент не расширяет
-    # видимость за разработчика: шире – явным параметром scope.
+    # The visibility default is the platform's: "Стандартно элемент виден только внутри
+    # своей подсистемы (ВПодсистеме)... Если хочется использовать в других подсистемах –
+    # нужно установить ВПроекте" ("Модульная разработка" documentation). The tool does not
+    # widen visibility on the developer's behalf: wider - via an explicit scope parameter.
     scope: str = "ВПодсистеме"
-    module: bool = False  # создавать парный файл модуля
-    module_suffix: str = ".xbsl"  # у ВиртуальнаяТаблица парный файл – запрос .xbql
-    module_stub: str = ""  # шаблон модуля ({name}); пусто – комментарий с именем
-    extra: tuple[str, ...] = ()  # доп. строки шаблона (могут содержать {name})
-    # Вид требует данных от вызывающего (Отчет – источник и макет): в меню "создать" его
-    # предлагать нечем, поэтому в витрину без параметров (bare_kinds) он не попадает.
+    module: bool = False  # create a paired module file
+    module_suffix: str = ".xbsl"  # for ВиртуальнаяТаблица the paired file is a .xbql query
+    module_stub: str = ""  # module template ({name}); empty - a comment with the name
+    extra: tuple[str, ...] = ()  # extra template lines (may contain {name})
+    # The kind requires data from the caller (Отчет - source and layout): there is nothing
+    # to offer for it in the "create" menu, so it is excluded from the parameterless
+    # showcase (bare_kinds).
     needs_args: bool = False
-    # Что осталось дописать руками: платформа этого не подставит, а генератор не выдумывает.
+    # What is left to fill in by hand: the platform will not supply it, and the generator
+    # does not make it up.
     note: str = ""
 
 
-# Заготовки модулей: обработчик, без которого элемент этого вида бесполезен. Сигнатуры –
-# дословно из документации (сверено с рабочим кодом там, где он есть).
+# Module stubs: the handler without which an element of the kind is useless. Signatures
+# are taken verbatim from the documentation (verified against working code where it exists).
 _STUB_HANDLER = """\
 @Обработчик
 метод Обработчик()
@@ -335,8 +343,9 @@ _STUB_CLIENT_PARAMS = """\
     // TODO: вычислить значения параметров (выполняется на сервере при открытии приложения)
 ;
 """
-# Право на действие: имя элемента подставляется в параметры-обобщения; КлючДоступа.Объект –
-# литеральный базовый тип ключей (подтверждено рабочим ПравоМодератора.xbsl).
+# Action privilege: the element name is substituted into the generic parameters;
+# КлючДоступа.Объект is the literal base type of keys (confirmed by the working
+# ПравоМодератора.xbsl).
 _STUB_ACTION_PRIVILEGE = """\
 @Обработчик
 метод ВычислитьРазрешенияДоступа(Права: ЧитаемыйМассив<{name}.Объект>):
@@ -351,8 +360,8 @@ _STUB_SELF_REGISTRATION = """\
     // TODO: действия после подключения пользователя (выполняется на сервере)
 ;
 """
-# Команда с компонентом: компонент, над которым выполняется команда, – этот.Компонент
-# (пример из документации "КомандаСКомпонентом" – команда закрытия формы).
+# Command with a component: the component the command acts on is этот.Компонент
+# (the "КомандаСКомпонентом" documentation example is a form-closing command).
 _STUB_COMPONENT_COMMAND = """\
 @Обработчик
 метод Обработчик()
@@ -365,17 +374,19 @@ _STUB_SERVICE_CONTRACT = """\
 // абстрактный метод Рассчитать(Параметр: Строка): Число
 """
 
-# Создаваемые виды объектов. Перечень видов – Стд::Отражение::ВидЭлементаПроекта; здесь те,
-# что осмысленно создавать файлами. Не заводятся намеренно: ПанельОтчетов и ПроцессИнтеграции
-# (содержимое рисуется в дизайнере, у процесса – ещё и координаты узлов; в облаке недоступен),
-# КлиентSoapСервиса (без загруженного из IDE WSDL бесполезен).
-# Обязательные стартовые поля: без них объект не компилируется, а платформа их не подставит.
-# Документ – реквизит Дата ("Обязан присутствовать всегда. Если реквизит отсутствует –
-# выдается ошибка"), стандартный, потому без Ид. РегистрСведений – непустой список измерений
-# ("Список измерений не может быть пустым"); измерение не может быть Строкой неограниченной
-# длины, поэтому с МаксимальнаяДлина. РегистрНакопления – непустой список ресурсов ("Список
-# ресурсов не может быть пустым"); обязательный реквизит Регистратор дописывается вручную
-# (его тип – объединение ссылок на документы-регистраторы, которых при создании ещё нет).
+# Creatable object kinds. The full list of kinds is Стд::Отражение::ВидЭлементаПроекта;
+# here are those that make sense to create as files. Deliberately not included:
+# ПанельОтчетов and ПроцессИнтеграции (their content is drawn in the designer, the process
+# also has node coordinates; unavailable in the cloud), КлиентSoapСервиса (useless without
+# a WSDL loaded from the IDE).
+# Mandatory starter fields: without them the object does not compile, and the platform
+# will not supply them. Документ - the Дата attribute ("Обязан присутствовать всегда.
+# Если реквизит отсутствует – выдается ошибка"), a standard one, hence without Ид.
+# РегистрСведений - a non-empty list of dimensions ("Список измерений не может быть
+# пустым"); a dimension cannot be an unbounded Строка, hence МаксимальнаяДлина.
+# РегистрНакопления - a non-empty list of resources ("Список ресурсов не может быть
+# пустым"); the mandatory Регистратор attribute is added by hand (its type is a union of
+# references to registrar documents, which do not exist yet at creation time).
 _DOC_EXTRA = (
     "Реквизиты:",
     "    -",
@@ -414,8 +425,9 @@ KIND_SPECS: dict[str, KindSpec] = {
     "ПланОбмена": KindSpec(),
     "НаборКонстант": KindSpec(),
     "ХранилищеНастроек": KindSpec(),
-    # Парный файл – НЕ модуль, а запрос .xbql: "наличие файла и запроса в нем обязательно".
-    # Среда разработки создаёт его пустым – делаем так же, а требование пишем в notes.
+    # The paired file is NOT a module but a .xbql query: "наличие файла и запроса в нем
+    # обязательно". The IDE creates it empty - we do the same and state the requirement
+    # in notes.
     "ВиртуальнаяТаблица": KindSpec(
         module=True, module_suffix=".xbql", module_stub="\n",
         note="Запрос виртуальной таблицы обязателен: заполните парный .xbql "
@@ -437,13 +449,15 @@ KIND_SPECS: dict[str, KindSpec] = {
         note="Для ВидСобытия: Ошибка нужен ещё ХарактерОшибки, для Операция – "
              "ШаблонПредставленияНачала, ШаблонПредставленияКонца и ШаблонПредставленияОшибки",
     ),
-    # Модуль обязателен: платформа ждёт в нём обработчик ВычислитьПараметрыРаботыКлиента,
-    # без него параметры не вычисляются (документация "ПараметрыРаботыКлиента").
+    # The module is mandatory: the platform expects the ВычислитьПараметрыРаботыКлиента
+    # handler in it, without which the parameters are not computed ("ПараметрыРаботыКлиента"
+    # documentation).
     "ПараметрыРаботыКлиента": KindSpec(module=True, module_stub=_STUB_CLIENT_PARAMS),
     "ОбщийМодуль": KindSpec(module=True, extra=("Окружение: Сервер",)),
     "HttpСервис": KindSpec(module=True, extra=("КорневойUrl: /{name}",)),
-    # SoapСервис создаётся генератором _new_soap_service (перехват в op_new_object раньше
-    # generic-пути), как HttpСервис – спека нужна лишь чтобы вид считался создаваемым.
+    # SoapСервис is created by the _new_soap_service generator (intercepted in
+    # op_new_object before the generic path), like HttpСервис - the spec exists only so
+    # the kind counts as creatable.
     "SoapСервис": KindSpec(module=True),
     "ГлобальноеКлиентскоеСобытие": KindSpec(),
     "ФрагментКомандногоИнтерфейса": KindSpec(),
@@ -459,20 +473,21 @@ KIND_SPECS: dict[str, KindSpec] = {
     "КлючДоступа": KindSpec(module=True),
     "ЛокализованныеСтроки": KindSpec(),
     "Отчет": KindSpec(needs_args=True),
-    # Права: у права НА ЭЛЕМЕНТ модуля не бывает ("Не имеет модуля" – это перечисление),
-    # у права НА ДЕЙСТВИЕ модуль вычисляет разрешения на сервере.
+    # Privileges: an ON-ELEMENT privilege has no module ("Не имеет модуля" - it is an
+    # enumeration), an ON-ACTION privilege's module computes permissions on the server.
     "ПравоНаЭлемент": KindSpec(),
     "ПравоНаДействие": KindSpec(module=True, module_stub=_STUB_ACTION_PRIVILEGE),
-    # Контракты: модуль нужен только под абстрактные методы, поэтому у контрактов типа и
-    # сущности (одни свойства) его не создаём – рабочие контракты в проектах без модулей.
+    # Contracts: a module is needed only for abstract methods, so we do not create one for
+    # type and entity contracts (properties only) - working contracts in real projects
+    # have no modules.
     "КонтрактСервиса": KindSpec(module=True, module_stub=_STUB_SERVICE_CONTRACT),
     "КонтрактТипа": KindSpec(),
     "КонтрактСущности": KindSpec(
         note="ТаблицыКонтракта по умолчанию Недоступны – с ним контракт не виден в запросах; "
              "нужны таблицы – добавьте ТаблицыКонтракта: Доступны",
     ),
-    # Команды: у навигационной поведение целиком декларативно (ТипФормы), у остальных смысл
-    # в обработчике модуля (исполняется на клиенте).
+    # Commands: the navigation command's behavior is fully declarative (ТипФормы), for the
+    # rest the point is the module handler (executed on the client).
     "НавигационнаяКоманда": KindSpec(
         extra=("Представление: {name}",),
         note="Задайте ТипФормы – форму, которую открывает команда; без неё команда ничего не делает",
@@ -485,9 +500,10 @@ KIND_SPECS: dict[str, KindSpec] = {
         extra=("ПредставлениеАктивного: {name}", "ПредставлениеНеактивного: {name}"),
         note="Задайте пару представлений (активное/неактивное) и Активна – это смысл вида",
     ),
-    # Свойство называется ТипКомпонента, как во всех YAML-примерах документации; вариант
-    # "Компонент" из перечня свойств проверен деплоем и отвергается компилятором
-    # ("Неизвестное свойство"). В модуле компонент команды доступен как этот.Компонент.
+    # The property is named ТипКомпонента, as in all YAML examples of the documentation;
+    # the "Компонент" variant from the property list was tested by deployment and is
+    # rejected by the compiler ("Неизвестное свойство"). In the module the command's
+    # component is available as этот.Компонент.
     "КомандаСКомпонентом": KindSpec(
         module=True, module_stub=_STUB_COMPONENT_COMMAND,
         extra=("Представление: {name}", "ТипКомпонента: Форма"),
@@ -509,10 +525,10 @@ KIND_SPECS: dict[str, KindSpec] = {
 
 
 def bare_kinds() -> list[str]:
-    """Виды, создаваемые одним именем – их можно показать в меню "создать" как есть."""
+    """Kinds creatable from a name alone - they can be shown in a "create" menu as is."""
     return sorted(k for k, spec in KIND_SPECS.items() if not spec.needs_args)
 
-# Пополняемые секции: yaml-секция + строки нового элемента.
+# Extendable sections: the yaml section + the lines of a new item.
 _WITH_TYPE = ("Ид: {uuid}", "Имя: {name}", "Тип: {type}")
 _SECTION_SPECS: dict[str, dict] = {
     "реквизит": {"section": "Реквизиты", "lines": _WITH_TYPE},
@@ -523,17 +539,19 @@ _SECTION_SPECS: dict[str, dict] = {
     "поле": {"section": "Поля", "lines": ("Имя: {name}", "Тип: {type}")},
     "константа": {"section": "Константы", "lines": _WITH_TYPE},
     "свойство": {"section": "Свойства", "lines": ("Имя: {name}", "Тип: {type}")},
-    # Операция обработки: имя в yaml, а одноимённый @Обработчик-метод дописывается в модуль
-    # (без него платформа выдаёт "Обязательный обработчик не определен" – см. op_add_field).
+    # Data processor operation: the name goes into yaml, and a same-named @Обработчик
+    # method is appended to the module (without it the platform raises "Обязательный
+    # обработчик не определен" - see op_add_field).
     "операция": {"section": "Операции", "lines": ("Имя: {name}",)},
-    # Индекс объекта или ТЧ: имя + список полей. Стартовое поле – заглушка (список Поля не
-    # может быть пустым); реальные реквизиты дописываются, поэтому в notes идёт напоминание.
+    # Index of an object or tabular part: a name + a list of fields. The starter field is
+    # a placeholder (the Поля list cannot be empty); real attributes are filled in later,
+    # so a reminder goes into notes.
     "индекс": {"section": "Индексы", "lines": ("Имя: {name}", "Поля:", "    - Реквизит1")},
-    # Параметр запроса отчёта: имя + тип (секция ПараметрыЗапроса, читается object_info).
+    # Report query parameter: a name + a type (the ПараметрыЗапроса section, read by object_info).
     "параметр-запроса": {"section": "ПараметрыЗапроса", "lines": ("Имя: {name}", "Тип: {type}")},
     "табличная-часть": {
         "section": "ТабличныеЧасти",
-        # Табличная часть с одним стартовым реквизитом (пустая обычно бесполезна).
+        # A tabular part with one starter attribute (an empty one is usually useless).
         "lines": (
             "Ид: {uuid}",
             "Имя: {name}",
@@ -546,19 +564,19 @@ _SECTION_SPECS: dict[str, dict] = {
     },
 }
 
-# Секции-отображения "Ключ: Значение" (не список элементов с "-"): ЛокализованныеСтроки.
-# quote – заключать значение в кавычки (у шаблонов бывают пробелы и подстановки %0/$0).
+# Mapping sections "Ключ: Значение" (not a list of items with "-"): ЛокализованныеСтроки.
+# quote - wrap the value in quotes (templates may contain spaces and %0/$0 substitutions).
 _MAPPING_SPECS: dict[str, dict] = {
     "строка": {"section": "Строки", "quote": False},
     "шаблон": {"section": "Шаблоны", "quote": True},
 }
 
-# Вид объекта -> какие секции у него пополняемы.
+# Object kind -> which sections of it are extendable.
 KIND_SECTIONS: dict[str, tuple[str, ...]] = {
-    # Табличные части – только у ссылочных сущностей (документация "Табличная часть":
+    # Tabular parts - only on reference entities ("Табличная часть" documentation:
     # Справочник, Документ, ПланОбмена, ХранилищеНастроек, КонтрактСущности).
-    # Индексы – у объектов с хранимыми данными (документация: набор основных/дополнительных
-    # полей, по которым создаётся индекс в БД).
+    # Indexes - on objects with stored data (documentation: a set of primary/additional
+    # fields over which a DB index is created).
     "Справочник": ("реквизит", "табличная-часть", "индекс"),
     "Документ": ("реквизит", "табличная-часть", "индекс"),
     "ПланОбмена": ("реквизит", "табличная-часть", "индекс"),
@@ -579,15 +597,15 @@ KIND_SECTIONS: dict[str, tuple[str, ...]] = {
     "ПараметрСамостоятельнойРегистрацииПользователя": ("поле",),
     "КлючДоступа": ("параметр",),
     "ПравоНаДействие": ("параметр",),
-    "ПравоНаЭлемент": ("значение",),  # секция Элементы: действия права
+    "ПравоНаЭлемент": ("значение",),  # the Элементы section: actions of the privilege
     "КонтрактТипа": ("свойство",),
     "КонтрактСущности": ("свойство", "табличная-часть"),
     "СобытиеЖурналаСобытий": ("свойство",),
 }
 
-# Состав строк, отличный от общего для вида объекта: у полей ХранимойСтруктуры и параметров
-# КлючаДоступа документация описывает Ид – он держит привязку данных при переименовании
-# (у обычной Структуры и у ПараметрыРаботыКлиента Ид в составе нет).
+# Line sets that differ from the kind's common ones: for ХранимаяСтруктура fields and
+# КлючДоступа parameters the documentation describes an Ид - it keeps the data binding
+# across renames (a plain Структура and ПараметрыРаботыКлиента have no Ид in their sets).
 _KIND_SECTION_LINES: dict[tuple[str, str], tuple[str, ...]] = {
     ("ХранимаяСтруктура", "поле"): _WITH_TYPE,
     ("КлючДоступа", "параметр"): _WITH_TYPE,
@@ -599,7 +617,7 @@ _KIND_SECTION_LINES: dict[tuple[str, str], tuple[str, ...]] = {
 FIELD_KINDS = tuple(_SECTION_SPECS)
 
 
-# --- разведка проекта -----------------------------------------------------------------
+# --- project discovery ------------------------------------------------------------------
 
 
 def _read(path: Path) -> str:
@@ -610,14 +628,14 @@ def _read(path: Path) -> str:
 class ObjectHit:
     kind: str
     name: str
-    path: Path  # yaml объекта
+    path: Path  # the object's yaml
     subsystem: str | None
     namespace: str  # vendor::project::subsystem
     text: str = field(repr=False, default="")
 
 
 def find_projects(root: Path) -> list[dict]:
-    """Проекты под корнем: [{vendor, name, dir, subsystems: [имена]}], скрытые каталоги пропускаются."""
+    """Projects under the root: [{vendor, name, dir, subsystems: [names]}], hidden directories skipped."""
     out = []
     for project_yaml in sorted(root.rglob(PROJECT_FILE)):
         rel = project_yaml.relative_to(root)
@@ -651,7 +669,7 @@ def _iter_objects(root: Path):
 
 
 def _namespace_of(yaml_path: Path, root: Path) -> tuple[str | None, str]:
-    """(имя подсистемы, vendor::project::subsystem) для файла объекта."""
+    """(subsystem name, vendor::project::subsystem) for an object file."""
     subsystem = yaml_path.parent.name if (yaml_path.parent / SUBSYSTEM_FILE).is_file() else None
     project_dir = yaml_path.parent
     while project_dir != project_dir.parent:
@@ -671,7 +689,7 @@ def _namespace_of(yaml_path: Path, root: Path) -> tuple[str | None, str]:
 
 
 def find_object(root: Path, name: str) -> ObjectHit:
-    """Объект по имени; несколько тёзок или отсутствие – ошибка с перечислением кандидатов."""
+    """An object by name; multiple namesakes or none at all - an error listing the candidates."""
     hits = []
     for yaml_path, kind, obj_name, text in _iter_objects(root):
         if obj_name == name:
@@ -685,54 +703,58 @@ def find_object(root: Path, name: str) -> ObjectHit:
     return hits[0]
 
 
-# Типы со значением по умолчанию: ПолеВвода<Тип> принимает их как есть. У ПолеВвода
+# Types with a default value: ПолеВвода<Тип> accepts them as is. For ПолеВвода
 # "параметр типа должен иметь значение по умолчанию ИЛИ Неопределено в составе типов"
-# (stdlib ПолеВвода) – дефолта нет у ссылок и у перечислений без ПоУмолчанию, им нужен '?'.
+# (stdlib ПолеВвода) - references and enumerations without ПоУмолчанию have no default
+# and need a '?'.
 PRIMITIVE_TYPES = {
     "Строка", "Число", "Булево", "Дата", "ДатаВремя", "Время", "УникальныйИдентификатор",
     "Момент", "Длительность", "Ууид",
 }
 
-# Стандартные (предопределённые платформой) реквизиты: в yaml их может не быть, но в формах
-# они нужны. Только те, что существуют без явного объявления: у Справочника – Наименование;
-# у Документа – Дата ("Обязан присутствовать всегда"). Номер документа НЕ подставляется: он
-# опционален ("Если не задан, то номер отсутствует"), фантомная колонка формы была бы ошибкой.
+# Standard (platform-predefined) attributes: they may be absent from yaml, yet forms need
+# them. Only those that exist without an explicit declaration: Справочник - Наименование;
+# Документ - Дата ("Обязан присутствовать всегда"). The document Номер is NOT supplied: it
+# is optional ("Если не задан, то номер отсутствует"), and a phantom form column would be
+# an error.
 _STANDARD_FIELDS = {
     "Справочник": [{"name": "Наименование", "type": "Строка"}],
     "Документ": [{"name": "Дата", "type": "ДатаВремя"}],
 }
 
-# Виды, у которых бывают формы объекта и списка (дочерние типы ФормаОбъекта / ФормаСписка
-# в stdlib). У регистров и набора констант формы объекта нет – только список.
+# Kinds that have object and list forms (child types of ФормаОбъекта / ФормаСписка in
+# stdlib). Registers and a constant set have no object form - list only.
 OBJECT_FORM_KINDS = ("Справочник", "Документ", "ПланОбмена", "ХранилищеНастроек")
 LIST_FORM_KINDS = OBJECT_FORM_KINDS + (
     "РегистрСведений", "РегистрНакопления", "НаборКонстант",
 )
-# Данные регистра лежат в Измерениях и Ресурсах, а не только в Реквизитах: для списка
-# показывать нужно их все.
+# Register data lives in Измерения and Ресурсы, not only in Реквизиты: a list must
+# show all of them.
 _REGISTER_FIELD_SECTIONS = ("Измерения", "Ресурсы", "Реквизиты")
 
-# Вид регистра накопления: Остатки (умолчание) хранит и остатки, и обороты; Обороты – только
-# изменения. У записи регистра остатков есть ВидЗаписи (Приход/Расход) – у оборотного нет
-# (документация "Свойства элемента проекта РегистрНакопления" и пример проектирования).
+# Accumulation register kind: Остатки (the default) stores both balances and turnovers;
+# Обороты - changes only. A balance register record has a ВидЗаписи (Приход/Расход) - a
+# turnover one does not ("Свойства элемента проекта РегистрНакопления" documentation and
+# the design example).
 _REGISTER_KIND_RE = re.compile(r"^ВидРегистра:\s*(\S+)", re.M)
 BALANCE_REGISTER = "Остатки"
 _PERIODICITY_RE = re.compile(r"^Периодичность:\s*(\S+)", re.M)
 
-# Обработчики вычисления разрешений: уровень 1 – на элемент проекта в целом, уровень 2 –
-# на отдельные объекты (RLS). Пишутся в модуле объекта <Имя>.xbsl.
+# Permission computation handlers: level 1 - for the project element as a whole, level 2 -
+# for individual objects (RLS). Written in the object module <Имя>.xbsl.
 ACCESS_HANDLER_LEVEL1 = "ВычислитьРазрешенияДоступа"
 ACCESS_HANDLER_LEVEL2 = "ВычислитьРазрешенияДоступаДляОбъектов"
 
 
 def object_info(root: Path, name: str | None = None, yaml_path: Path | None = None,
                 reader=None) -> dict:
-    """Сводка объекта для генерации форм и обзора.
+    """Object summary for form generation and overview.
 
-    Поля дополняются стандартными реквизитами вида (Наименование / Номер+Дата, у регистров –
-    Период / Регистратор / ВидЗаписи), если их нет в yaml: формы строятся по полному списку.
-    Кроме состава отдаёт то, что нужно, чтобы писать код объекта: контроль доступа и наличие
-    обработчиков разрешений, вид регистра и признак необходимости ВидЗаписи в движениях.
+    Fields are completed with the kind's standard attributes (Наименование / Номер+Дата,
+    for registers - Период / Регистратор / ВидЗаписи) when absent from yaml: forms are
+    built from the full list. Besides the composition it returns what is needed to write
+    the object's code: access control and the presence of permission handlers, the
+    register kind and whether movements need a ВидЗаписи.
     """
     if yaml_path is not None:
         yaml_path = Path(yaml_path)
@@ -751,7 +773,7 @@ def object_info(root: Path, name: str | None = None, yaml_path: Path | None = No
         hit = find_object(root, name or "")
         text = hit.text
 
-    # У регистра данные – это Измерения и Ресурсы, реквизиты лишь дополняют их.
+    # A register's data is its Измерения and Ресурсы; attributes only complement them.
     register = _register_info(hit.kind, text)
     sections = (
         _REGISTER_FIELD_SECTIONS if hit.kind.startswith("Регистр") else ("Реквизиты",)
@@ -796,14 +818,15 @@ def object_info(root: Path, name: str | None = None, yaml_path: Path | None = No
         "name": hit.name,
         "subsystem": hit.subsystem,
         "namespace": hit.namespace,
-        # None – секции КонтрольДоступа нет: платформа применяет РазрешеноАдминистраторам.
+        # None - no КонтрольДоступа section: the platform applies РазрешеноАдминистраторам.
         "access": access_info(text),
         "access_rights": list(ACCESS_KIND_RIGHTS.get(hit.kind, ())),
-        # Обработчики вычисления разрешений в модуле объекта: нужны при РазрешенияВычисляются
-        # (уровень 1) и РазрешенияВычисляютсяДляКаждогоОбъекта (уровни 1 и 2).
+        # Permission computation handlers in the object module: needed with
+        # РазрешенияВычисляются (level 1) and РазрешенияВычисляютсяДляКаждогоОбъекта
+        # (levels 1 and 2).
         "access_handlers": _access_handlers(hit.path, reader),
-        # Только у регистров: вид (Остатки/Обороты), периодичность и признак того, что
-        # движению нужен ВидЗаписи. Для прочих видов – null.
+        # Registers only: the kind (Остатки/Обороты), the periodicity and whether a
+        # movement needs a ВидЗаписи. For other kinds - null.
         "register": register or None,
         "fields": fields,
         "tabulars": tabulars,
@@ -823,10 +846,10 @@ def object_info(root: Path, name: str | None = None, yaml_path: Path | None = No
 
 
 def _register_info(kind: str, text: str) -> dict:
-    """{register_kind, needs_record_type, standard_fields} регистра; для прочих видов – пусто.
+    """{register_kind, needs_record_type, standard_fields} of a register; empty for other kinds.
 
-    needs_record_type – нужен ли ВидЗаписи (Приход/Расход) в движениях: он есть только у
-    регистра накопления вида Остатки.
+    needs_record_type - whether movements need a ВидЗаписи (Приход/Расход): only a balance
+    (Остатки) accumulation register has it.
     """
     if not kind.startswith("Регистр"):
         return {}
@@ -843,7 +866,7 @@ def _register_info(kind: str, text: str) -> dict:
         }
     periodicity = (_PERIODICITY_RE.search(text) or [None, "Непериодический"])[1]
     return {
-        "register_kind": None,  # у регистра сведений вида нет – есть периодичность
+        "register_kind": None,  # an information register has no kind - it has periodicity
         "periodicity": periodicity,
         "needs_record_type": False,
         "standard_fields": (
@@ -853,10 +876,10 @@ def _register_info(kind: str, text: str) -> dict:
 
 
 def _access_handlers(yaml_path: Path, reader=None) -> dict:
-    """Есть ли в модуле объекта обработчики вычисления разрешений (уровни 1 и 2).
+    """Whether the object module has permission computation handlers (levels 1 and 2).
 
-    Модуль объекта – <Имя>.xbsl; <Имя>.Объект.xbsl предназначен для событий записи, туда
-    эти обработчики не пишутся.
+    The object module is <Имя>.xbsl; <Имя>.Объект.xbsl is meant for write events, these
+    handlers are not written there.
     """
     module = yaml_path.with_suffix(".xbsl")
     if not module.is_file():
@@ -871,7 +894,7 @@ def _access_handlers(yaml_path: Path, reader=None) -> dict:
 
 
 def _tabular_fields(text: str, tc_name: str) -> list[dict]:
-    """Реквизиты табличной части: они лежат во вложенной секции её блока, а не наверху."""
+    """Tabular part attributes: they live in a nested section of its block, not at the top."""
     if not tc_name:
         return []
     offset = find_section_item_offset(text, "ТабличныеЧасти", tc_name)
@@ -897,7 +920,7 @@ def _suggest_layout(field_count: int, tc_count: int) -> str:
 
 
 def project_info(root: Path) -> dict:
-    """Обзор исходников под корнем: проекты, подсистемы и объекты по видам."""
+    """Overview of the sources under the root: projects, subsystems and objects by kind."""
     projects = find_projects(root)
     objects = []
     for yaml_path, kind, name, text in _iter_objects(root):
@@ -907,8 +930,8 @@ def project_info(root: Path) -> dict:
             "subsystem": subsystem, "namespace": namespace,
         }
         if kind in ACCESS_KIND_RIGHTS:
-            # Сводка прав по проекту: способ для ПоУмолчанию (None – секции нет, значит
-            # действует РазрешеноАдминистраторам) и способы отдельных прав.
+            # Project-wide rights summary: the method for ПоУмолчанию (None - no section,
+            # so РазрешеноАдминистраторам applies) and the methods of individual rights.
             access = access_info(text)
             entry["access_default"] = access["default"] if access else None
             entry["access_permissions"] = access["permissions"] if access else {}
@@ -925,15 +948,15 @@ def project_info(root: Path) -> dict:
     }
 
 
-# --- результат операции и применение ---------------------------------------------------
+# --- operation result and applying ------------------------------------------------------
 
 
 @dataclass
 class FileChange:
     path: Path
-    content: str  # полный новый текст файла
-    created: bool  # True – новый файл, False – правка существующего
-    cursor: tuple[int, int] | None = None  # (строка, колонка) точки интереса, 0-базные
+    content: str  # the full new text of the file
+    created: bool  # True - a new file, False - an edit of an existing one
+    cursor: tuple[int, int] | None = None  # (line, column) of the point of interest, 0-based
 
 
 @dataclass(frozen=True)
@@ -945,8 +968,8 @@ class FileRename:
 @dataclass
 class ScaffoldResult:
     changes: list[FileChange] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)  # предупреждения, ручные шаги
-    renames: list[FileRename] = field(default_factory=list)  # переименования файлов (до правок)
+    notes: list[str] = field(default_factory=list)  # warnings, manual steps
+    renames: list[FileRename] = field(default_factory=list)  # file renames (before edits)
 
     def as_dict(self, content: bool = True) -> dict:
         files = []
@@ -968,11 +991,11 @@ class ScaffoldResult:
 
 
 def apply_result(result: ScaffoldResult) -> list[str]:
-    """Записать изменения на диск; возвращает пути записанных файлов.
+    """Write the changes to disk; returns the paths of the written files.
 
-    Переименования файлов выполняются до записи правок: правки переименованных файлов
-    ссылаются на новые пути. Правка существующего файла сохраняет его BOM (кодировку
-    определяет engine.load); переводы строк выбирает сама операция при генерации текста.
+    File renames run before writing the edits: edits of renamed files reference the new
+    paths. Editing an existing file preserves its BOM (the encoding is detected by
+    engine.load); newlines are chosen by the operation itself when generating the text.
     """
     for rename in result.renames:
         if rename.new_path.exists():
@@ -1000,9 +1023,9 @@ def _dominant_nl(text: str) -> str:
     return fixer._dominant_newline(text) if text else "\n"
 
 
-# Чтение правимого файла. reader: Callable[[Path], str]; LSP подставляет читателя, который
-# сначала смотрит в открытые буферы редактора: правка обязана исходить из текста с
-# несохранёнными изменениями, иначе применение полного нового текста их затёрло бы.
+# Reading the file to edit. reader: Callable[[Path], str]; the LSP supplies a reader that
+# first checks the editor's open buffers: an edit must start from the text with unsaved
+# changes, otherwise applying the full new text would wipe them out.
 def _load_for_edit(yaml_path: Path, reader=None) -> tuple[str, str]:
     if not yaml_path.is_file():
         raise ScaffoldError(f"Файл не найден: {yaml_path}")
@@ -1010,7 +1033,7 @@ def _load_for_edit(yaml_path: Path, reader=None) -> tuple[str, str]:
     return text, _dominant_nl(text)
 
 
-# --- операции: объект, поле, подсистема, проект ----------------------------------------
+# --- operations: object, field, subsystem, project ---------------------------------------
 
 
 def op_new_object(
@@ -1024,12 +1047,12 @@ def op_new_object(
     routes: str | None = None,
     report: dict | None = None,
 ) -> ScaffoldResult:
-    """Создать объект конфигурации: Имя.yaml (+ Имя.xbsl у видов с модулем).
+    """Create a configuration object: Имя.yaml (+ Имя.xbsl for kinds with a module).
 
-    environment – Окружение для ОбщийМодуль/Структура; access – способ контроля доступа
-    (у HttpСервис пишется в Разрешения.Вызов, у объектов данных – в Разрешения.ПоУмолчанию;
-    отдельные права задаёт op_set_access); routes – маршруты HttpСервис
-    ("GET /, POST /, GET /{id}"); report – источник и макет отчёта.
+    environment - Окружение for ОбщийМодуль/Структура; access - the access control method
+    (for HttpСервис written to Разрешения.Вызов, for data objects to
+    Разрешения.ПоУмолчанию; individual rights are set by op_set_access); routes -
+    HttpСервис routes ("GET /, POST /, GET /{id}"); report - the report source and layout.
     """
     spec = KIND_SPECS.get(kind)
     if spec is None:
@@ -1073,8 +1096,9 @@ def op_new_object(
         extra = [line for line in extra if not line.startswith("Окружение:")]
         extra.append(f"Окружение: {environment}")
     if access:
-        # Разрешения обязательны: КонтрольДоступа – это набор "Право: СпособКонтроляДоступа"
-        # внутри Разрешения (см. ACCESS_KIND_RIGHTS и документацию "Контроль прав доступа").
+        # Разрешения is mandatory: КонтрольДоступа is a set of "Право: СпособКонтроляДоступа"
+        # entries inside Разрешения (see ACCESS_KIND_RIGHTS and the "Контроль прав доступа"
+        # documentation).
         extra += ["КонтрольДоступа:", f"    {_PERMISSIONS_KEY}:",
                   f"        {ACCESS_DEFAULT_RIGHT}: {access}"]
     content = new_object_yaml(kind, new_uuid(), name, scope or spec.scope, extra)
@@ -1098,8 +1122,9 @@ def op_add_field(
     tabular: str | None = None,
     reader=None,
 ) -> ScaffoldResult:
-    """Добавить элемент секции объекта: реквизит, измерение, ресурс, значение перечисления,
-    параметр, поле структуры или табличную часть; tabular – имя ТЧ для реквизита в неё.
+    """Add a section item to an object: an attribute, dimension, resource, enumeration
+    value, parameter, structure field or tabular part; tabular - the tabular part name
+    when adding an attribute into it.
     """
     yaml_path = Path(yaml_path)
     name = _check_identifier(name, "элемента")
@@ -1130,8 +1155,9 @@ def op_add_field(
         )
     allowed = KIND_SECTIONS.get(kind)
     if allowed is None:
-        # Вид без пополняемых секций (ОбщийМодуль, HttpСервис, КомпонентИнтерфейса и т.п.):
-        # раньше проверка пропускала такой вид и молча дописывала ему чужую секцию.
+        # A kind with no extendable sections (ОбщийМодуль, HttpСервис, КомпонентИнтерфейса
+        # etc.): the check used to let such a kind through and silently append a foreign
+        # section to it.
         raise ScaffoldError(
             f"У вида {kind} нет пополняемых секций; они есть у: " + ", ".join(sorted(KIND_SECTIONS))
         )
@@ -1165,11 +1191,11 @@ def _add_mapping_entry(
     yaml_path: Path, text: str, nl: str, kind: str, field_kind: str,
     map_spec: dict, key: str, value: str,
 ) -> ScaffoldResult:
-    """Добавить пару "Ключ: Значение" в секцию-отображение (Строки/Шаблоны локстрок).
+    """Add a "Ключ: Значение" pair to a mapping section (Строки/Шаблоны of localized strings).
 
-    Формат из документации "Локализация": секции Строки и Шаблоны – это отображения ключ →
-    значение, а не списки элементов. Значение по умолчанию равно ключу (как Мероприятия:
-    Мероприятия); у шаблонов значение берётся в кавычки.
+    The format is from the "Локализация" documentation: the Строки and Шаблоны sections
+    are key-to-value mappings, not item lists. The default value equals the key (as in
+    Мероприятия: Мероприятия); template values are quoted.
     """
     allowed = KIND_SECTIONS.get(kind)
     if allowed is None or field_kind not in allowed:
@@ -1194,10 +1220,11 @@ def _add_mapping_entry(
 
 
 def _add_operation_handler(yaml_path: Path, operation: str, result: ScaffoldResult, reader) -> None:
-    """Дописать в модуль обработки @Обработчик-метод операции (если его там ещё нет).
+    """Append the operation's @Обработчик method to the processor module (unless present).
 
-    Каждой операции обязан соответствовать одноимённый метод с аннотацией @Обработчик, иначе
-    платформа выдаёт "Обязательный обработчик <Имя> не определен" (документация "Обработка").
+    Every operation must have a same-named method annotated with @Обработчик, otherwise
+    the platform raises "Обязательный обработчик <Имя> не определен" (the "Обработка"
+    documentation).
     """
     module_path = yaml_path.with_suffix(".xbsl")
     module_text = (reader or _read)(module_path) if module_path.exists() else ""
@@ -1220,7 +1247,7 @@ def op_add_subsystem(
     auto_interface: bool = True,
     uses: list[str] | None = None,
 ) -> ScaffoldResult:
-    """Создать подсистему: папка + Подсистема.yaml (блоки собираются по параметрам)."""
+    """Create a subsystem: a folder + Подсистема.yaml (blocks assembled from the parameters)."""
     name = _check_identifier(name, "подсистемы")
     parent_dir = Path(parent_dir)
     yaml_path = parent_dir / name / SUBSYSTEM_FILE
@@ -1230,8 +1257,8 @@ def op_add_subsystem(
     if uses:
         lines.append("Использование:")
         lines += [f"    - {u}" for u in uses]
-    # Блок Интерфейс пишется всегда: умолчание платформы – Истина, поэтому отключение
-    # автоинтерфейса существует только как явная запись ВключатьВАвтоИнтерфейс: Ложь.
+    # The Интерфейс block is always written: the platform default is Истина, so disabling
+    # the auto-interface exists only as an explicit ВключатьВАвтоИнтерфейс: Ложь entry.
     lines.append("Интерфейс:")
     lines.append(f"    ВключатьВАвтоИнтерфейс: {'Истина' if auto_interface else 'Ложь'}")
     if representation:
@@ -1259,14 +1286,14 @@ def op_new_project(
     name: str,
     *,
     representation: str | None = None,
-    # Три числа A.B.C – семантическое версионирование по стандарту свойств проекта
-    # (на "1.0" ругается собственное правило линтера project/version).
+    # Three numbers A.B.C - semantic versioning per the project property standard
+    # (the linter's own project/version rule complains about "1.0").
     version: str = "1.0.0",
     compatibility: str = "9.0",
     subsystem: str = "Основное",
     library: bool = False,
 ) -> ScaffoldResult:
-    """Создать проект с нуля: Проект.yaml + Проект.xbsl + первая подсистема."""
+    """Create a project from scratch: Проект.yaml + Проект.xbsl + the first subsystem."""
     vendor = _check_identifier(vendor, "поставщика")
     name = _check_identifier(name, "проекта")
     subsystem = _check_identifier(subsystem, "подсистемы")
@@ -1305,16 +1332,16 @@ def op_new_project(
     return result
 
 
-# --- операция: зависимость от библиотеки -------------------------------------------------
+# --- operation: library dependency --------------------------------------------------------
 
 LIBRARIES_SECTION = "Библиотеки"
-# Версия релиза библиотеки – только числа через точку. Версия СБОРКИ имеет суффикс через
-# дефис ("1.0-42"), и подключить её нельзя: к проекту подключается релиз.
+# A library RELEASE version is dot-separated numbers only. A BUILD version has a hyphenated
+# suffix ("1.0-42") and cannot be attached: a project attaches a release.
 _RELEASE_VERSION_RE = re.compile(r"^\d+(\.\d+)*$")
 
 
 def project_libraries(text: str) -> list[dict[str, str]]:
-    """Подключённые библиотеки – элементы раздела Библиотеки файла Проект.yaml."""
+    """Attached libraries - items of the Библиотеки section of Проект.yaml."""
     return section_items(text, LIBRARIES_SECTION, top_level=True)
 
 
@@ -1339,15 +1366,15 @@ def op_add_dependency(
     project_yaml: Path | None = None,
     reader=None,
 ) -> ScaffoldResult:
-    """Подключить библиотеку к проекту – раздел Библиотеки файла Проект.yaml.
+    """Attach a library to the project - the Библиотеки section of Проект.yaml.
 
-    Элемент раздела – Имя, Поставщик, Версия (документация "Подключить библиотеку к
-    проекту"). Разные версии одной библиотеки внутри проекта не допускаются, поэтому
-    повторное подключение обновляет версию, а не добавляет вторую запись.
+    A section item is Имя, Поставщик, Версия (the "Подключить библиотеку к проекту"
+    documentation). Different versions of one library are not allowed within a project,
+    so re-attaching updates the version instead of adding a second entry.
 
-    Версия – это версия РЕЛИЗА библиотеки: релиз выпускается в панели управления, через
-    API этот шаг не автоматизируется. Метаданные библиотеки (поставщик, имя, версия) даёт
-    разбор её архива: elemctl inspect.
+    The version is the library RELEASE version: a release is published in the control
+    panel, this step is not automated via API. Library metadata (vendor, name, version)
+    comes from parsing its archive: elemctl inspect.
     """
     vendor = _check_identifier(vendor, "поставщика библиотеки")
     name = _check_identifier(name, "библиотеки")
@@ -1401,7 +1428,7 @@ def op_add_dependency(
     return result
 
 
-# --- операции: HTTP-сервис и маршруты ---------------------------------------------------
+# --- operations: HTTP service and routes --------------------------------------------------
 
 _METHOD_ORDER = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 _HANDLER_NAMES: dict[tuple[str, bool], str] = {
@@ -1419,7 +1446,7 @@ _METHOD_RU = {
 
 
 def parse_routes(routes_str: str) -> list[tuple[str, list[str]]]:
-    """"GET /, POST /, GET /{id}" -> [(шаблон, [методы])] с сохранением порядка шаблонов."""
+    """"GET /, POST /, GET /{id}" -> [(template, [methods])] preserving template order."""
     grouped: dict[str, list[str]] = {}
     order: list[str] = []
     for part in re.split(r"[,\n]+", routes_str):
@@ -1447,11 +1474,12 @@ def _has_path_param(path: str) -> bool:
 
 
 def _to_pascal(s: str) -> str:
-    """Сегмент пути -> часть идентификатора: разделители убираются, слова с заглавной.
+    """Path segment -> identifier part: separators dropped, words capitalized.
 
-    В пути законны символы, недопустимые в имени (дефис, точка, звёздочка шаблона
-    `/read/*`): их отбрасываем, иначе получится не идентификатор, а сломанный yaml
-    (`Имя: *` парсер читает как алиас) и некомпилируемое имя обработчика.
+    A path may legally contain characters invalid in a name (hyphen, dot, the wildcard
+    asterisk of `/read/*`): we discard them, otherwise the result is not an identifier
+    but broken yaml (`Имя: *` is read by the parser as an alias) and a non-compilable
+    handler name.
     """
     s = s.strip("{}")
     parts = [p for p in re.split(r"[^A-Za-zА-Яа-яЁё0-9_]+", s) if p]
@@ -1473,11 +1501,12 @@ def template_name(path: str) -> str:
 
 
 def assign_template_name(path: str, used: set[str]) -> str:
-    """Имя шаблона URL, уникальное в пределах сервиса.
+    """A URL template name unique within the service.
 
-    Имя шаблона – ключ: по нему платформа хранит разрешения доступа и его отдаёт
-    Запрос.ИмяШаблона, а op_add_route ищет по нему блок для дополнения. Разные пути легко
-    дают одно имя (`/users` и `/orders/users`), поэтому дубли разводятся суффиксом.
+    The template name is a key: the platform stores access permissions by it, it is
+    returned by Запрос.ИмяШаблона, and op_add_route looks up the block to extend by it.
+    Different paths easily produce one name (`/users` and `/orders/users`), so duplicates
+    are disambiguated with a suffix.
     """
     base = template_name(path) or "Шаблон"
     name, n = base, 2
@@ -1489,8 +1518,8 @@ def assign_template_name(path: str, used: set[str]) -> str:
 
 
 def assign_handler(method: str, path: str, used: set[str]) -> str:
-    """Имя обработчика маршрута: словарное (ПолучитьСписок и т.п.), при занятости –
-    <Метод><ИмяШаблона>, дальше числовой суффикс. Имя помечается занятым."""
+    """Route handler name: a dictionary one (ПолучитьСписок etc.), if taken -
+    <Метод><ИмяШаблона>, then a numeric suffix. The name is marked as taken."""
     name = _HANDLER_NAMES.get((method, _has_path_param(path)))
     if name is None or name in used:
         name = f"{_METHOD_RU.get(method, method.capitalize())}{template_name(path)}"
@@ -1514,13 +1543,14 @@ def _template_lines(path: str, method_handlers: list[tuple[str, str]], name: str
 
 
 def _handler_stub(method: str, path: str, handler: str) -> str:
-    """Заготовка обработчика маршрута: канонический CRUD-скелет по методу и параметрам пути.
+    """Route handler stub: a canonical CRUD skeleton by method and path parameters.
 
-    Живой код – валидная заглушка ответа без неиспользуемых переменных; развёрнутый пример
-    (парсинг limit, поиск по Ид, сериализация) идёт комментарием, чтобы его раскомментировали.
-    Код статуса и заголовки ставятся ДО записи тела, а УстановитьТело – последним: после
-    начала записи тела смена статуса и заголовков бросает ИсключениеНедопустимоеСостояние,
-    и обработчик ошибки уже не сможет выставить 500 (см. документацию HttpСервисОтвет).
+    The live code is a valid response placeholder with no unused variables; the expanded
+    example (limit parsing, lookup by Ид, serialization) goes as a comment to be
+    uncommented. The status code and headers are set BEFORE writing the body, and
+    УстановитьТело comes last: once body writing has started, changing the status or
+    headers throws ИсключениеНедопустимоеСостояние, and the error handler can no longer
+    set a 500 (see the HttpСервисОтвет documentation).
     """
     key = (method, _has_path_param(path))
     if key == ("GET", False):
@@ -1584,8 +1614,9 @@ _ERROR_HELPER = """\
 
 
 def _root_url(name: str) -> str:
-    """Публичный префикс URL из имени сервиса: без суффикса вида (naming/prefix-by-kind
-    требует у HttpСервис суффикс HttpСервис, но в URL он лишний – боевой /site, не /siteHttpСервис).
+    """Public URL prefix from the service name: without the kind suffix (naming/prefix-by-kind
+    requires the HttpСервис suffix on an HttpСервис, but in the URL it is redundant - a real
+    deployment uses /site, not /siteHttpСервис).
     """
     for suffix in ("HttpСервис", "HttpService"):
         if name.endswith(suffix) and len(name) > len(suffix):
@@ -1641,11 +1672,12 @@ def _new_soap_service(
     yaml_path: Path, name: str, access: str | None, result: ScaffoldResult,
     scope: str | None = None,
 ) -> ScaffoldResult:
-    """Заготовка SoapСервис: сервис с одной операцией-примером + метод-обработчик в модуле.
+    """SoapСервис stub: a service with one example operation + a handler method in the module.
 
-    Структура из документации "Свойства элемента проекта SoapСервис": ПространствоИменСервиса
-    (targetNamespace WSDL), ИмяСервиса (name WSDL), КорневойUrl, Обработчики (Имя операции +
-    Метод в модуле). Сигнатуру операции задаёт WSDL-контракт – метод оставлен заглушкой.
+    The structure is from the "Свойства элемента проекта SoapСервис" documentation:
+    ПространствоИменСервиса (WSDL targetNamespace), ИмяСервиса (WSDL name), КорневойUrl,
+    Обработчики (the operation Имя + the Метод in the module). The operation signature is
+    defined by the WSDL contract - the method is left as a stub.
     """
     operation = "Операция1"
     root_url = _root_url(name)
@@ -1680,10 +1712,10 @@ def _new_soap_service(
 
 
 def op_add_route(yaml_path: Path, routes: str, *, reader=None) -> ScaffoldResult:
-    """Добавить маршруты в существующий HttpСервис: ШаблоныUrl в yaml + заготовки в xbsl.
+    """Add routes to an existing HttpСервис: ШаблоныUrl in yaml + stubs in xbsl.
 
-    Существующий шаблон пополняется недостающими методами; полностью существующие
-    маршруты пропускаются с пометкой в notes.
+    An existing template is extended with the missing methods; fully existing routes are
+    skipped with a mark in notes.
     """
     yaml_path = Path(yaml_path)
     text, nl = _load_for_edit(yaml_path, reader)
@@ -1694,15 +1726,15 @@ def op_add_route(yaml_path: Path, routes: str, *, reader=None) -> ScaffoldResult
     module_text = (reader or _read)(module_path) if module_path.is_file() else ""
     module_nl = _dominant_nl(module_text)
 
-    # Занятые имена обработчиков: объявленные в модуле и упомянутые в yaml.
+    # Taken handler names: declared in the module and mentioned in yaml.
     declared = set(re.findall(r"^метод\s+([A-Za-zА-Яа-яЁё0-9_]+)", module_text, re.M))
     used = set(declared) | set(re.findall(r"Обработчик:\s*(\S+)", text))
-    # Занятые имена шаблонов: имя – ключ шаблона (по нему платформа хранит разрешения,
-    # его отдаёт Запрос.ИмяШаблона, и по нему же ищется блок для дополнения ниже).
+    # Taken template names: the name is the template key (the platform stores permissions
+    # by it, Запрос.ИмяШаблона returns it, and the block to extend below is found by it).
     used_templates = {i.get("Имя", "") for i in section_items(text, "ШаблоныUrl", top_level=True)}
 
     result = ScaffoldResult()
-    added: list[tuple[str, str, str]] = []  # (метод, шаблон, обработчик)
+    added: list[tuple[str, str, str]] = []  # (method, template, handler)
     for path, methods in parse_routes(routes):
         template = next(
             (i for i in section_items(text, "ШаблоныUrl", top_level=True) if i.get("Шаблон") == path), None
@@ -1768,12 +1800,12 @@ def _block_at(text: str, offset: int | None) -> str:
     return text[offset:end]
 
 
-# --- операции: отчёт --------------------------------------------------------------------
+# --- operations: report -------------------------------------------------------------------
 
 
 def _new_report(yaml_path: Path, name: str, report: dict, result: ScaffoldResult,
                 scope: str | None = None) -> ScaffoldResult:
-    """Отчёт с ВидИсточникаДанных: Таблица и сводным макетом по заданным полям."""
+    """A report with ВидИсточникаДанных: Таблица and a pivot layout over the given fields."""
     source = report.get("source")
     if not source:
         raise ScaffoldError(
@@ -1837,18 +1869,18 @@ def _new_report(yaml_path: Path, name: str, report: dict, result: ScaffoldResult
     return result
 
 
-# --- операции: формы --------------------------------------------------------------------
+# --- operations: forms --------------------------------------------------------------------
 
 
 def _form_field_component(name: str, type_: str, indent: str) -> list[str]:
-    """Компонент редактирования по типу реквизита (маппинг из спецификации форм)."""
+    """Editing component by attribute type (the mapping from the form specification)."""
     if type_ == "Булево":
         return [f"{indent}-", f"{indent}    Тип: Флажок", f"{indent}    Имя: {name}",
                 f"{indent}    Значение: =Объект.{name}"]
     component_type = type_ or "Строка"
-    # '?' добавляется только там, где у типа заведомо нет значения по умолчанию: ссылка и
-    # перечисление. Коллекции и обобщения (Массив<Строка> и т.п.) дефолт имеют – раньше им
-    # приписывалось '?', и двусторонняя привязка Значение: =Объект.X расходилась по типу.
+    # '?' is added only where the type is known to have no default value: a reference and
+    # an enumeration. Collections and generics (Массив<Строка> etc.) do have a default -
+    # they used to get a '?', and the two-way binding Значение: =Объект.X diverged in type.
     needs_nullable = (
         component_type not in PRIMITIVE_TYPES
         and not component_type.endswith("?")
@@ -1870,7 +1902,7 @@ def _form_field_component(name: str, type_: str, indent: str) -> list[str]:
 def _form_fields(info: dict) -> list[dict]:
     fields = list(info["fields"])
     if info["is_hierarchical"]:
-        # Системный реквизит иерархии: в yaml объекта его нет, в форме он нужен.
+        # The system hierarchy attribute: absent from the object yaml, needed in the form.
         obj = info["name"]
         after = 1 if fields and fields[0]["name"] == "Наименование" else 0
         fields.insert(after, {"name": "Родитель", "type": f"{obj}.Ссылка?"})
@@ -1879,11 +1911,12 @@ def _form_fields(info: dict) -> list[dict]:
 
 def _tabular_table_lines(obj: str, tc_name: str, indent: str, panels: bool,
                          fields: list[dict] | None = None) -> list[str]:
-    """Таблица табличной части: источник, колонки по её реквизитам и команды строк.
+    """Tabular part table: the source, columns by its attributes and row commands.
 
-    Колонки обязательны – "Необходимо задать Колонки (колонки таблицы) и Источник"
-    (документация "Компонент интерфейса Таблица"): без них таблица показывает пустые строки.
-    ПолеЗначения задаёт и сортировку по колонке, поэтому пишется вместе с Заголовком.
+    Columns are mandatory - "Необходимо задать Колонки (колонки таблицы) и Источник"
+    (the "Компонент интерфейса Таблица" documentation): without them the table shows
+    empty rows. ПолеЗначения also defines column sorting, so it is written along with
+    Заголовок.
     """
     lines = [
         f"{indent}Тип: Таблица<ИсточникДанныхМассив<{obj}.{tc_name}>>",
@@ -1923,7 +1956,7 @@ def _tabular_table_lines(obj: str, tc_name: str, indent: str, panels: bool,
 
 
 def object_form_yaml(info: dict, uid: str) -> str:
-    """ФормаОбъекта по сводке объекта: simple / panels / tabs по числу ТЧ и реквизитов."""
+    """ФормаОбъекта from the object summary: simple / panels / tabs by tabular part and attribute counts."""
     obj = info["name"]
     fields = _form_fields(info)
     tabulars = info["tabulars"]
@@ -1972,8 +2005,8 @@ def object_form_yaml(info: dict, uid: str) -> str:
         "            Содержимое:",
     ]
     if section_type == "РазделФормы":
-        # РазделФормы.Содержимое – Массив<Группа>: поля кладутся в область раздела, а не
-        # напрямую (у Группы содержимое – Массив<Компонент>, там обёртка не нужна).
+        # РазделФормы.Содержимое is Массив<Группа>: fields go into the section area, not
+        # directly (a Группа's content is Массив<Компонент>, no wrapper needed there).
         lines += [
             "                -",
             "                    Содержимое:",
@@ -2015,14 +2048,14 @@ def object_form_yaml(info: dict, uid: str) -> str:
 
 
 def _list_sort_field(info: dict, fields: list[str]) -> str | None:
-    """Поле сортировки списка по умолчанию: у документа – Дата, иначе Наименование."""
+    """Default list sort field: Дата for a document, otherwise Наименование."""
     if info["kind"] == "Документ" and "Дата" in fields:
         return "Дата"
     return "Наименование" if "Наименование" in fields else None
 
 
 def list_form_yaml(info: dict, uid: str) -> str:
-    """ФормаСписка по сводке объекта: динамический список, колонки по полям, иерархия."""
+    """ФормаСписка from the object summary: a dynamic list, columns by fields, hierarchy."""
     obj = info["name"]
     ns = info["namespace"]
     row_type = f"{ns}::{obj}ФормаСписка.ДанныеСтрокиСписка"
@@ -2064,9 +2097,9 @@ def list_form_yaml(info: dict, uid: str) -> str:
         lines.append("            НачальныйУровеньРазворачивания: -1")
     lines.append("            Колонки:")
     for name in fields:
-        # ПолеЗначения задаёт не только отображаемое значение, но и сортировку по колонке
-        # ("Также это поле будет использоваться для сортировки по данной колонке" –
-        # документация компонента Таблица), поэтому пишется вместе с Заголовком.
+        # ПолеЗначения defines not only the displayed value but also column sorting
+        # ("Также это поле будет использоваться для сортировки по данной колонке" - the
+        # Таблица component documentation), so it is written along with Заголовок.
         lines += [
             "                -",
             f"                    Тип: СтандартнаяКолонкаТаблицы<СтрокаДинамическогоСписка<{row_type}>>",
@@ -2087,10 +2120,11 @@ def list_form_yaml(info: dict, uid: str) -> str:
         "            ИмяТипаДанныхСтроки: ДанныеСтрокиСписка",
     ]
     if hierarchical:
-        # Иерархия элементов: имя писать не нужно и нечего – "Если ПоУмолчанию или пустая
-        # строка, будет отображена иерархия, которая указана как иерархия по-умолчанию в
-        # справочнике" (stdlib ДинамическийСписок). Имени иерархии "Иерархия" не существует:
-        # так называется таблица языка запросов, а не иерархия справочника.
+        # Element hierarchy: no name to write and nothing to write - "Если ПоУмолчанию или
+        # пустая строка, будет отображена иерархия, которая указана как иерархия
+        # по-умолчанию в справочнике" (stdlib ДинамическийСписок). A hierarchy named
+        # "Иерархия" does not exist: that is the name of a query language table, not of a
+        # catalog hierarchy.
         lines += [
             "            ИспользуемаяИерархия:",
             "                Тип: РежимИерархии",
@@ -2124,23 +2158,23 @@ def list_form_yaml(info: dict, uid: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-# --- карточная форма списка --------------------------------------------------------------
+# --- card list form ------------------------------------------------------------------------
 #
-# Форма списка карточками: ПроизвольныйСписок выводит каждую запись отдельным компонентом
-# (ТипКомпонентаСтроки), а КонтейнерСтрок с матричной компоновкой раскладывает карточки
-# сеткой. Формы две: сама форма и компонент строки СтрокаСписка<Объект>.
-# Соответствие документации 9.2: ПроизвольныйСписок.ТипКомпонентаСтроки /
+# A list form with cards: ПроизвольныйСписок renders every record as a separate component
+# (ТипКомпонентаСтроки), and a КонтейнерСтрок with matrix layout arranges the cards in a
+# grid. There are two forms: the form itself and the row component СтрокаСписка<Объект>.
+# Mapping to the 9.2 documentation: ПроизвольныйСписок.ТипКомпонентаСтроки /
 # .КонтейнерСтрок, НастройкиМатричнойКомпоновки.ОписаниеАвтоматических{Колонок,Строк},
-# АвтоЗаполнениеМатричнойГруппы.ДобавлятьКолонкиИСтроки (требует определённого размера
-# колонок – поэтому у автоколонок задана МинимальнаяШирина), ФормаСписка.КомпонентТаблицы
-# принимает любой Компонент.
+# АвтоЗаполнениеМатричнойГруппы.ДобавлятьКолонкиИСтроки (requires a definite column size -
+# hence the МинимальнаяШирина on the auto columns), ФормаСписка.КомпонентТаблицы accepts
+# any Компонент.
 
 CARD_ROW_PREFIX = "СтрокаСписка"
-_CARD_MIN_WIDTH = 400  # ширина колонки сетки; с фото карточка уже – см. _card_min_width
+_CARD_MIN_WIDTH = 400  # grid column width; with a photo the card is narrower - see _card_min_width
 _CARD_MIN_WIDTH_PHOTO = 250
-_CARD_CONTENT_LIMIT = 3  # больше трёх полей карточка не читается; остальное – вручную
+_CARD_CONTENT_LIMIT = 3  # beyond three fields a card is unreadable; the rest - by hand
 
-# Типы, чьё значение годится прямо в Строку (СтандартнаяКарточка.Содержимое: Компонент|Строка).
+# Types whose value fits directly into a Строка (СтандартнаяКарточка.Содержимое: Компонент|Строка).
 _CARD_DATE_FORMATS = {
     "Дата": "дд ММММ гггг",
     "ДатаВремя": "дд ММММ гггг ЧЧ:мм",
@@ -2153,10 +2187,11 @@ def _is_photo_type(type_: str) -> bool:
 
 
 def _card_roles(fields: list[dict]) -> dict:
-    """Роли полей карточки: {title, photo, content} – заголовок, фото, вторичные поля.
+    """Card field roles: {title, photo, content} - the title, the photo, secondary fields.
 
-    Заголовок – Наименование, иначе первое строковое поле, иначе первое поле. Фото – первый
-    реквизит ДвоичныйОбъект.Ссылка. Содержимое – следующие поля, не более _CARD_CONTENT_LIMIT.
+    Title - Наименование, otherwise the first string field, otherwise the first field.
+    Photo - the first ДвоичныйОбъект.Ссылка attribute. Content - the following fields,
+    at most _CARD_CONTENT_LIMIT.
     """
     photo = next((f for f in fields if _is_photo_type(f["type"])), None)
     rest = [f for f in fields if f is not photo]
@@ -2170,20 +2205,20 @@ def _card_roles(fields: list[dict]) -> dict:
 
 
 def _card_fields(roles: dict) -> list[dict]:
-    """Поля, которые карточка реально показывает, в порядке заголовок – фото – содержимое."""
+    """The fields the card actually shows, in title - photo - content order."""
     ordered = [roles["title"], roles["photo"], *roles["content"]]
     return [f for f in ordered if f is not None]
 
 
 def _card_value(field: dict) -> str:
-    """Биндинг значения поля строки; дата/время – через Представление(Формат)."""
+    """Binding of the row field value; date/time - via Представление(Формат)."""
     expr = f"=ДанныеСтроки.Данные.{field['name']}"
     fmt = _CARD_DATE_FORMATS.get(field["type"])
     return f'{expr}.Представление("{fmt}")' if fmt else expr
 
 
 def _card_is_text(field: dict) -> bool:
-    """Годится ли значение прямо в строковое свойство (Заголовок/Содержимое карточки)."""
+    """Whether the value fits directly into a string property (card Заголовок/Содержимое)."""
     return field["type"] in ("Строка", "") or field["type"] in _CARD_DATE_FORMATS
 
 
@@ -2192,10 +2227,10 @@ def _card_label(field: dict, indent: str) -> list[str]:
 
 
 def _card_content_lines(content: list[dict], indent: str) -> list[str]:
-    """Строки свойства Содержимое карточки: строка, одна Надпись или Группа надписей.
+    """Lines of the card's Содержимое property: a string, one Надпись or a Группа of labels.
 
-    Нетекстовые значения (ссылки, перечисления, числа) в строковое свойство не годятся –
-    их выводит Надпись.
+    Non-text values (references, enumerations, numbers) do not fit into a string
+    property - a Надпись renders them.
     """
     if not content:
         return []
@@ -2222,10 +2257,11 @@ def _card_min_width(roles: dict, min_width: int | None) -> int:
 
 
 def card_row_yaml(info: dict, uid: str, *, placeholder: str | None = None) -> str:
-    """Компонент строки карточного списка: СтандартнаяКарточка, с фото – ПроизвольнаяКарточка.
+    """Card list row component: СтандартнаяКарточка, with a photo - ПроизвольнаяКарточка.
 
-    placeholder – выражение картинки-заглушки (напр. "Ресурс{Аккаунт.svg}.Ссылка"); без него
-    пустое фото просто не отображается (Картинка.Изображение допускает Неопределено).
+    placeholder - a placeholder image expression (e.g. "Ресурс{Аккаунт.svg}.Ссылка");
+    without it an empty photo is simply not displayed (Картинка.Изображение allows
+    Неопределено).
     """
     obj = info["name"]
     row_type = f'{info["namespace"]}::{obj}ФормаСписка.ДанныеСтрокиСписка'
@@ -2252,8 +2288,9 @@ def card_row_yaml(info: dict, uid: str, *, placeholder: str | None = None) -> st
         lines += _card_content_lines(roles["content"], "        ")
         return "\n".join(lines) + "\n"
 
-    # С фото – произвольная карточка: у стандартной картинка идёт в заголовок, а нужен
-    # вертикальный стек "фото над подписью" (Группа по умолчанию горизонтальная).
+    # With a photo - a custom card: in the standard one the image goes into the header,
+    # while a vertical "photo above caption" stack is needed (a Группа is horizontal by
+    # default).
     image = _card_value(photo)
     if placeholder:
         image = f"{image} ?? {placeholder}"
@@ -2285,11 +2322,11 @@ def card_row_yaml(info: dict, uid: str, *, placeholder: str | None = None) -> st
 
 
 def cards_list_form_yaml(info: dict, uid: str, *, min_width: int | None = None) -> str:
-    """ФормаСписка карточками: ПроизвольныйСписок + матричный КонтейнерСтрок.
+    """ФормаСписка with cards: ПроизвольныйСписок + a matrix КонтейнерСтрок.
 
-    От list_form_yaml отличается только компонентом: вместо Таблицы с колонками – список,
-    рисующий каждую запись компонентом CARD_ROW_PREFIX+Объект. Поля динамического списка –
-    Ссылка (нужна навигации) и те, что показывает карточка.
+    Differs from list_form_yaml only in the component: instead of a Таблица with columns -
+    a list rendering every record with the CARD_ROW_PREFIX+Объект component. The dynamic
+    list fields are Ссылка (needed for navigation) and those the card shows.
     """
     obj = info["name"]
     row_type = f'{info["namespace"]}::{obj}ФормаСписка.ДанныеСтрокиСписка'
@@ -2362,7 +2399,7 @@ def cards_list_form_yaml(info: dict, uid: str, *, min_width: int | None = None) 
 
 
 def report_form_yaml(info: dict, uid: str) -> str:
-    """ФормаОтчета: поля параметров отчёта + компонент ПросмотрОтчета."""
+    """ФормаОтчета: report parameter fields + the ПросмотрОтчета component."""
     obj = info["name"]
     params = info["report_params"]
     lines = [
@@ -2432,7 +2469,7 @@ def _interface_block(kind: str, obj: str, forms: list[str]) -> list[str]:
 
 
 def _register_forms(text: str, nl: str, kind: str, obj: str, forms: list[str], result: ScaffoldResult) -> str:
-    """Регистрация форм в yaml объекта: вставка секции Интерфейс или дополнение существующей."""
+    """Register forms in the object yaml: insert an Интерфейс section or extend an existing one."""
     if not re.search(r"^Интерфейс:", text, re.M):
         block = _interface_block(kind, obj, forms)
         anchor = None
@@ -2447,10 +2484,10 @@ def _register_forms(text: str, nl: str, kind: str, obj: str, forms: list[str], r
             return text + f"{tail}{rendered}{nl}"
         return text[:anchor] + f"{nl}{rendered}" + text[anchor:]
 
-    # Секция есть – дописываем недостающие регистрации в её конец, существующие не трогаем.
+    # The section exists - append the missing registrations at its end, leave existing ones.
     if kind == "Отчет":
-        # У отчёта форма регистрируется одним ключом Интерфейс.Форма (подсекций Объект/Список
-        # у него нет), поэтому общий цикл ниже его не обслуживает.
+        # A report form is registered by the single Интерфейс.Форма key (it has no
+        # Объект/Список subsections), so the generic loop below does not serve it.
         form_name = f"{obj}ФормаОтчета"
         span = top_level_key_span(text, "Интерфейс")
         if re.search(rf"Форма:\s*{form_name}\b", text):
@@ -2487,15 +2524,15 @@ def op_add_form(root: Path, name: str | None = None, yaml_path: Path | None = No
                 forms: list[str] | None = None, overwrite: bool = False,
                 card_min_width: int | None = None, card_placeholder: str | None = None,
                 reader=None) -> ScaffoldResult:
-    """Создать формы объекта с наполнением по его реквизитам и зарегистрировать в Интерфейс.
+    """Create object forms populated from its attributes and register them in Интерфейс.
 
-    forms – подмножество FORM_KINDS; по умолчанию object+list для объектов данных и report
-    для Отчет. "list-cards" – та же форма списка, но карточками (ПроизвольныйСписок с
-    матричной сеткой); она несовместима с "list" (обе – файл <Объект>ФормаСписка.yaml) и
-    создаёт второй файл – компонент строки СтрокаСписка<Объект>. card_min_width задаёт
-    ширину колонки сетки (по умолчанию 400, с фото – 250), card_placeholder – выражение
-    картинки-заглушки. Существующая форма не перезаписывается без overwrite – вместо этого
-    пометка в notes.
+    forms is a subset of FORM_KINDS; by default object+list for data objects and report
+    for Отчет. "list-cards" is the same list form but with cards (ПроизвольныйСписок with
+    a matrix grid); it is incompatible with "list" (both are the file
+    <Объект>ФормаСписка.yaml) and creates a second file - the row component
+    СтрокаСписка<Объект>. card_min_width sets the grid column width (400 by default,
+    250 with a photo), card_placeholder is a placeholder image expression. An existing
+    form is not overwritten without overwrite - a note goes into notes instead.
     """
     info = object_info(Path(root), name=name, yaml_path=yaml_path)
     kind = info["kind"]
@@ -2507,7 +2544,7 @@ def op_add_form(root: Path, name: str | None = None, yaml_path: Path | None = No
         elif kind in OBJECT_FORM_KINDS:
             forms = ["object", "list"]
         elif kind in LIST_FORM_KINDS:
-            forms = ["list"]  # у регистров и набора констант формы объекта не бывает
+            forms = ["list"]  # registers and a constant set never have an object form
         else:
             raise ScaffoldError(
                 f"У вида {kind} нет форм объекта и списка; они есть у: "
@@ -2526,7 +2563,7 @@ def op_add_form(root: Path, name: str | None = None, yaml_path: Path | None = No
         raise ScaffoldError("Для отчёта доступна только форма отчёта: forms=[\"report\"]")
     if kind != "Отчет" and "report" in forms:
         raise ScaffoldError(f"Форма отчёта неприменима к виду {kind}")
-    # Тип ФормаОбъекта<X.Объект> порождают только ссылочные сущности; у регистра его нет.
+    # Only reference entities produce the ФормаОбъекта<X.Объект> type; a register has none.
     if "object" in forms and kind not in OBJECT_FORM_KINDS:
         raise ScaffoldError(
             f"У вида {kind} нет формы объекта (тип ФормаОбъекта порождают только "
@@ -2559,7 +2596,7 @@ def op_add_form(root: Path, name: str | None = None, yaml_path: Path | None = No
             _add_card_row(info, owner_path, overwrite, card_placeholder, result)
     if made:
         text, nl = _load_for_edit(owner_path, reader)
-        # Карточная форма списка регистрируется как обычная: тот же файл <Объект>ФормаСписка.
+        # The card list form is registered like a regular one: the same <Объект>ФормаСписка file.
         registered = ["list" if f == "list-cards" else f for f in made]
         new_text = _register_forms(text, nl, kind, obj, registered, result)
         if new_text != text:
@@ -2569,7 +2606,7 @@ def op_add_form(root: Path, name: str | None = None, yaml_path: Path | None = No
 
 def _add_card_row(info: dict, owner_path: Path, overwrite: bool, placeholder: str | None,
                   result: ScaffoldResult) -> None:
-    """Компонент строки карточного списка + пометки о том, что попало в карточку."""
+    """The card list row component + notes about what made it into the card."""
     obj = info["name"]
     row_path = owner_path.parent / f"{CARD_ROW_PREFIX}{obj}.yaml"
     if row_path.exists() and not overwrite:
@@ -2599,14 +2636,14 @@ def _add_card_row(info: dict, owner_path: Path, overwrite: bool, placeholder: st
         )
 
 
-# --- контроль доступа --------------------------------------------------------------------
+# --- access control -------------------------------------------------------------------------
 #
-# КонтрольДоступа.Разрешения – набор записей "Право: СпособКонтроляДоступа" (документация:
-# "Контроль прав доступа"). Права сущности – Создание/Чтение/Изменение/Удаление
-# (Стд::Сущности::Сущность.Право), у сервисов – Вызов, у регистров и набора констант –
-# Чтение/Изменение; ПоУмолчанию задаёт способ для всех прочих прав. Право может быть и
-# пользовательским – "ПравоНаX.ИмяПрава" (элемент проекта вида ПравоНаЭлемент). Секции нет –
-# платформа применяет РазрешеноАдминистраторам.
+# КонтрольДоступа.Разрешения is a set of "Право: СпособКонтроляДоступа" entries (the
+# "Контроль прав доступа" documentation). Entity rights are Создание/Чтение/Изменение/
+# Удаление (Стд::Сущности::Сущность.Право), services have Вызов, registers and a constant
+# set have Чтение/Изменение; ПоУмолчанию sets the method for all other rights. A right can
+# also be custom - "ПравоНаX.ИмяПрава" (a project element of kind ПравоНаЭлемент). With no
+# section the platform applies РазрешеноАдминистраторам.
 
 ACCESS_METHODS = (
     "РазрешеноВсем",
@@ -2616,11 +2653,11 @@ ACCESS_METHODS = (
     "РазрешенияВычисляютсяДляКаждогоОбъекта",
 )
 ACCESS_DEFAULT_RIGHT = "ПоУмолчанию"
-_ACCESS_IMPLICIT = "РазрешеноАдминистраторам"  # когда секции КонтрольДоступа нет
+_ACCESS_IMPLICIT = "РазрешеноАдминистраторам"  # when there is no КонтрольДоступа section
 _PER_OBJECT = "РазрешенияВычисляютсяДляКаждогоОбъекта"
 
-# Права по видам элементов проекта (документация "Контроль прав доступа": управление
-# доступом поддерживают именно эти виды). Пустой кортеж – вид поддерживает только ПоУмолчанию.
+# Rights per project element kind (the "Контроль прав доступа" documentation: exactly
+# these kinds support access control). An empty tuple - the kind supports ПоУмолчанию only.
 ACCESS_KIND_RIGHTS: dict[str, tuple[str, ...]] = {
     "Справочник": ("Создание", "Чтение", "Изменение", "Удаление"),
     "Документ": ("Создание", "Чтение", "Изменение", "Удаление"),
@@ -2632,14 +2669,14 @@ ACCESS_KIND_RIGHTS: dict[str, tuple[str, ...]] = {
     "SoapСервис": ("Вызов",),
     "ХранилищеНастроек": (),
 }
-# Набор констант не поддерживает построчные разрешения (документация "Свойства элемента
-# проекта вида НаборКонстант").
+# A constant set does not support per-record permissions (the "Свойства элемента проекта
+# вида НаборКонстант" documentation).
 _NO_PER_OBJECT_KINDS = ("НаборКонстант",)
 
 _ACCESS_SECTION = "КонтрольДоступа"
 _PERMISSIONS_KEY = "Разрешения"
 _CALC_BY_KEY = "РасчетРазрешенийПо"
-# Куда вставить секцию КонтрольДоступа, если её нет: перед первой из этих секций.
+# Where to insert the КонтрольДоступа section when missing: before the first of these sections.
 _ACCESS_ANCHORS = (
     "Реквизиты", "Измерения", "Ресурсы", "ТабличныеЧасти", "ШаблоныUrl", "Операции",
     "Интерфейс", "НастройкиТипов", "Индексы", "Свойства",
@@ -2648,7 +2685,7 @@ _KEY_VALUE_LINE = re.compile(rf"^([ \t]*)([{_WORD}.]+):[ \t]*(\S.*?)[ \t]*$")
 
 
 def _mapping_in(body: str, key: str) -> dict[str, str]:
-    """Скалярные пары "Ключ: Значение" вложенной секции-отображения (напр. Разрешения)."""
+    """Scalar "Ключ: Значение" pairs of a nested mapping section (e.g. Разрешения)."""
     bounds = _section_bounds(body, key)
     if bounds is None:
         return {}
@@ -2662,7 +2699,7 @@ def _mapping_in(body: str, key: str) -> dict[str, str]:
 
 
 def _calc_by_values(body: str) -> list[str]:
-    """Значения РасчетРазрешенийПо: и инлайн-список [A, B], и список из "- A"."""
+    """РасчетРазрешенийПо values: both the inline list [A, B] and the "- A" item list."""
     m = re.search(rf"^[ \t]*{_CALC_BY_KEY}:[ \t]*(.*)$", body, re.M)
     if m is None:
         return []
@@ -2681,10 +2718,11 @@ def _calc_by_values(body: str) -> list[str]:
 
 
 def access_info(text: str) -> dict | None:
-    """Сводка КонтрольДоступа объекта или None, если секции нет.
+    """The object's КонтрольДоступа summary, or None if the section is missing.
 
-    {permissions: {право: способ}, default: способ|None, calc_by: [поля]}. Отсутствие секции –
-    именно None, а не пустая сводка: платформа тогда применяет РазрешеноАдминистраторам.
+    {permissions: {right: method}, default: method|None, calc_by: [fields]}. A missing
+    section is precisely None, not an empty summary: the platform then applies
+    РазрешеноАдминистраторам.
     """
     bounds = _section_bounds(text, _ACCESS_SECTION, top_level=True)
     if bounds is None:
@@ -2700,7 +2738,7 @@ def access_info(text: str) -> dict | None:
 
 
 def _access_anchor(text: str) -> int:
-    """Смещение вставки секции КонтрольДоступа: перед первой секцией данных, иначе в конец."""
+    """Insertion offset for the КонтрольДоступа section: before the first data section, else at the end."""
     offsets = [
         m.start()
         for key in _ACCESS_ANCHORS
@@ -2712,9 +2750,9 @@ def _access_anchor(text: str) -> int:
 
 def _set_mapping_value(text: str, section_offset_end: int, body_end: int, indent: str,
                        key: str, value: str, nl: str) -> tuple[str, int]:
-    """Заменить значение ключа отображения или дописать ключ в конец секции.
+    """Replace a mapping key's value or append the key at the end of the section.
 
-    Возвращает (новый текст, сдвиг конца секции) – вызывающий пересчитывает границы.
+    Returns (new text, shift of the section end) - the caller recomputes the bounds.
     """
     body = text[section_offset_end:body_end]
     m = re.search(rf"^([ \t]*){re.escape(key)}:[ \t]*(.*)$", body, re.M)
@@ -2737,14 +2775,14 @@ def op_set_access(
     calc_by: list[str] | None = None,
     reader=None,
 ) -> ScaffoldResult:
-    """Задать КонтрольДоступа.Разрешения объекта: точечно, с проверкой вида и способа.
+    """Set the object's КонтрольДоступа.Разрешения: pinpoint, validating the kind and method.
 
-    default – способ для права ПоУмолчанию (частый случай); permissions – способы отдельных
-    прав ({"Чтение": "РазрешеноВсем"}), в том числе пользовательских ("ПравоНаX.ИмяПрава").
-    calc_by задаёт РасчетРазрешенийПо – он обязателен для РазрешенияВычисляютсяДляКаждогоОбъекта.
-    Обработчики вычисления разрешений операция НЕ пишет: это бизнес-логика (см. документацию
-    "Самостоятельное формирование разрешений и выдача экземпляров ключей") – в notes остаётся
-    напоминание.
+    default - the method for the ПоУмолчанию right (the common case); permissions - the
+    methods of individual rights ({"Чтение": "РазрешеноВсем"}), including custom ones
+    ("ПравоНаX.ИмяПрава"). calc_by sets РасчетРазрешенийПо - it is mandatory for
+    РазрешенияВычисляютсяДляКаждогоОбъекта. The operation does NOT write permission
+    computation handlers: that is business logic (see the "Самостоятельное формирование
+    разрешений и выдача экземпляров ключей" documentation) - a reminder is left in notes.
     """
     wanted: dict[str, str] = dict(permissions or {})
     if default:
@@ -2837,11 +2875,11 @@ def _access_body_bounds(text: str) -> tuple[int, int]:
 
 
 def _write_permission(text: str, right: str, method: str, nl: str) -> str:
-    """Точечно задать право в существующей секции КонтрольДоступа."""
+    """Pinpoint-set a right in an existing КонтрольДоступа section."""
     header_line_end, body_end = _access_body_bounds(text)
     body = text[header_line_end:body_end]
     perms = _section_bounds(body, _PERMISSIONS_KEY)
-    if perms is None:  # секция есть, а Разрешения нет – дописываем блок
+    if perms is None:  # the section exists but Разрешения does not - append the block
         addition = f"{nl}    {_PERMISSIONS_KEY}:{nl}        {right}: {method}"
         return text[:body_end] + addition + text[body_end:]
     perm_indent, perm_header_end, perm_body_end = perms
@@ -2859,15 +2897,15 @@ def _write_calc_by(text: str, calc_by: list[str], nl: str) -> str:
     return new_text
 
 
-# --- операция: переименование объекта ----------------------------------------------------
+# --- operation: object rename --------------------------------------------------------------
 #
-# Переименование текстовое и контекстное, без полного индекса: имя заменяется только там,
-# где оно ссылается на объект (значения ссылочных ключей yaml, корни цепочек в биндингах
-# и коде, составные имена форм), а совпадающие имена реквизитов, компонентов и полей
-# динамических списков не трогаются. Строковые литералы .xbsl не правятся (UI-текст),
-# комментарии – правятся (упоминания объекта в документации кода).
+# The rename is textual and contextual, without a full index: the name is replaced only
+# where it references the object (values of yaml reference keys, chain roots in bindings
+# and code, composite form names), while matching names of attributes, components and
+# dynamic list fields are left alone. .xbsl string literals are not edited (UI text),
+# comments are (mentions of the object in code documentation).
 
-# Ключи yaml, в значениях которых имя объекта – ссылка на объект или форму.
+# Yaml keys whose values carry the object name as a reference to the object or a form.
 _YAML_REF_KEYS = ("Тип", "Таблица", "ИсточникДанных", "Форма", "ТипФормы")
 _PRESENTATION_KEYS = ("Заголовок", "Представление")
 _YAML_KEY_LINE = re.compile(rf"^([ \t]*(?:-[ \t]+)?)([{_WORD}]+):([ \t]*)(.*)$")
@@ -2875,12 +2913,13 @@ _IMPORT_LINE = re.compile(r"^[ \t]*импорт[ \t]+\S")
 
 
 class _Renamer:
-    """Замены имени объекта в тексте: идентификатор и составные имена его форм.
+    """Object name replacements in text: the identifier and its composite form names.
 
-    Идентификатор заменяется только в корневой позиции (не после точки – там член чужого
-    типа, не после `@` – там аннотация). Составное имя формы – `<Имя>Форма` с заглавной
-    буквой после "Форма" (или ровно `<Имя>Форма`): строчная буква после "Форма" – чужое
-    слово вида "Форматирование". Компонент строки карточного списка – `СтрокаСписка<Имя>`.
+    The identifier is replaced only in the root position (not after a dot - that is a
+    member of another type, not after `@` - that is an annotation). A composite form name
+    is `<Имя>Форма` with a capital letter after "Форма" (or exactly `<Имя>Форма`): a
+    lowercase letter after "Форма" means an unrelated word like "Форматирование". The card
+    list row component is `СтрокаСписка<Имя>`.
     """
 
     def __init__(self, old: str, new: str):
@@ -2901,7 +2940,7 @@ class _Renamer:
         return s, n1 + n2
 
     def file_base(self, base: str) -> str:
-        """Новое имя владельца файла (часть до первой точки), если файл принадлежит объекту."""
+        """The new file owner name (the part before the first dot) if the file belongs to the object."""
         for sub in (self.composites, self.identifier):
             new_base, n = sub(base)
             if n:
@@ -2910,7 +2949,7 @@ class _Renamer:
 
 
 def _split_strings(line: str) -> list[tuple[str, bool]]:
-    """Сегменты строки кода: (текст, это_строковый_литерал). Кавычка в литерале удваивается."""
+    """Code line segments: (text, is_string_literal). A quote inside a literal is doubled."""
     parts: list[tuple[str, bool]] = []
     start = 0
     in_str = False
@@ -2933,9 +2972,10 @@ def _split_strings(line: str) -> list[tuple[str, bool]]:
 
 
 def _rename_in_xbsl(text: str, renamer: _Renamer) -> tuple[str, int]:
-    """Замены в модуле: идентификаторы и составные имена форм вне строковых литералов.
+    """Replacements in a module: identifiers and composite form names outside string literals.
 
-    Строка `импорт <Подсистема>` пропускается целиком – там имя подсистемы, не объекта.
+    An `импорт <Подсистема>` line is skipped entirely - it holds a subsystem name, not an
+    object name.
     """
     total = 0
     out: list[str] = []
@@ -2955,7 +2995,7 @@ def _rename_in_xbsl(text: str, renamer: _Renamer) -> tuple[str, int]:
 
 
 def _swap_presentation(value: str, old_values: set[str], new_value: str) -> tuple[str, bool]:
-    """Заменить значение Заголовок/Представление с сохранением кавычек и хвостовых пробелов."""
+    """Replace a Заголовок/Представление value preserving quotes and trailing spaces."""
     raw = value.rstrip()
     tail = value[len(raw):]
     quote = raw[:1] if raw[:1] in "\"'" and len(raw) >= 2 and raw.endswith(raw[:1]) else ""
@@ -2972,10 +3012,11 @@ def _rename_in_yaml(
     own: bool = False,
     presentations: tuple[set[str], str] | None = None,
 ) -> tuple[str, int]:
-    """Замены в yaml: ссылочные ключи, биндинги (`=...`), составные имена форм.
+    """Replacements in yaml: reference keys, bindings (`=...`), composite form names.
 
-    own – это yaml самого объекта или его формы: дополнительно правится верхнеуровневое
-    `Имя:` и значения Заголовок/Представление, совпадающие со старым именем/представлением.
+    own - this is the yaml of the object itself or of its form: additionally the top-level
+    `Имя:` and the Заголовок/Представление values matching the old name/presentation are
+    edited.
     """
     total = 0
     out: list[str] = []
@@ -3021,18 +3062,18 @@ def op_rename_object(
     yaml_path: Path | None = None,
     reader=None,
 ) -> ScaffoldResult:
-    """Переименовать объект конфигурации и обновить ссылки на него по всем исходникам.
+    """Rename a configuration object and update references to it across all sources.
 
-    Переименовываются файлы объекта (yaml, модули `<Имя>.xbsl` / `<Имя>.<Часть>.xbsl`),
-    его форм (`<Имя>Форма*`) и компонента строки списка (`СтрокаСписка<Имя>`). В текстах
-    правятся: значения ссылочных ключей yaml (Тип/Таблица/ИсточникДанных/Форма/ТипФормы),
-    биндинги `=...`, код .xbsl (кроме строковых литералов) и составные имена форм; в yaml
-    самого объекта и его форм – ещё `Имя:` и Заголовок/Представление (старое представление
-    задаёт old_presentation, новое – new_presentation, по умолчанию новое имя).
+    The renamed files are the object's (yaml, the `<Имя>.xbsl` / `<Имя>.<Часть>.xbsl`
+    modules), its forms' (`<Имя>Форма*`) and the list row component's
+    (`СтрокаСписка<Имя>`). Edited in texts: values of yaml reference keys
+    (Тип/Таблица/ИсточникДанных/Форма/ТипФормы), `=...` bindings, .xbsl code (except
+    string literals) and composite form names; in the yaml of the object itself and its
+    forms - also `Имя:` and Заголовок/Представление (the old presentation is given by
+    old_presentation, the new one by new_presentation, defaulting to the new name).
 
-    yaml_path разрешает неоднозначность, когда в проекте несколько объектов с именем
-    old_name. Работает и для КомпонентИнтерфейса (переименование формы: обновляется
-    `Форма:` у владельца).
+    yaml_path resolves the ambiguity when the project has several objects named old_name.
+    Also works for a КомпонентИнтерфейса (a form rename: the owner's `Форма:` is updated).
     """
     root = Path(root)
     if not root.is_dir():
@@ -3074,7 +3115,7 @@ def op_rename_object(
             "заменяются во всём проекте – проверьте затронутые файлы"
         )
 
-    # Переименования файлов: владелец файла – часть имени до первой точки.
+    # File renames: the file owner is the name part before the first dot.
     directory = hit.path.parent
     for path in sorted(directory.iterdir()):
         if not path.is_file() or path.suffix not in (".yaml", ".xbsl"):

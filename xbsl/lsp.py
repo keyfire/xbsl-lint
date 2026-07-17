@@ -1,21 +1,22 @@
-"""LSP-сервер xbsl (`xbsl-lsp`, extra [lsp]).
+"""The xbsl LSP server (`xbsl-lsp`, extra [lsp]).
 
-Сводит в один долгоживущий процесс то, что расширение VS Code раньше делало вызовами
-CLI: данные языка и индекс проекта загружаются один раз и остаются в памяти, поэтому
-каждое нажатие клавиши не платит за старт интерпретатора и загрузку датасета.
+Consolidates into one long-lived process what the VS Code extension used to do via CLI
+calls: the language data and the project index are loaded once and stay in memory, so
+every keystroke does not pay for interpreter startup and dataset loading.
 
-Возможности:
-    - живая пофайловая диагностика при открытии и изменении (правила области file, с задержкой);
-    - диагностика по всему проекту при сохранении (правила file и project по корню исходников);
-    - переход к определению, дополнение и hover по индексу проекта, который держим в памяти;
-    - quick fix (code action) для замечаний, к которым приложена механическая правка.
+Features:
+    - live per-file diagnostics on open and change (file-scope rules, debounced);
+    - whole-project diagnostics on save (file and project rules over the source root);
+    - go-to-definition, completion and hover over the in-memory project index;
+    - quick fix (code action) for findings that carry a mechanical fix.
 
-Корень исходников по умолчанию – папка воркспейса; если проект лежит в репозитории глубже,
-передайте `--project-root PATH` (абсолютный или относительно этой папки) – это аналог настройки
-`xbsl.projectRoot` расширения. Прочие ключи: `--select`, `--ignore`, `--enable` (наборы правил
-через запятую), `--data-dir` (корень данных Элемента), `--baseline` (файл базлайна – исключённые
-находки гасятся и здесь, как в CLI). Ключи, а не initializationOptions, позволяют одинаково
-просто запускать сервер из VS Code, Neovim или JetBrains.
+The source root defaults to the workspace folder; if the project lives deeper in the
+repository, pass `--project-root PATH` (absolute or relative to that folder) - the
+equivalent of the extension's `xbsl.projectRoot` setting. Other flags: `--select`,
+`--ignore`, `--enable` (comma-separated rule sets), `--data-dir` (Element data root),
+`--baseline` (baseline file - excluded findings are suppressed here too, as in the CLI).
+Flags, rather than initializationOptions, make it equally easy to launch the server from
+VS Code, Neovim or JetBrains.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from typing import Optional
 try:
     from lsprotocol import types as lsp
     from pygls.server import LanguageServer
-except ImportError:  # pragma: no cover - extra не установлен
+except ImportError:  # pragma: no cover - the extra is not installed
     lsp = None
     LanguageServer = None
 
@@ -46,7 +47,7 @@ from xbsl.rules._syntax import local_var_types, query_aliases, query_ranges, que
 
 
 def _word_at(line_text: str, character: int) -> str:
-    """Идентификатор под курсором в строке (буквы/цифры/подчёркивание), либо пустая строка."""
+    """Identifier under the cursor in the line (letters/digits/underscore), or an empty string."""
     n = len(line_text)
     if n == 0:
         return ""
@@ -62,7 +63,7 @@ def _word_at(line_text: str, character: int) -> str:
 
 
 def _param(params: object, name: str, default: object = None) -> object:
-    """Значение поля из параметров кастомного LSP-запроса (объект pygls или dict)."""
+    """Field value from custom LSP request params (a pygls object or a dict)."""
     if params is None:
         return default
     if isinstance(params, dict):
@@ -101,8 +102,8 @@ class _State:
         self.ignore: Optional[set[str]] = None
         self.enable: Optional[set[str]] = None
         self.lookup: Optional[IndexLookup] = None
-        self.dirty: set[str] = set()  # uri изменён после сохранения
-        self.published: set[str] = set()  # uri, которым публиковали диагностики
+        self.dirty: set[str] = set()  # uris changed since the last save
+        self.published: set[str] = set()  # uris we have published diagnostics for
         self.file_timers: dict[str, threading.Timer] = {}
         self.project_timer: Optional[threading.Timer] = None
         self.project_lock = threading.Lock()
@@ -124,11 +125,12 @@ def _rule_set(raw: object) -> Optional[set[str]]:
 
 
 def apply_baseline_file(diags: list[Diagnostic], path: Optional[Path]) -> tuple[list[Diagnostic], Optional[str]]:
-    """Гасит исключённые базлайном находки: (оставшиеся, текст проблемы или None).
+    """Suppresses findings excluded by the baseline: (remaining, problem text or None).
 
-    Файл читается на каждый прогон: он мал, а внешние правки (запись исключения из
-    расширения, git pull) подхватываются без перезапуска сервера. Отсутствующий файл –
-    не ошибка: он появится с первым исключением; повреждённый – проблема, о ней сообщаем.
+    The file is read on every run: it is small, and external edits (an exclusion written
+    by the extension, git pull) are picked up without restarting the server. A missing
+    file is not an error: it will appear with the first exclusion; a corrupted one is a
+    problem and is reported.
     """
     if path is None or not path.is_file():
         return diags, None
@@ -202,15 +204,15 @@ def _make_server() -> "LanguageServer":
         except ValueError:
             return None
 
-    # --- диагностика ------------------------------------------------------------------
+    # --- diagnostics ------------------------------------------------------------------
 
     def lint_buffer(uri: str) -> None:
         doc = server.workspace.get_text_document(uri)
         path = uri_to_path(uri)
         if path is None:
             return
-        # Полный путь, а не имя: по нему находки сопоставляются с записями базлайна,
-        # а structure/xbsl-pair видит настоящего соседа модуля.
+        # Full path, not just the name: findings are matched against baseline entries
+        # by it, and structure/xbsl-pair sees the module's real neighbor.
         src = engine.load_text(str(path), doc.source)
         diags = engine.run_sources([src], select=STATE.select, ignore=STATE.ignore,
                                    enable=STATE.enable, scopes=("file",))
@@ -234,7 +236,7 @@ def _make_server() -> "LanguageServer":
         if root is None:
             return
         if not STATE.project_lock.acquire(blocking=False):
-            schedule_project_lint()  # прогон уже идёт – повторим после
+            schedule_project_lint()  # a run is already in progress - retry afterwards
             return
         try:
             files = engine.find_sources(root, "*.xbsl") + engine.find_sources(root, "*.yaml")
@@ -259,13 +261,13 @@ def _make_server() -> "LanguageServer":
             open_dirty = {u for u in STATE.dirty}
             for uri in set(STATE.published) | set(by_uri):
                 if uri in open_dirty:
-                    continue  # за грязным буфером остаётся его живая пофайловая картина
+                    continue  # a dirty buffer keeps its live per-file picture
                 server.publish_diagnostics(uri, by_uri.get(uri, []))
             STATE.published = set(by_uri) | (STATE.published & open_dirty)
-            # индекс перестраиваем в том же фоновом проходе
+            # the index is rebuilt in the same background pass
             try:
                 STATE.lookup = IndexLookup(indexer.build_index(root))
-            except Exception as e:  # noqa: BLE001 - индекс не должен ронять диагностику
+            except Exception as e:  # noqa: BLE001 - the index must not break diagnostics
                 server.show_message_log(f"xbsl-lsp: индекс не построен: {e}")
         finally:
             STATE.project_lock.release()
@@ -278,9 +280,9 @@ def _make_server() -> "LanguageServer":
         STATE.project_timer = timer
         timer.start()
 
-    # --- жизненный цикл ---------------------------------------------------------------
-    # initialize зарезервирован pygls; параметры сервер берёт из аргументов запуска,
-    # а папку воркспейса – из server.workspace после рукопожатия.
+    # --- lifecycle ----------------------------------------------------------------------
+    # initialize is reserved by pygls; the server takes its parameters from the launch
+    # arguments, and the workspace folder - from server.workspace after the handshake.
 
     @server.feature(lsp.INITIALIZED)
     def _initialized(_params: lsp.InitializedParams) -> None:
@@ -298,8 +300,8 @@ def _make_server() -> "LanguageServer":
         else:
             STATE.root = folder
         if STATE.baseline_arg:
-            # Относительный путь – от папки воркспейса (не от корня исходников): базлайн
-            # лежит в корне репозитория, как его видит CI.
+            # A relative path is resolved from the workspace folder (not the source root):
+            # the baseline lives at the repository root, as CI sees it.
             b = Path(STATE.baseline_arg)
             STATE.baseline = b if b.is_absolute() else (folder / b if folder else b)
         schedule_project_lint()
@@ -324,15 +326,15 @@ def _make_server() -> "LanguageServer":
 
     @server.feature("xbsl/relint")
     def _relint(params: object = None) -> dict:
-        # Клиент изменил внешнее состояние (записал исключение в базлайн) – перечитываем:
-        # прогон по проекту плюс буфер, из которого исключали (его диагностика живёт отдельно).
+        # The client changed external state (wrote an exclusion to the baseline) - re-read:
+        # a project run plus the buffer the exclusion came from (its diagnostics live separately).
         uri = _param(params, "uri")
         if uri:
             schedule_buffer_lint(str(uri))
         schedule_project_lint()
         return {"ok": True}
 
-    # --- навигация ---------------------------------------------------------------------
+    # --- navigation --------------------------------------------------------------------
 
     def nav_query(uri: str, position: lsp.Position) -> Optional[dict]:
         if STATE.lookup is None:
@@ -400,9 +402,9 @@ def _make_server() -> "LanguageServer":
         if params.position.line >= len(lines):
             return None
         prefix = lines[params.position.line][: params.position.character]
-        # Контекст курсора разбираем лексером, а не по тексту: ключевые слова двуязычны.
-        # Внутри блока Запрос{...} (canonical QUERY) – поля таблицы; типы локальных переменных
-        # (canonical VAR/NEW) дают члены их типа после точки.
+        # The cursor context is parsed by the lexer, not by text: keywords are bilingual.
+        # Inside a Запрос{...} block (canonical QUERY) - table fields; local variable types
+        # (canonical VAR/NEW) give the members of their type after the dot.
         offset = sum(len(lines[k]) + 1 for k in range(params.position.line)) + params.position.character
         try:
             src = engine.load_text(path.name, doc.source)
@@ -410,11 +412,11 @@ def _make_server() -> "LanguageServer":
             query_tables = query_aliases(src, offset) if in_query else {}
             local_vars = local_var_types(src, offset)
             query_rows = query_row_columns(src, offset)
-        except Exception:  # noqa: BLE001 - дополнение не должно падать из-за разбора
+        except Exception:  # noqa: BLE001 - completion must not fail because of parsing
             in_query, query_tables, local_vars, query_rows = False, {}, {}, {}
         try:
             stdlib_members = dataset.load_json("stdlib.json").get("type_members") or {}
-        except Exception:  # noqa: BLE001 - датасет мог не подгрузиться, дополнение не роняем
+        except Exception:  # noqa: BLE001 - the dataset may have failed to load, do not break completion
             stdlib_members = {}
         entries = resolve_completions(
             STATE.lookup,
@@ -451,7 +453,7 @@ def _make_server() -> "LanguageServer":
             return None
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=text))
 
-    # --- code actions (быстрые правки из fix) -------------------------------------------
+    # --- code actions (quick fixes from fix) --------------------------------------------
 
     @server.feature(lsp.TEXT_DOCUMENT_CODE_ACTION)
     def _code_action(params: lsp.CodeActionParams) -> Optional[list[lsp.CodeAction]]:
@@ -478,14 +480,15 @@ def _make_server() -> "LanguageServer":
             )
         return actions or None
 
-    # --- документация (панель справки в расширении – тонкий клиент к этим методам) --------
+    # --- documentation (the extension's help panel is a thin client of these methods) -----
 
     def docs_symbol_at(uri: str, line: int, character: int) -> tuple[Optional[str], str]:
-        """(имя для точного резолва, запрос для кандидатов) по позиции курсора.
+        """(name for exact resolution, query for candidates) at the cursor position.
 
-        Имя – тип локальной переменной либо слово под курсором. Запрос дополняем приёмником перед
-        точкой (`Задание.Настроить` -> "Задание Настроить"), чтобы кандидаты-секции метода
-        ранжировались по нужному типу, а не по случайному топику руководства.
+        The name is the local variable's type or the word under the cursor. The query is
+        extended with the receiver before the dot (`Задание.Настроить` -> "Задание Настроить")
+        so that method-section candidates are ranked by the right type rather than by a
+        random guide topic.
         """
         path = uri_to_path(uri)
         if path is None:
@@ -511,7 +514,7 @@ def _make_server() -> "LanguageServer":
         try:
             src = engine.load_text(path.name, doc.source)
             var_type = local_var_types(src, offset).get(word)
-        except Exception:  # noqa: BLE001 - разбор не должен ронять запрос
+        except Exception:  # noqa: BLE001 - parsing must not break the request
             var_type = None
         return (var_type or word), query
 
@@ -554,14 +557,14 @@ def _make_server() -> "LanguageServer":
         pid = docs.for_symbol(name)
         if pid:
             return {"name": name, "page": docs.page(pid), "candidates": []}
-        # Уверенной страницы нет (метод-секция, неизвестный тип) – отдаём кандидатов на выбор.
+        # No confident page (a method section, an unknown type) - return candidates to choose from.
         return {"name": name, "page": None, "candidates": docs.search(query, limit=8)}
 
-    # --- скаффолдинг метаданных (дерево расширения – тонкий клиент этих методов) ----------
+    # --- metadata scaffolding (the extension's tree is a thin client of these methods) ----
     #
-    # Сервер только вычисляет изменения (xbsl.scaffold) и возвращает полные новые тексты
-    # файлов; применяет их клиент через WorkspaceEdit – так сохраняются undo и грязные
-    # буферы. Правимые файлы читаются из открытых буферов редактора, а не с диска.
+    # The server only computes the changes (xbsl.scaffold) and returns the complete new
+    # file texts; the client applies them via WorkspaceEdit - this preserves undo and
+    # dirty buffers. Files being edited are read from open editor buffers, not from disk.
 
     def _buffer_reader(path: Path) -> str:
         uri = path_to_uri(path)
@@ -588,8 +591,9 @@ def _make_server() -> "LanguageServer":
 
     @server.feature("xbsl/metaCapabilities")
     def _meta_capabilities(_params: object = None) -> dict:
-        # kinds – виды, создаваемые одним именем (меню дерева); виды, которым нужны данные
-        # от вызывающего (напр. Отчет – источник и макет), сюда не попадают, но есть в allKinds.
+        # kinds - kinds creatable from a name alone (the tree menu); kinds that need data
+        # from the caller (e.g. Отчет - a source and a layout) are not included here but
+        # are present in allKinds.
         return {
             "version": __version__,
             "kinds": scaffold.bare_kinds(),
@@ -685,7 +689,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.data_dir:
         dataset.set_data_root(args.data_dir)
-    i18n.set_lang(args.lang)  # None сохраняет порядок env/локаль
+    i18n.set_lang(args.lang)  # None keeps the env/locale precedence
     STATE.project_root_arg = args.project_root
     STATE.baseline_arg = args.baseline
     STATE.select = _rule_set(args.select)

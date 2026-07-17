@@ -1,16 +1,16 @@
-"""Тир A: свойства проекта по стандарту 1С:Элемент "Заполнение свойств проекта".
+"""Tier A: project properties per the 1C:Element standard "Заполнение свойств проекта".
 
-Проверяется описание проекта (у него нет ВидЭлемента, зато есть Поставщик и Версия). Стандарт
-обязателен, поэтому правила - предупреждения:
+Checked is the project description (it has no ВидЭлемента but does have Поставщик and Версия).
+The standard is mandatory, so the rules are warnings:
 
-- Поставщик и Имя - валидные идентификаторы, образованные от представлений: каждое слово с
-  прописной буквы, в том числе однобуквенные предлоги (НовыеЭлементарныеТехнологии,
-  ВсегдаВДвижении, КабинетСотрудника). Границы слов в слитном имени не видны, поэтому проверяем
-  то, что проверить можно: идентификатор начинается с прописной и не содержит разделителей;
-- Представление и ПредставлениеПоставщика заполнены: официальное название проекта и название
-  компании-разработчика (по ним же образуются Имя и Поставщик);
-- Версия - три числа A.B.C (семантическое версионирование): A ломает совместимость, B добавляет
-  функциональность, C - обратно совместимые исправления.
+- Поставщик and Имя are valid identifiers built from the presentations: every word capitalized,
+  including one-letter prepositions (НовыеЭлементарныеТехнологии, ВсегдаВДвижении,
+  КабинетСотрудника). Word boundaries in a fused name are invisible, so we check what can be
+  checked: the identifier starts with a capital and contains no separators;
+- Представление and ПредставлениеПоставщика are filled in: the official project name and the
+  name of the developing company (Имя and Поставщик are built from them);
+- Версия is three numbers A.B.C (semantic versioning): A breaks compatibility, B adds
+  functionality, C is backward-compatible fixes.
 """
 
 from __future__ import annotations
@@ -53,12 +53,12 @@ MESSAGES = {
 }
 i18n.register(MESSAGES)
 
-# Идентификатор языка: буква (прописная - того требует стандарт), дальше буквы и цифры.
+# A language identifier: a letter (capital - the standard requires that), then letters and digits.
 _IDENTIFIER_RE = re.compile(r"^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z0-9]*$")
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _KEY_RE = re.compile(r"(?m)^([^\s#:][^:\n]*):")
 
-# Свойства-представления и то, чем они являются по стандарту.
+# Presentation properties and what each of them is per the standard.
 PRESENTATIONS = {
     "Представление": "presentation.project",
     "ПредставлениеПоставщика": "presentation.vendor",
@@ -76,10 +76,11 @@ i18n.register({
 
 
 def _project(source: SourceFile) -> dict | None:
-    """Разобранное описание проекта или None.
+    """The parsed project description, or None.
 
-    У проекта нет ВидЭлемента (он сам - корень), опознаём по паре Поставщик + Версия: так правило
-    не сработает ни на описании элемента, ни на постороннем yaml репозитория.
+    A project has no ВидЭлемента (it is the root itself); it is recognized by the Поставщик +
+    Версия pair: this way the rule fires neither on an element description nor on an unrelated
+    yaml of the repository.
     """
     if source.kind != "yaml" or not _HAVE_YAML:
         return None
@@ -92,7 +93,7 @@ def _project(source: SourceFile) -> dict | None:
 
 
 def _key_pos(source: SourceFile, key: str) -> tuple[int, int]:
-    """Строка и колонка ключа верхнего уровня (или начало файла, если ключа нет)."""
+    """Line and column of a top-level key (or the start of the file if the key is absent)."""
     lm = linemap(source)
     for m in _KEY_RE.finditer(source.text):
         if m.group(1).strip() == key:
@@ -102,14 +103,14 @@ def _key_pos(source: SourceFile, key: str) -> tuple[int, int]:
 
 @rule("project/identifier", "project/identifier.title", "A", severity=Severity.WARNING)
 def identifier(source: SourceFile) -> Iterable[Diagnostic]:
-    """Имя и Поставщик - идентификаторы с прописной буквы (КабинетСотрудника, а не site)."""
+    """Имя and Поставщик are identifiers starting with a capital (КабинетСотрудника, not site)."""
     data = _project(source)
     if data is None:
         return
     for prop in ("Поставщик", "Имя"):
         value = data.get(prop)
         if not isinstance(value, str) or not value:
-            continue  # пустое значение - это уже другая проверка платформы
+            continue  # an empty value is a different check, done by the platform
         if _IDENTIFIER_RE.match(value):
             continue
         line, col = _key_pos(source, prop)
@@ -121,7 +122,7 @@ def identifier(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("project/presentation", "project/presentation.title", "A", severity=Severity.WARNING)
 def presentation(source: SourceFile) -> Iterable[Diagnostic]:
-    """Представление и ПредставлениеПоставщика заполнены: от них образуются Имя и Поставщик."""
+    """Представление and ПредставлениеПоставщика are filled in: Имя and Поставщик come from them."""
     data = _project(source)
     if data is None:
         return
@@ -138,7 +139,7 @@ def presentation(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("project/version", "project/version.title", "A", severity=Severity.WARNING)
 def version(source: SourceFile) -> Iterable[Diagnostic]:
-    """Версия - три числа A.B.C: 1.0 не говорит, что менялось - совместимость или исправления."""
+    """Версия is three numbers A.B.C: 1.0 does not say what changed - compatibility or fixes."""
     data = _project(source)
     if data is None:
         return

@@ -1,18 +1,20 @@
-"""Безопасное обновление установленного xbsl распаковкой колеса (`xbsl self-update`).
+"""Safe update of an installed xbsl by unpacking the wheel (`xbsl self-update`).
 
-Штатный `pip install --upgrade` на Windows ломает установку, если один из exe пакета
-занят работающим процессом (типовой случай: `xbsl-lsp.exe` держит LSP-сервер VS Code,
-`xbsl-mcp.exe` – MCP-сессия агента): pip не может перезаписать точку входа, падает с
-WinError 32 и оставляет пакет полуснесённым. Эта команда обновляет ТОЛЬКО содержимое
-site-packages (файлы `.py` не блокируются, в отличие от `.exe`), а стабы в Scripts при
-следующем запуске вызовут уже новый код. Занятые exe не трогаются.
+A regular `pip install --upgrade` on Windows breaks the installation when one of the
+package's exes is held by a running process (typical case: `xbsl-lsp.exe` is held by the
+VS Code LSP server, `xbsl-mcp.exe` - by an agent's MCP session): pip cannot overwrite the
+entry point, fails with WinError 32 and leaves the package half-removed. This command
+updates ONLY the contents of site-packages (`.py` files are not locked, unlike `.exe`),
+and the stubs in Scripts will invoke the new code on the next launch. Busy exes are left
+alone.
 
-Из колеса приходит и пакет xbsl, и пакет-псевдоним xbsllint – сносятся и заменяются оба.
-dist-info переходного МЕТАпакета `xbsllint` (отдельная поставка без кода) не трогается.
-Обновляется только сам xbsl, не его extras ([mcp]/[lsp] и их зависимости).
+The wheel ships both the xbsl package and the xbsllint alias package - both are removed
+and replaced. The dist-info of the transitional `xbsllint` METApackage (a separate,
+code-free distribution) is not touched. Only xbsl itself is updated, not its extras
+([mcp]/[lsp] and their dependencies).
 
-Качаем и распаковываем стандартной библиотекой (urllib + zipfile) – команда обязана
-работать даже в установке без extras.
+Download and unpack with the standard library (urllib + zipfile) - the command must work
+even in an installation without extras.
 """
 
 from __future__ import annotations
@@ -30,22 +32,22 @@ from xbsl import __version__
 PYPI_VERSION = "https://pypi.org/pypi/xbsl/{version}/json"
 PYPI_LATEST = "https://pypi.org/pypi/xbsl/json"
 
-# Что принадлежит колесу xbsl в site-packages. Шаблон xbsl-*.dist-info не заденет
-# xbsllint-*.dist-info метапакета: glob сопоставляет префикс буквально.
+# What belongs to the xbsl wheel in site-packages. The xbsl-*.dist-info pattern will not
+# touch the metapackage's xbsllint-*.dist-info: glob matches the prefix literally.
 _OWNED_PATTERNS = ("xbsl", "xbsllint", "xbsl-*.dist-info")
 
 
 class SelfUpdateError(RuntimeError):
-    """Ошибка самообновления; текст показывается пользователю как есть."""
+    """Self-update error; the text is shown to the user as is."""
 
 
 def _site_packages() -> Path:
-    """Каталог, куда установлен пакет (site-packages в боевой установке)."""
+    """Directory the package is installed into (site-packages in a production install)."""
     return Path(__file__).resolve().parent.parent
 
 
 def _ensure_regular_install(site: Path) -> None:
-    """Гард от editable-установки: там обновляет git, а распаковка колеса испортила бы репозиторий."""
+    """Guard against an editable install: git updates it, and unpacking a wheel would corrupt the repository."""
     if site.name.lower() not in ("site-packages", "dist-packages"):
         raise SelfUpdateError(
             f"пакет импортируется из {site} – это editable-установка из репозитория; "
@@ -66,7 +68,7 @@ def _fetch_json(url: str) -> dict:
 
 
 def _wheel_url(version: str | None) -> tuple[str, str]:
-    """URL и точная версия колеса py3-none-any с PyPI (latest или указанной)."""
+    """URL and exact version of the py3-none-any wheel from PyPI (latest or the given one)."""
     data = _fetch_json(PYPI_VERSION.format(version=version) if version else PYPI_LATEST)
     resolved = data["info"]["version"]
     for entry in data["urls"]:
@@ -76,7 +78,7 @@ def _wheel_url(version: str | None) -> tuple[str, str]:
 
 
 def self_update(version: str | None = None, log=print) -> tuple[str, str]:
-    """Обновить xbsl в site-packages распаковкой колеса. Вернуть (было, стало)."""
+    """Update xbsl in site-packages by unpacking the wheel. Return (old, new)."""
     site = _site_packages()
     _ensure_regular_install(site)
 
@@ -92,7 +94,7 @@ def self_update(version: str | None = None, log=print) -> tuple[str, str]:
     except OSError as error:
         raise SelfUpdateError(f"не удалось скачать колесо: {error}") from error
 
-    # Снести пакет, псевдоним и dist-info; exe в Scripts не трогаем (могут быть заняты).
+    # Remove the package, the alias and dist-info; exes in Scripts are left alone (they may be busy).
     for pattern in _OWNED_PATTERNS:
         for path in site.glob(pattern):
             if path.is_dir():
@@ -111,7 +113,7 @@ def self_update(version: str | None = None, log=print) -> tuple[str, str]:
 
 
 def _update_pipx_metadata(site: Path, version: str, log) -> None:
-    """Поправить package_version в pipx_metadata.json (иначе pipx list покажет старую версию)."""
+    """Fix package_version in pipx_metadata.json (otherwise pipx list shows the old version)."""
     meta = site.parent.parent / "pipx_metadata.json"  # <venv>/Lib/site-packages -> <venv>
     if not meta.is_file():
         return

@@ -146,7 +146,7 @@ def load_json(name: str, version: str | None = None) -> dict:
 
 
 def data_file(name: str, version: str | None = None) -> Path:
-    """Путь к файлу данных версии (для не-JSON: docs.sqlite и пр.). Бросает, если файла нет."""
+    """Path to a data file of the version (for non-JSON files: docs.sqlite etc.). Raises when the file is missing."""
     ver = resolve_version(version)
     path = data_root() / ver / name
     if not path.exists():
@@ -155,7 +155,7 @@ def data_file(name: str, version: str | None = None) -> Path:
 
 
 def has_data_file(name: str, version: str | None = None) -> bool:
-    """Есть ли файл данных (без исключения) – для необязательных данных вроде документации."""
+    """Whether the data file exists (no exception) - for optional data such as the documentation."""
     try:
         return data_file(name, version).exists()
     except DatasetError:

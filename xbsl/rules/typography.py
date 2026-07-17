@@ -69,9 +69,9 @@ _STRAIGHT = {"“": '"', "”": '"', "‘": "'", "’": "'", "«": '"', "»": '"
 
 
 def _hits(source: SourceFile, kinds: tuple[str, ...], chars: str):
-    # В подавляющем большинстве файлов искомых символов нет вовсе: проверка по всему
-    # тексту на C-скорости снимает посимвольный проход по токенам (он был заметен в
-    # профиле целопроектного прогона).
+    # The vast majority of files contain none of the characters at all: a whole-text
+    # check at C speed removes the per-character token walk (it was visible in the
+    # whole-project profile).
     text = source.text
     if not any(ch in text for ch in chars):
         return

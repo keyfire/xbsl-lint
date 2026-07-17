@@ -294,7 +294,7 @@ def _scaffold_parser() -> argparse.ArgumentParser:
 
 
 def _scaffold_lint(paths: list[str]) -> dict | None:
-    """File-scope линт записанных файлов; без данных Элемента – None, а не отказ операции."""
+    """File-scope lint of the written files; without the Element data - None, not a failed operation."""
     from xbsl import dataset as _dataset
     from xbsl.engine import load, run_sources
 
@@ -418,7 +418,7 @@ def main(argv: list[str] | None = None) -> int:
 
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["self-update"]:
-        # Обновление распаковкой колеса – безопасно, когда exe заняты LSP/MCP-процессами.
+        # Updating by unpacking the wheel - safe while the exe files are held by LSP/MCP processes.
         from xbsl import selfupdate
 
         sp = argparse.ArgumentParser(prog="xbsl self-update",
@@ -434,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"updated": old != new, "from": old, "to": new}, ensure_ascii=False))
         return 0
     if argv and argv[0] in _SERVER_COMMANDS:
-        # xbsl lsp|mcp|web – диспетчер к одноимённым точкам входа.
+        # xbsl lsp|mcp|web - a dispatcher to the entry points of the same names.
         command, rest = argv[0], argv[1:]
         sys.argv = [f"xbsl-{command}", *rest]
         if command == "lsp":
@@ -448,7 +448,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] in _META_COMMANDS:
         return _scaffold_main(argv)
     if argv[:1] == ["lint"]:
-        argv = argv[1:]  # явный синоним основного режима
+        argv = argv[1:]  # an explicit alias of the default mode
 
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -526,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         files = discover(args.paths or ["."])
         if args.fix:
-            # --fix правит буферы на месте - ему нужны sources в этом процессе.
+            # --fix rewrites the buffers in place - it needs the sources in this process.
             sources = [load(p) for p in files]
             diagnostics = run_sources(sources, select=select, ignore=ignore, enable=enable)
             return _apply_fixes(sources, diagnostics, args)

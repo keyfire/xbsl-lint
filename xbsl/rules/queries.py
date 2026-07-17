@@ -1,25 +1,26 @@
-"""Проверки DSL запросов (блоки `Запрос{ ... }`).
+"""Checks of the query DSL (`Запрос{ ... }` blocks).
 
-query/unknown-table – таблица, на которую ссылается ИЗ/СОЕДИНЕНИЕ (FROM/JOIN), должна быть
-объектом проекта, а `<Объект>.<Секция>` – называть табличную часть этого объекта. Такие
-ошибки иначе проявляются только в базе во время выполнения.
+query/unknown-table - a table referenced by ИЗ/СОЕДИНЕНИЕ (FROM/JOIN) must be an object of the
+project, and `<Объект>.<Секция>` must name a tabular section of that object. Otherwise such
+errors only show up in the database at run time.
 
-query/in-subquery-composite – стандарт платформы "Использование выражения В с подзапросом для
-выражений составного типа": на большинстве СУБД такой вариант реализован неэффективно, условие
-пишется через СУЩЕСТВУЕТ (EXISTS). Составным считается тип поля с двумя и более альтернативами
-в yaml (`Строка|Число|?`), где `?` – лишь допустимость Неопределено, а не отдельный тип.
+query/in-subquery-composite - the platform standard "Использование выражения В с подзапросом для
+выражений составного типа": on most DBMSs that variant is implemented inefficiently, the
+condition is written via СУЩЕСТВУЕТ (EXISTS). A field type counts as composite when it has two
+or more alternatives in yaml (`Строка|Число|?`), where `?` is only Неопределено being allowed,
+not a separate type.
 
-Разбор намеренно консервативен (инвариант нулевых ложных срабатываний):
+The parsing is deliberately conservative (the zero-false-positives invariant):
 
-- блок с конструкциями вне поддержанного подмножества (временные таблицы, объединения,
-  подзапрос или что угодно, кроме простого имени в позиции таблицы) пропускается целиком;
-- таблица с точкой, корень которой не является объектом проекта, считается внешней
-  (библиотечной) и пропускается – сообщается только об ИЗВЕСТНОМ корне с неизвестной секцией;
-- секция после точки из словаря виртуальных таблиц (СрезПоследних, Остатки, ...) под сомнение
-  не ставится, а цепочки глубже двух сегментов не трогаются;
-- в `В` под сомнение ставится только поле, тип которого известен наверняка: `Алиас.Поле` или
-  `Таблица.Поле`, где алиас однозначен в пределах блока (переопределённый в подзапросе –
-  пропускается), а поле найдено в yaml таблицы.
+- a block with constructs outside the supported subset (temporary tables, unions, a subquery or
+  anything but a plain name in the table position) is skipped as a whole;
+- a dotted table whose root is not an object of the project is considered external (from a
+  library) and skipped - only a KNOWN root with an unknown section is reported;
+- a section after the dot found in the virtual table dictionary (СрезПоследних, Остатки, ...)
+  is not questioned, and chains deeper than two segments are left alone;
+- in `В` only a field whose type is known for sure is questioned: `Алиас.Поле` or
+  `Таблица.Поле` where the alias is unambiguous within the block (one redefined in a subquery
+  is skipped) and the field is found in the table's yaml.
 """
 
 from __future__ import annotations
@@ -76,30 +77,31 @@ MESSAGES = {
 }
 i18n.register(MESSAGES)
 
-# Слова, вводящие таблицу (следующий словарный токен начинает табличное выражение), и виды
-# словарных токенов – общие с разбором алиасов в _syntax.
+# Words that introduce a table (the next word token starts a table expression) and the word
+# token kinds - shared with the alias parsing in _syntax.
 _TABLE_INTRO = QUERY_TABLE_INTRO
 _WORD_KINDS = WORD_KINDS
-# Конструкции вне поддержанного подмножества – блок с ними пропускается целиком.
+# Constructs outside the supported subset - a block with them is skipped as a whole.
 _UNSUPPORTED = frozenset({"ПОМЕСТИТЬ", "INTO", "ОБЪЕДИНИТЬ", "UNION", "ВРЕМЕННАЯ", "TEMPORARY"})
-# Виртуальные таблицы после точки – не подвергаются сомнению.
+# Virtual tables after the dot - not questioned.
 _VIRTUAL = frozenset({
     "СРЕЗПОСЛЕДНИХ", "СРЕЗПЕРВЫХ", "ОСТАТКИ", "ОБОРОТЫ", "ОСТАТКИИОБОРОТЫ",
     "SLICELAST", "SLICEFIRST", "BALANCE", "TURNOVERS", "BALANCEANDTURNOVERS",
 })
-# Слова языка запросов – в обеих формах, как их видит лексер (значение токена, не канон).
+# Query language words - in both forms, as the lexer sees them (the token value, not the canon).
 _IN = frozenset({"В", "IN"})
 _NOT = frozenset({"НЕ", "NOT"})
 _SELECT = frozenset({"ВЫБРАТЬ", "SELECT"})
-# Секции yaml, дающие поля таблицы запроса.
+# Yaml sections that provide the fields of a query table.
 _FIELD_SECTIONS = ("Реквизиты", "Измерения", "Ресурсы")
 
 
 def _query_tables(source: SourceFile) -> Iterable[tuple]:
-    """Табличные выражения всех блоков запроса файла: (сегменты-токены,) по одному на таблицу.
+    """Table expressions of all query blocks of a file: (segment tokens,) one per table.
 
-    Блок, где после ИЗ/СОЕДИНЕНИЕ стоит не имя (подзапрос, интерполяция) или встречается
-    неподдержанное слово, не даёт ни одного выражения – молчание вместо догадок.
+    A block where ИЗ/СОЕДИНЕНИЕ is followed by something other than a name (a subquery, an
+    interpolation) or where an unsupported word occurs yields no expressions at all - silence
+    instead of guessing.
     """
     toks = tokens(source)
     for start, end in query_ranges(source):
@@ -115,7 +117,7 @@ def _query_tables(source: SourceFile) -> Iterable[tuple]:
             if t.kind in _WORD_KINDS and t.value.upper() in _TABLE_INTRO:
                 j = i + 1
                 if j >= n or block[j].kind not in _WORD_KINDS:
-                    supported = False  # подзапрос/интерполяция в позиции таблицы
+                    supported = False  # a subquery/interpolation in the table position
                     break
                 segs = [block[j]]
                 j += 1
@@ -135,10 +137,11 @@ def _query_tables(source: SourceFile) -> Iterable[tuple]:
 
 
 def _tabular_catalog(sources: list[SourceFile]) -> dict[str, dict]:
-    """Объекты проекта: имя -> {kind, tabular, fields}.
+    """Project objects: name -> {kind, tabular, fields}.
 
-    Табличные части – только из yaml (локальные типы модулей таблицами базы не являются), поля –
-    реквизиты, измерения и ресурсы вместе с записью их типа (`Строка|Число|?`).
+    Tabular sections come only from yaml (local module types are not database tables); the
+    fields are attributes, dimensions and resources together with their type spec
+    (`Строка|Число|?`).
     """
     info: dict[str, dict] = {}
     if not _HAVE_YAML:
@@ -171,11 +174,11 @@ def _tabular_catalog(sources: list[SourceFile]) -> dict[str, dict]:
 
 
 def _alternatives(spec: str) -> list[str]:
-    """Альтернативы типа верхнего уровня: `Строка|Число|?` -> ["Строка", "Число"].
+    """Top-level type alternatives: `Строка|Число|?` -> ["Строка", "Число"].
 
-    `?` – не тип, а допустимость Неопределено (у составного типа он обязателен, потому что
-    значения по умолчанию у такого типа нет), поэтому в счёт не идёт. Внутри обобщений `|` не
-    делит: `Массив<Строка|Число>` – один тип, а не составной.
+    `?` is not a type but Неопределено being allowed (mandatory for a composite type, because
+    such a type has no default value), so it does not count. Inside generics `|` does not
+    split: `Массив<Строка|Число>` is one type, not a composite one.
     """
     parts: list[str] = []
     depth = 0
@@ -195,26 +198,26 @@ def _alternatives(spec: str) -> list[str]:
 
 
 def _block_aliases(block: list[Token]) -> dict[str, str]:
-    """Алиас -> таблица для блока; переопределённый в подзапросе алиас выбрасывается.
+    """Alias -> table for a block; an alias redefined in a subquery is dropped.
 
-    Один и тот же алиас в блоке и в его подзапросе может указывать на разные таблицы – тогда по
-    алиасу мы таблицу не знаем и молчим, а не выбираем наугад.
+    The same alias in a block and in its subquery may point to different tables - then the
+    alias does not tell us the table, and we stay silent rather than pick one at random.
     """
     out: dict[str, str] = {}
     for alias, table in query_alias_pairs(block):
         if alias in out and out[alias] != table:
-            out[alias] = ""  # конфликт: алиас неразрешим
+            out[alias] = ""  # conflict: the alias cannot be resolved
         else:
             out.setdefault(alias, table)
     return {a: t for a, t in out.items() if t}
 
 
 def _in_subqueries(source: SourceFile) -> Iterator[tuple[Token, Token, bool, dict[str, str]]]:
-    """Конструкции `<Таблица|Алиас>.<Поле> [НЕ] В (ВЫБРАТЬ ...)`: (префикс, поле, отрицание, алиасы).
+    """`<Таблица|Алиас>.<Поле> [НЕ] В (ВЫБРАТЬ ...)` constructs: (prefix, field, negation, aliases).
 
-    Отбираются только квалифицированные поля: у голого имени в условии нет способа надёжно
-    установить таблицу, а список значений в скобках (`В (1, 2, &Коды)`) стандарта не касается –
-    речь только о подзапросе.
+    Only qualified fields are picked: for a bare name in a condition there is no reliable way
+    to establish the table, and a value list in parentheses (`В (1, 2, &Коды)`) is outside the
+    standard - it only speaks of a subquery.
     """
     for span in query_ranges(source):
         block = query_block_tokens(source, span)
@@ -227,7 +230,7 @@ def _in_subqueries(source: SourceFile) -> Iterator[tuple[Token, Token, bool, dic
                 continue
             after = block[i + 2]
             if after.kind not in _WORD_KINDS or after.value.upper() not in _SELECT:
-                continue  # список значений, а не подзапрос
+                continue  # a value list, not a subquery
             j = i - 1
             negated = j >= 0 and block[j].kind in _WORD_KINDS and block[j].value.upper() in _NOT
             if negated:
@@ -240,7 +243,7 @@ def _in_subqueries(source: SourceFile) -> Iterator[tuple[Token, Token, bool, dic
             if not (dot.kind == "OP" and dot.value == "."):
                 continue
             if j - 3 >= 0 and block[j - 3].kind == "OP" and block[j - 3].value == ".":
-                continue  # цепочка глубже двух сегментов – тип последнего поля нам неизвестен
+                continue  # a chain deeper than two segments - the type of the last field is unknown
             yield prefix, field, negated, aliases
 
 
@@ -251,7 +254,7 @@ def _in_subqueries(source: SourceFile) -> Iterator[tuple[Token, Token, bool, dic
 def unknown_query_table(sources: list[SourceFile]) -> Iterable[Diagnostic]:
     catalog = _tabular_catalog(sources)
     if not catalog:
-        return []  # yaml не разобран (нет PyYAML) или проект без объектов – молчим
+        return []  # yaml not parsed (no PyYAML) or a project with no objects - stay silent
 
     diags: list[Diagnostic] = []
     for s in sources:
@@ -270,7 +273,7 @@ def unknown_query_table(sources: list[SourceFile]) -> Iterable[Diagnostic]:
                     ))
                 continue
             if len(segs) != 2 or rec is None:
-                continue  # глубокие цепочки и внешние корни – вне охвата
+                continue  # deep chains and external roots - out of scope
             seg = segs[1]
             if seg.value in rec["tabular"] or seg.value.upper() in _VIRTUAL:
                 continue
@@ -290,10 +293,10 @@ def unknown_query_table(sources: list[SourceFile]) -> Iterable[Diagnostic]:
     scope="project", severity=Severity.WARNING,
 )
 def in_subquery_composite(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    """Поле составного типа в `В (ВЫБРАТЬ ...)` – условие переписывается через СУЩЕСТВУЕТ."""
+    """A composite-type field in `В (ВЫБРАТЬ ...)` - the condition is rewritten via СУЩЕСТВУЕТ."""
     catalog = _tabular_catalog(sources)
     if not catalog:
-        return []  # yaml не разобран (нет PyYAML) или проект без объектов – молчим
+        return []  # yaml not parsed (no PyYAML) or a project with no objects - stay silent
 
     diags: list[Diagnostic] = []
     for s in sources:
@@ -302,13 +305,13 @@ def in_subquery_composite(sources: list[SourceFile]) -> Iterable[Diagnostic]:
         for prefix, field, negated, aliases in _in_subqueries(s):
             table = aliases.get(prefix.value)
             if table is None and prefix.value in catalog:
-                table = prefix.value  # таблица названа своим именем, без алиаса
+                table = prefix.value  # the table is referenced by its own name, without an alias
             rec = catalog.get(table) if table else None
             if rec is None:
                 continue
             alternatives = _alternatives(rec["fields"].get(field.value, ""))
             if len(alternatives) < 2:
-                continue  # простой или nullable тип – стандарт про него ничего не говорит
+                continue  # a plain or nullable type - the standard says nothing about it
             key = ".not-in" if negated else ".in"
             diags.append(Diagnostic(
                 s.rel, prefix.line, prefix.col, "query/in-subquery-composite",

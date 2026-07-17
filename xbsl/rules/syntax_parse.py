@@ -33,7 +33,7 @@ MESSAGES = {
 }
 i18n.register(MESSAGES)
 
-# После этого числа ошибок файл считается сломанным целиком - остальное только шумит.
+# Past this many errors the file counts as broken outright - the rest is only noise.
 _MAX_PER_FILE = 10
 
 

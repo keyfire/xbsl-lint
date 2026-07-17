@@ -1,29 +1,28 @@
-"""Индекс проекта для навигации в редакторе (флаг CLI --index).
+"""Project index for editor navigation (CLI flag --index).
 
-`xbsl --index <root>` печатает в stdout JSON-снимок проекта: объекты (вид, табличные
-части, локальные типы, объявленные в модулях, порождённое семейство членов, значения
-перечислений), объявления методов каждого модуля (вместе с их аннотациями) и именованные
-компоненты интерфейса форм. Редакторы используют индекс для перехода к определению и
-автодополнения.
+`xbsl --index <root>` prints to stdout a JSON snapshot of the project: objects (kind,
+tabular sections, local types declared in modules, the derived member family, enumeration
+values), method declarations of every module (together with their annotations), and named
+form interface components. Editors use the index for go-to-definition and completion.
 
-Форма индекса зафиксирована (поля можно добавлять, но не переименовывать):
+The index shape is frozen (fields may be added but not renamed):
 
-    meta       – {root: абсолютный путь в POSIX-виде, version: версия линтера};
-    objects    – элементы yaml с ВидЭлемента: name/kind/path/line, табличные части,
-                 локальные типы модулей объекта (`<Имя>.xbsl`, `<Имя>.<Часть>.xbsl`),
-                 семейство членов для автодополнения по точке, значения перечисления
-                 (только Перечисление);
-    methods    – объявления методов и конструкторов всех модулей, аннотации без `@`;
-    components – узлы yaml для КомпонентИнтерфейса, у которых есть и Имя, и Тип;
-    references – использования индексируемых имён (объектов, методов, компонентов) в модулях
-                 и в yaml-обработчиках: name/qualifier/module/path/line/col – для "найти
-                 использования" (разрешение конкретной цели по этому списку – в навигационном ядре).
+    meta       - {root: absolute path in POSIX form, version: linter version};
+    objects    - yaml elements with ВидЭлемента: name/kind/path/line, tabular sections,
+                 local types of the object's modules (`<Имя>.xbsl`, `<Имя>.<Часть>.xbsl`),
+                 the member family for dot completion, enumeration values
+                 (Перечисление only);
+    methods    - method and constructor declarations of all modules, annotations without `@`;
+    components - yaml nodes for КомпонентИнтерфейса that have both Имя and Тип;
+    references - usages of indexable names (objects, methods, components) in modules and
+                 in yaml handlers: name/qualifier/module/path/line/col - for "find usages"
+                 (resolving a concrete target against this list is up to the navigation core).
 
-Пути записаны в POSIX-виде и относительно meta.root; строки нумеруются с единицы (ключ
-`Имя` объекта в yaml, объявление метода или структуры, элемент перечисления, узел
-компонента). Позиции в yaml находятся текстовым поиском по исходному тексту (парсер
-позиций не хранит, см. _value_positions в yaml_types.py); ненайденная позиция вырождается
-в строку 1 – построение индекса на этом никогда не падает.
+Paths are written in POSIX form relative to meta.root; lines are numbered from one (the
+object's `Имя` key in yaml, a method or structure declaration, an enumeration item, a
+component node). Positions in yaml are found by text search over the source text (the
+parser keeps no positions, see _value_positions in yaml_types.py); a position that is not
+found degrades to line 1 - index building never fails because of this.
 """
 
 from __future__ import annotations
@@ -39,10 +38,10 @@ from xbsl.rules.semantics import _file_local_type_decls, _member_family
 from xbsl.rules.yaml_schema import _HAVE_YAML, _NAME_LINE_RE, _parsed
 
 
-# --- позиции в yaml (текстовый поиск, как в _value_positions из yaml_types.py) ---------
+# --- positions in yaml (text search, like _value_positions in yaml_types.py) -----------
 
 def _name_entries(s: SourceFile) -> list[tuple[int, int, str]]:
-    """(смещение, отступ, значение) каждой строки с ключом `Имя:` файла, в порядке документа."""
+    """(offset, indent, value) of every line with an `Имя:` key in the file, in document order."""
     cached = s.cache.get("index-name-entries")
     if cached is None:
         cached = [
@@ -54,7 +53,7 @@ def _name_entries(s: SourceFile) -> list[tuple[int, int, str]]:
 
 
 def _top_name_line(s: SourceFile, name: str) -> int:
-    """Строка ключа `Имя:` верхнего уровня у объекта (1, если ключ не найден)."""
+    """Line of the object's top-level `Имя:` key (1 if the key is not found)."""
     for off, indent, value in _name_entries(s):
         if indent == 0 and value == name:
             return linemap(s).linecol(off)[0]
@@ -62,7 +61,7 @@ def _top_name_line(s: SourceFile, name: str) -> int:
 
 
 def _section_span(text: str, key: str) -> tuple[int, int] | None:
-    """Смещения тела секции верхнего уровня (`ТабличныеЧасти:` ... следующий ключ того же уровня)."""
+    """Offsets of a top-level section body (`ТабличныеЧасти:` ... the next key at the same level)."""
     m = re.search(rf"(?m)^{key}:[ \t]*(?:#.*)?\r?$", text)
     if m is None:
         return None
@@ -71,11 +70,11 @@ def _section_span(text: str, key: str) -> tuple[int, int] | None:
 
 
 def _section_item_lines(s: SourceFile, key: str) -> dict[str, deque[int]]:
-    """По имени элемента: строки ключей `Имя:` уровня элемента в секции верхнего уровня.
+    """Per item name: lines of item-level `Имя:` keys within a top-level section.
 
-    Ключи уровня элемента – это ключи с минимальным отступом внутри секции; `Имя` вложенного
-    реквизита лежит глубже и в выборку не попадает. Очереди хранят одноимённые элементы в
-    порядке документа; вызывающий код забирает по одной строке на каждый разобранный элемент.
+    Item-level keys are the keys with the minimal indent inside the section; the `Имя` of a
+    nested attribute lies deeper and is not selected. The queues keep same-named items in
+    document order; the calling code takes one line per parsed item.
     """
     span = _section_span(s.text, key)
     if span is None:
@@ -94,7 +93,7 @@ def _section_item_lines(s: SourceFile, key: str) -> dict[str, deque[int]]:
 
 
 def _named_items(s: SourceFile, data: dict, key: str) -> list[dict]:
-    """{name, line} именованных элементов секции-списка верхнего уровня (ТабличныеЧасти/Элементы)."""
+    """{name, line} of named items of a top-level list section (ТабличныеЧасти/Элементы)."""
     items = data.get(key)
     if not isinstance(items, list):
         return []
@@ -108,13 +107,13 @@ def _named_items(s: SourceFile, data: dict, key: str) -> list[dict]:
     return out
 
 
-# --- объявления в модулях (по токенам) -------------------------------------------------
+# --- declarations in modules (token-based) ----------------------------------------------
 
 def _annotations_before(toks: list, i: int) -> list[str]:
-    """Имена аннотаций над ключевым словом объявления с индексом i, в порядке текста, без `@`.
+    """Annotation names above the declaration keyword at index i, in text order, without `@`.
 
-    Обход идёт назад по парам `@Имя` и `@Имя(...)` (комментарии между ними пропускаются,
-    скобки аргументов балансируются); первый не подходящий токен останавливает обход.
+    The walk goes backwards over `@Имя` and `@Имя(...)` pairs (comments between them are
+    skipped, argument parentheses are balanced); the first non-matching token stops the walk.
     """
     names: list[str] = []
     k = i - 1
@@ -148,7 +147,7 @@ def _annotations_before(toks: list, i: int) -> list[str]:
 
 
 def _method_decls(s: SourceFile) -> list[dict]:
-    """{name, line, annotations} объявлений методов и конструкторов одного модуля."""
+    """{name, line, annotations} of method and constructor declarations of a single module."""
     decls: list[dict] = []
     toks = tokens(s)
     n = len(toks)
@@ -156,7 +155,7 @@ def _method_decls(s: SourceFile) -> list[dict]:
         if t.kind != "KEYWORD" or t.canonical not in ("METHOD", "CONSTRUCTOR"):
             continue
         if not t.value[:1].islower():
-            continue  # ключевое слово объявления пишется строчными (как в правиле handlers)
+            continue  # the declaration keyword is written in lowercase (as in the handlers rule)
         j = i + 1
         while j < n and toks[j].kind == "COMMENT":
             j += 1
@@ -169,10 +168,10 @@ def _method_decls(s: SourceFile) -> list[dict]:
     return decls
 
 
-# --- ссылки (использования) для навигации "найти использования" ------------------------
+# --- references (usages) for "find usages" navigation -----------------------------------
 
 def _prev_significant(toks: list, i: int) -> int:
-    """Индекс ближайшего значимого токена слева от i (комментарии пропускаются), или -1."""
+    """Index of the nearest significant token to the left of i (comments are skipped), or -1."""
     j = i - 1
     while j >= 0 and toks[j].kind == "COMMENT":
         j -= 1
@@ -180,7 +179,7 @@ def _prev_significant(toks: list, i: int) -> int:
 
 
 def _next_significant(toks: list, i: int, n: int) -> int:
-    """Индекс ближайшего значимого токена справа от i (комментарии пропускаются), или n."""
+    """Index of the nearest significant token to the right of i (comments are skipped), or n."""
     j = i + 1
     while j < n and toks[j].kind == "COMMENT":
         j += 1
@@ -188,13 +187,14 @@ def _next_significant(toks: list, i: int, n: int) -> int:
 
 
 def _module_references(s: SourceFile, referable: set[str], module: str, path: str) -> list[dict]:
-    """Использования индексируемых имён в модуле .xbsl: вызовы, обращения к члену, корни цепочек.
+    """Usages of indexable names in an .xbsl module: calls, member accesses, chain roots.
 
-    Для каждого токена-идентификатора со значением из referable, который является вызовом
-    (перед `(`), обращением к члену (после `.`) или корнем цепочки (перед `.`), пишем
-    {name, qualifier, module, path, line, col}: qualifier – идентификатор перед точкой (иначе "").
-    Имя в объявлении метода/конструктора пропускаем – это определение, а не использование;
-    имя аннотации (после `@`) ссылкой не считаем. Позиции: line 1-based, col 0-based (для редактора).
+    For every identifier token whose value is in referable and which is a call (before `(`),
+    a member access (after `.`) or a chain root (before `.`), we emit
+    {name, qualifier, module, path, line, col}: qualifier is the identifier before the dot
+    (otherwise ""). The name in a method/constructor declaration is skipped - that is a
+    definition, not a usage; an annotation name (after `@`) is not counted as a reference.
+    Positions: line 1-based, col 0-based (for the editor).
     """
     refs: list[dict] = []
     toks = tokens(s)
@@ -207,9 +207,9 @@ def _module_references(s: SourceFile, referable: set[str], module: str, path: st
         prev = toks[p] if p >= 0 else None
         nxt = toks[f] if f < n else None
         if prev is not None and prev.kind == "OP" and prev.value == "@":
-            continue  # имя аннотации, не ссылка
+            continue  # annotation name, not a reference
         if prev is not None and prev.kind == "KEYWORD" and prev.canonical in ("METHOD", "CONSTRUCTOR"):
-            continue  # объявление метода/конструктора – это определение
+            continue  # a method/constructor declaration is a definition
         after_dot = prev is not None and prev.kind == "OP" and prev.value == "."
         before_dot = nxt is not None and nxt.kind == "OP" and nxt.value == "."
         is_call = nxt is not None and nxt.kind == "OP" and nxt.value == "("
@@ -231,14 +231,14 @@ def _module_references(s: SourceFile, referable: set[str], module: str, path: st
     return refs
 
 
-# Строка обработчика в yaml: `Обработчик: ИмяМетода` – значение указывает на метод парного модуля.
+# Handler line in yaml: `Обработчик: ИмяМетода` - the value points to a method of the paired module.
 _HANDLER_REF_RE = re.compile(
     r"(?m)^[ \t]*Обработчик:[ \t]*(['\"]?)([A-Za-zА-Яа-яЁё_][A-Za-z0-9А-Яа-яЁё_]*)\1[ \t]*(?:#.*)?\r?$"
 )
 
 
 def _handler_references(s: SourceFile, module: str, path: str) -> list[dict]:
-    """Использования методов через `Обработчик:` в yaml (метод парного модуля формы/объекта)."""
+    """Method usages via `Обработчик:` in yaml (a method of the form's/object's paired module)."""
     refs: list[dict] = []
     lm = linemap(s)
     for m in _HANDLER_REF_RE.finditer(s.text):
@@ -254,10 +254,10 @@ def _handler_references(s: SourceFile, module: str, path: str) -> list[dict]:
     return refs
 
 
-# --- компоненты форм ----------------------------------------------------------------------
+# --- form components ------------------------------------------------------------------------
 
 def _component_nodes(node) -> list[tuple[str, str]]:
-    """(Имя, Тип) каждого узла yaml, где есть оба ключа; обход в глубину в порядке документа."""
+    """(Имя, Тип) of every yaml node that has both keys; depth-first walk in document order."""
     found: list[tuple[str, str]] = []
     if isinstance(node, dict):
         name, typ = node.get("Имя"), node.get("Тип")
@@ -272,11 +272,11 @@ def _component_nodes(node) -> list[tuple[str, str]]:
 
 
 def _form_components(s: SourceFile, data: dict, form: str, path: str) -> list[dict]:
-    """Именованные компоненты одной формы вместе со строками их ключей `Имя:`."""
+    """Named components of a single form together with the lines of their `Имя:` keys."""
     lm = linemap(s)
     queues: dict[str, deque[int]] = defaultdict(deque)
     for off, indent, value in _name_entries(s):
-        if indent > 0:  # Имя верхнего уровня – это сама форма, а не компонент
+        if indent > 0:  # the top-level Имя is the form itself, not a component
             queues[value].append(lm.linecol(off)[0])
     out: list[dict] = []
     for name, typ in _component_nodes(data):
@@ -291,17 +291,17 @@ def _form_components(s: SourceFile, data: dict, form: str, path: str) -> list[di
     return out
 
 
-# --- индекс -------------------------------------------------------------------------------
+# --- index ----------------------------------------------------------------------------------
 
 def _discover(root: Path) -> list[Path]:
-    """Файлы исходников под корнем (или сам корень, если это файл), отсортированные."""
+    """Source files under the root (or the root itself if it is a file), sorted."""
     if root.is_file():
         return [root] if root.suffix in (".xbsl", ".yaml") else []
     return find_sources(root, "*.yaml") + find_sources(root, "*.xbsl")
 
 
 def build_index(root: Path) -> dict:
-    """Готовый к выводу в JSON индекс проекта под корнем root (см. докстринг модуля)."""
+    """Project index under root, ready to be printed as JSON (see the module docstring)."""
     base = (root if root.is_dir() else root.parent).resolve()
     sources = [load(p) for p in _discover(root)]
     yaml_sources = [s for s in sources if s.kind == "yaml"]
@@ -314,8 +314,8 @@ def build_index(root: Path) -> dict:
         except ValueError:
             return rp.as_posix()
 
-    # Локальные типы по объекту-владельцу: файлы модулей `<Имя>.xbsl` и `<Имя>.<Часть>.xbsl`
-    # (сопоставление по имени, по инварианту "имя в yaml совпадает с именем файла" – как в
+    # Local types by owning object: module files `<Имя>.xbsl` and `<Имя>.<Часть>.xbsl`
+    # (matched by name, per the invariant "the name in yaml matches the file name" - as in
     # _project_object_info).
     local_types: dict[str, list[dict]] = defaultdict(list)
     for s in xbsl_sources:
@@ -367,9 +367,10 @@ def build_index(root: Path) -> dict:
                 "annotations": decl["annotations"],
             })
 
-    # Использования (для "найти использования"): имена объектов, компонентов и методов, встреченные
-    # как вызов/член/корень цепочки в модулях, плюс методы в yaml-обработчиках. Разрешение конкретной
-    # цели (метод модуля X, объект, компонент формы) выполняет навигационное ядро по этому списку.
+    # Usages (for "find usages"): names of objects, components and methods encountered as a
+    # call/member/chain root in modules, plus methods in yaml handlers. Resolving a concrete
+    # target (a method of module X, an object, a form component) is done by the navigation
+    # core against this list.
     referable = (
         {o["name"] for o in objects}
         | {c["name"] for c in components}

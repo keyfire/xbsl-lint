@@ -1,27 +1,28 @@
-"""Тир D: имена элементов проекта по стандарту 1С:Элемент "Имена элементов проекта".
+"""Tier D: project element names per the 1C:Element standard "Имена элементов проекта".
 
-Проверяются имена в описаниях (.yaml): имя самого элемента и имена его реквизитов, измерений,
-ресурсов, табличных частей, полей и значений перечисления. Стандарт обязателен в новом коде,
-поэтому все правила группы - предупреждения.
+Checked are the names in descriptions (.yaml): the name of the element itself and the names of
+its attributes, dimensions, resources, tabular sections, fields and enumeration values. The
+standard is mandatory in new code, so all rules of the group are warnings.
 
-Что проверяется (пункты стандарта):
+What is checked (clauses of the standard):
 
-- 1.2 буква "ё" и подчёркивание в именах (naming/yo, naming/underscore);
-- 1.3 аббревиатура записывается одним словом: Ндс, а не НДС (naming/abbreviation);
-- 1.4 англоязычный термин пишется оригиналом: Xml, а не Хмл (naming/latin-term);
-- 1.5 перечисления именуются словом "Вид", а не "Тип" (naming/enum-vid);
-- 1.8 имя не повторяет вид элемента и не содержит слов-пустышек (naming/kind-in-name,
-  naming/filler-word), а общий модуль не несёт постфикс окружения (naming/module-suffix);
-- 1.9 булев реквизит называется утверждением, а не отрицанием (naming/boolean-name);
-- 2.1 у элемента заполнено Представление, а у устаревшего оно начинается с "(не используется)"
-  (naming/presentation);
-- раздел 3: число имени по виду элемента (naming/number) и обязательные префиксы отдельных видов
-  (naming/prefix-by-kind).
+- 1.2 the letter "ё" and underscores in names (naming/yo, naming/underscore);
+- 1.3 an abbreviation is written as one word: Ндс, not НДС (naming/abbreviation);
+- 1.4 an English term is written in the original: Xml, not Хмл (naming/latin-term);
+- 1.5 enumerations are named with the word "Вид", not "Тип" (naming/enum-vid);
+- 1.8 the name does not repeat the element kind and contains no filler words
+  (naming/kind-in-name, naming/filler-word), and a common module does not carry an environment
+  suffix (naming/module-suffix);
+- 1.9 a boolean attribute is named as an assertion, not a negation (naming/boolean-name);
+- 2.1 the element has Представление filled in, and for a deprecated one it starts with
+  "(не используется)" (naming/presentation);
+- section 3: the grammatical number of the name by element kind (naming/number) and the
+  mandatory prefixes of certain kinds (naming/prefix-by-kind).
 
-Число имени (справочники во множественном, перечисления в единственном) определяется морфологией:
-нужен pymorphy3 (extra [morph]). Без него правило naming/number молчит - гадать по окончаниям
-нельзя, "Номенклатура" единственного числа стандарту не противоречит, а "Программы" и "Акции"
-без разбора падежа читаются как родительный падеж единственного.
+The number of the name (catalogs in the plural, enumerations in the singular) is determined by
+morphology: pymorphy3 is required (the [morph] extra). Without it the naming/number rule stays
+silent - guessing by endings is not an option: a singular "Номенклатура" does not violate the
+standard, while "Программы" and "Акции" without case analysis read as genitive singular.
 """
 
 from __future__ import annotations
@@ -154,38 +155,40 @@ MESSAGES = {
 }
 i18n.register(MESSAGES)
 
-# --- разбор описания -------------------------------------------------------------------
+# --- description parsing ---------------------------------------------------------------
 
-# Строки с ключом Имя разбирает общий регекс yaml_schema._NAME_LINE_RE (кавычки и хвостовой
-# комментарий он отделяет от значения); секции, в которых ключ может встретиться, – ниже:
-# по отступу определяем, чьё это имя.
+# Lines with the Имя key are parsed by the shared regex yaml_schema._NAME_LINE_RE (it strips
+# quotes and a trailing comment off the value); the sections where the key may occur are below:
+# the indent tells whose name it is.
 _SECTION_RE = re.compile(
     r"(?m)^([ \t]*)(Реквизиты|Измерения|Ресурсы|ТабличныеЧасти|Элементы|Поля|Параметры):"
 )
 
-# Слово в UpperCamelCase-имени: кириллица, латиница или число.
+# A word in an UpperCamelCase name: Cyrillic, Latin or a number.
 _WORD_RE = re.compile(r"[А-ЯЁ][а-яё]*|[A-Z][a-z]*|\d+")
-# Аббревиатура: две и более заглавных подряд (АПИ, НДС, HTTP).
+# An abbreviation: two or more consecutive capitals (АПИ, НДС, HTTP).
 _ABBREV_RE = re.compile(r"[А-ЯЁA-Z]{2,}")
-# Версионный хвост, ради которого стандарт разрешает подчёркивание: _v2, Api_3_1.
+# The version tail for which the standard allows an underscore: _v2, Api_3_1.
 _VERSION_TAIL_RE = re.compile(r"_(v\d+|\d+(_\d+)*)$")
 
 
 @dataclass(frozen=True)
 class NameRef:
-    """Имя в описании: что за имя, где оно и к чему относится."""
+    """A name in a description: what name it is, where it is and what it belongs to."""
 
     name: str
     line: int
     col: int
-    section: str  # "" - имя самого элемента, иначе секция (Реквизиты, ТабличныеЧасти, ...)
+    section: str  # "" - the element's own name, otherwise the section (Реквизиты, ТабличныеЧасти, ...)
 
 
 def _names(source: SourceFile) -> list[NameRef]:
-    """Все имена описания: имя элемента и имена в секциях (реквизиты, ТЧ, значения и т. д.).
+    """All names of a description: the element name and the names in sections (attributes,
+    tabular sections, values and so on).
 
-    Кэшируется: результат общий для всех правил группы naming/, а их двенадцать –
-    без кэша разбор одного файла повторялся на каждое правило (виден в профиле).
+    Cached: the result is shared by all rules of the naming/ group, and there are twelve of
+    them - without the cache the parsing of a single file was repeated for every rule (visible
+    in the profile).
     """
     cached = source.cache.get("naming_names")
     if cached is not None:
@@ -197,12 +200,12 @@ def _names(source: SourceFile) -> list[NameRef]:
     out: list[NameRef] = []
     for m in _NAME_LINE_RE.finditer(source.text):
         if not m.group(3):
-            continue  # пустое значение (или один комментарий) - имени нет
+            continue  # empty value (or a lone comment) - no name
         indent = len(m.group(1))
         line, col = lm.linecol(m.start(3))
         section = ""
         if indent:
-            # ближайшая секция выше с меньшим отступом - та, чей это элемент
+            # the closest section above with a smaller indent is the one this item belongs to
             for start, sec_indent, name in reversed(sections):
                 if start < m.start() and sec_indent < indent:
                     section = name
@@ -217,7 +220,7 @@ def _object_name(refs: list[NameRef]) -> NameRef | None:
 
 
 def _vid(source: SourceFile) -> tuple[str, dict] | None:
-    """Вид элемента и разобранное описание (или None, если это не описание объекта)."""
+    """The element kind and the parsed description (or None if this is not an object description)."""
     if source.kind != "yaml" or not _HAVE_YAML:
         return None
     data, err = _parsed(source)
@@ -233,11 +236,11 @@ def _diag(source: SourceFile, ref: NameRef, rule_id: str, key: str, **kw) -> Dia
     )
 
 
-# --- морфология ------------------------------------------------------------------------
+# --- morphology ------------------------------------------------------------------------
 
 @lru_cache(maxsize=1)
 def _morph():
-    """Морфологический анализатор (pymorphy3) или None, если extra [morph] не установлен."""
+    """The morphological analyzer (pymorphy3), or None if the [morph] extra is not installed."""
     try:
         import pymorphy3
     except ImportError:
@@ -246,19 +249,19 @@ def _morph():
 
 
 def _head_number(name: str) -> str | None:
-    """Число главного слова имени: 'sing', 'plur' или None (морфологии нет / слово не разобрано).
+    """The number of the name's head word: 'sing', 'plur' or None (no morphology / not parsed).
 
-    Главное слово - первое существительное имени: в "АрхивныеКопии" это "Копии", в
-    "БанковскиеСчетаОрганизаций" - "Счета" ("Организаций" лишь уточняет). Число берём из
-    именительного падежа: без него "Программы" и "Акции" читаются как родительный падеж
-    единственного числа.
+    The head word is the first noun of the name: in "АрхивныеКопии" it is "Копии", in
+    "БанковскиеСчетаОрганизаций" - "Счета" ("Организаций" only qualifies it). The number is
+    taken from the nominative case: without it "Программы" and "Акции" read as genitive
+    singular.
     """
     morph = _morph()
     if morph is None:
         return None
     words = [w for w in _WORD_RE.findall(name) if len(w) > 1 and w[0] in "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЭЮЯ"]
     for word in words:
-        # Сокращения и аббревиатуры (Доп, МС) числа не задают - главное слово ищем дальше.
+        # Contractions and abbreviations (Доп, МС) carry no number - keep looking for the head word.
         nouns = [
             p for p in morph.parse(word)
             if p.tag.POS in ("NOUN", "ADJF") and "Abbr" not in p.tag
@@ -268,16 +271,16 @@ def _head_number(name: str) -> str | None:
         nominative = [p for p in nouns if "nomn" in p.tag]
         best = nominative[0] if nominative else nouns[0]
         if best.tag.POS != "NOUN" and word is not words[0]:
-            continue  # прилагательное-определение пропускаем, ищем существительное дальше
+            continue  # skip a qualifying adjective, keep looking for a noun
         number = best.tag.number
         if number:
             return str(number)
     return None
 
 
-# --- данные стандарта ------------------------------------------------------------------
+# --- standard data ---------------------------------------------------------------------
 
-# Виды, именуемые во множественном числе (по заголовку списка в интерфейсе), и в единственном.
+# Kinds named in the plural (after the list title in the interface), and in the singular.
 PLURAL_KINDS = {
     "Справочник": "справочник",
     "Документ": "документ",
@@ -292,19 +295,20 @@ SINGULAR_KINDS = {
     "КонтрактТипа": "контракт типа",
     "ЗапланированноеЗадание": "запланированное задание",
 }
-# Табличная часть именуется во множественном числе (заголовок таблицы на форме).
+# A tabular section is named in the plural (the table title on a form).
 PLURAL_SECTIONS = {"ТабличныеЧасти"}
 
-# Слова, у которых числа не выбирают: изменение числа искажает смысл сущности. Стандарт сам
-# приводит их как исключения - справочник Номенклатура, регистры ИсторияРассылокОтчетов и
-# ОчередьСообщений, структуры ДанныеЗадачи и СведенияОСотруднике. Имя с таким главным словом
-# правило не трогает.
+# Words whose number is not a matter of choice: changing it distorts the meaning of the entity.
+# The standard itself lists them as exceptions - the catalog Номенклатура, the registers
+# ИсторияРассылокОтчетов and ОчередьСообщений, the structures ДанныеЗадачи and
+# СведенияОСотруднике. A name with such a head word is left alone by the rule.
 NUMBER_EXEMPT_HEADS = frozenset({
     "Номенклатура", "Данные", "Сведения", "История", "Очередь", "Итоги", "Информация",
     "Настройки", "Статистика",
 })
 
-# Слово вида в начале имени: вид в имя не включают (отчёт ЗависшиеЗадачи, не ОтчетЗависшиеЗадачи).
+# The kind word at the start of a name: the kind is not part of the name (the report
+# ЗависшиеЗадачи, not ОтчетЗависшиеЗадачи).
 KIND_PREFIXES = {
     "Отчет": "Отчет", "Отчёт": "Отчет",
     "Обработка": "Обработка",
@@ -317,23 +321,25 @@ KIND_PREFIXES = {
 }
 _VT_PREFIX_RE = re.compile(r"^(ВТ_|Таблица[А-ЯЁ])")
 
-# Слова, от удаления которых смысл имени не меняется (1.8).
+# Words whose removal does not change the meaning of the name (1.8).
 FILLER_WORDS = ("Управление", "Механизм", "Функциональность", "Менеджер", "Процедуры", "РаботаС")
 
-# Постфиксы окружения у общих модулей: окружение задаётся свойством, а не именем.
+# Environment suffixes of common modules: the environment is set by a property, not by the name.
 MODULE_SUFFIXES = ("КлиентИСервер", "КлиентСервер", "Клиент", "Сервер")
 
-# Англоязычные термины, записанные кириллицей (1.4): пишутся оригиналом. Только настоящие
-# искажения - слова, вошедшие в русский язык (токен, логин, куки, смс), стандарт не запрещает.
+# English terms spelled in Cyrillic (1.4): they are written in the original. Only genuine
+# distortions - words adopted into Russian (токен, логин, куки, смс) are not forbidden by the
+# standard.
 TRANSLITERATED = {
     "Хмл": "Xml", "Хттп": "Http", "Джсон": "Json", "Хтмл": "Html", "Урл": "Url",
     "Апи": "Api", "Эксель": "Excel", "Ворд": "Word", "Пдф": "Pdf", "Джава": "Java",
 }
-# Их же в виде аббревиатуры заглавными (АПИ, ХМЛ): naming/abbreviation их не трогает – термин
-# целиком ведёт naming/latin-term, оно и разбирает оба написания (см. _latin_term).
+# The same terms as all-caps abbreviations (АПИ, ХМЛ): naming/abbreviation leaves them alone -
+# the term as a whole is owned by naming/latin-term, which handles both spellings (see
+# _latin_term).
 _TRANSLIT_CAPS = {w.upper() for w in TRANSLITERATED}
 
-# Обязательные префиксы и постфиксы по видам (раздел 3).
+# Mandatory prefixes and suffixes by kind (section 3).
 KIND_PREFIX_REQUIRED = {
     "КлючДоступа": "КлючДоступа",
     "ПравоНаДействие": "ПравоНа",
@@ -344,17 +350,18 @@ KIND_PREFIX_REQUIRED = {
 KIND_SUFFIX_REQUIRED = {
     "ЛокализованныеСтроки": "Локализация",
 }
-# HTTP-сервис: слова, которые в имя не включают.
+# HTTP service: words that are not part of the name.
 HTTP_FORBIDDEN = ("Api", "Web", "Апи", "Веб")
 
 
 def _abbrev_core(name: str, m: re.Match) -> str:
-    """Собственно аббревиатура из группы заглавных букв.
+    """The abbreviation proper within a group of capital letters.
 
-    Последняя заглавная принадлежит следующему слову, если за ней идёт строчная: в
-    "ЗапросыКМССервер" аббревиатура - КМС, а "С" начинает "Сервер". После этого от группы может
-    остаться одна буква - это не аббревиатура, а предлог или союз, слипшийся со словом:
-    "ДоступКПриложениям", "КнопкаЗаписатьИЗакрыть", "ОбращенияВПоддержку".
+    The last capital belongs to the next word when a lowercase letter follows it: in
+    "ЗапросыКМССервер" the abbreviation is КМС, and "С" starts "Сервер". After that the group
+    may be down to a single letter - that is not an abbreviation but a preposition or
+    conjunction glued to a word: "ДоступКПриложениям", "КнопкаЗаписатьИЗакрыть",
+    "ОбращенияВПоддержку".
     """
     group = m.group(0)
     tail = name[m.end():m.end() + 1]
@@ -362,11 +369,11 @@ def _abbrev_core(name: str, m: re.Match) -> str:
 
 
 def _suggest_abbrev(name: str) -> str:
-    """Аббревиатуру заглавными приводим к одному слову: АПИСервиса -> АпиСервиса."""
+    """Turn an all-caps abbreviation into one word: АПИСервиса -> АпиСервиса."""
     def fix(m: re.Match) -> str:
         core = _abbrev_core(name, m)
         if len(core) < 2:
-            return m.group(0)  # предлог или союз перед словом - не трогаем
+            return m.group(0)  # a preposition or conjunction before a word - leave it alone
         rest = m.group(0)[len(core):]
         return core[0] + core[1:].lower() + rest
 
@@ -374,7 +381,7 @@ def _suggest_abbrev(name: str) -> str:
 
 
 def _abbreviations(name: str) -> list[str]:
-    """Аббревиатуры заглавными в имени, кроме англоязычных терминов (у них своё правило)."""
+    """All-caps abbreviations in a name, except English terms (they have a rule of their own)."""
     out = []
     for m in _ABBREV_RE.finditer(name):
         core = _abbrev_core(name, m)
@@ -384,12 +391,12 @@ def _abbreviations(name: str) -> list[str]:
 
 
 def _latin_term(name: str) -> tuple[str, str] | None:
-    """Первый англоязычный термин, записанный кириллицей, и его оригинал: Урл -> Url.
+    """The first English term spelled in Cyrillic, and its original: Урл -> Url.
 
-    Термин ищется в обоих написаниях – обычном (АпиСервиса) и заглавными (АПИСервиса). Группу
-    заглавных приходится разбирать отдельно: _WORD_RE дробит её на отдельные буквы (А, П, И), и
-    само по себе имя АПИСервиса не увидело бы ни это правило, ни naming/abbreviation – оно такие
-    аббревиатуры пропускает как раз в пользу этого правила.
+    The term is looked for in both spellings - regular (АпиСервиса) and all-caps (АПИСервиса).
+    The capital group has to be handled separately: _WORD_RE splits it into single letters
+    (А, П, И), so on its own the name АПИСервиса would be seen neither by this rule nor by
+    naming/abbreviation - the latter skips such abbreviations precisely in favor of this rule.
     """
     for m in _ABBREV_RE.finditer(name):
         core = _abbrev_core(name, m)
@@ -401,11 +408,11 @@ def _latin_term(name: str) -> tuple[str, str] | None:
     return None
 
 
-# --- правила ---------------------------------------------------------------------------
+# --- rules -------------------------------------------------------------------------------
 
 @rule("naming/yo", "naming/yo.title", "D", severity=Severity.WARNING)
 def yo(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.2: в именах не используется буква "ё" (ПересчетТоваров, а не ПересчётТоваров)."""
+    """1.2: names do not use the letter "ё" (ПересчетТоваров, not ПересчётТоваров)."""
     if _vid(source) is None:
         return
     for ref in _names(source):
@@ -417,20 +424,20 @@ def yo(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/underscore", "naming/underscore.title", "D", severity=Severity.WARNING)
 def underscore(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.2: подчёркивание допустимо только для версии (ФизическоеЛицо_v2), но не как разделитель."""
+    """1.2: an underscore is allowed only for a version (ФизическоеЛицо_v2), not as a separator."""
     if _vid(source) is None:
         return
     for ref in _names(source):
         if "_" not in ref.name:
             continue
         if _VERSION_TAIL_RE.search(ref.name) and not ref.name.startswith("_"):
-            continue  # версионирование - разрешено стандартом
+            continue  # versioning - allowed by the standard
         yield _diag(source, ref, "naming/underscore", "naming/underscore.found", name=ref.name)
 
 
 @rule("naming/abbreviation", "naming/abbreviation.title", "D", severity=Severity.WARNING)
 def abbreviation(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.3: в имени аббревиатура - одно слово с заглавной первой буквой (Ндс, Мчд, Кмс)."""
+    """1.3: in a name an abbreviation is one word with only the first letter capital (Ндс, Мчд, Кмс)."""
     if _vid(source) is None:
         return
     for ref in _names(source):
@@ -442,7 +449,7 @@ def abbreviation(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/latin-term", "naming/latin-term.title", "D", severity=Severity.WARNING)
 def latin_term(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.4: англоязычный термин пишется оригиналом (ОтправитьXml, а не ОтправитьХмл)."""
+    """1.4: an English term is written in the original (ОтправитьXml, not ОтправитьХмл)."""
     if _vid(source) is None:
         return
     for ref in _names(source):
@@ -456,7 +463,7 @@ def latin_term(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/enum-vid", "naming/enum-vid.title", "D", severity=Severity.WARNING)
 def enum_vid(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.5: перечисление именуется словом "Вид", а не "Тип" (ВидЗадачи, не ТипЗадачи)."""
+    """1.5: an enumeration is named with the word "Вид", not "Тип" (ВидЗадачи, not ТипЗадачи)."""
     got = _vid(source)
     if got is None or got[0] != "Перечисление":
         return
@@ -474,10 +481,10 @@ def enum_vid(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/kind-in-name", "naming/kind-in-name.title", "D", severity=Severity.WARNING)
 def kind_in_name(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.8: вид не включают в имя (отчёт ЗависшиеЗадачи, а не ОтчетЗависшиеЗадачи).
+    """1.8: the kind is not part of the name (the report ЗависшиеЗадачи, not ОтчетЗависшиеЗадачи).
 
-    Компонент интерфейса не проверяем: стандарт разрешает ему префикс-уточнение типа
-    (ПолеВводаАдреса, СтраницаРеквизиты) и даже слово Компонент у сложных произвольных.
+    Interface components are not checked: the standard allows them a type-qualifying prefix
+    (ПолеВводаАдреса, СтраницаРеквизиты) and even the word Компонент for complex custom ones.
     """
     got = _vid(source)
     if got is None:
@@ -502,7 +509,7 @@ def kind_in_name(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/filler-word", "naming/filler-word.title", "D", severity=Severity.WARNING)
 def filler_word(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.8: без слов управление, механизм, менеджер, работа с - смысл имени не меняется."""
+    """1.8: without the words управление, механизм, менеджер, работа с - the meaning stays the same."""
     if _vid(source) is None:
         return
     ref = _object_name(_names(source))
@@ -517,7 +524,7 @@ def filler_word(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/module-suffix", "naming/module-suffix.title", "D", severity=Severity.WARNING)
 def module_suffix(source: SourceFile) -> Iterable[Diagnostic]:
-    """Раздел 3: имя общего модуля не несёт постфикс окружения (ОбменДаннымиКлиентИСервер)."""
+    """Section 3: a common module name carries no environment suffix (ОбменДаннымиКлиентИСервер)."""
     got = _vid(source)
     if got is None or got[0] != "ОбщийМодуль":
         return
@@ -532,7 +539,7 @@ def module_suffix(source: SourceFile) -> Iterable[Diagnostic]:
 
 
 def _number_exempt(name: str) -> bool:
-    """Имя, у которого число не проверяют: главное слово его не выбирает (ДанныеЗадачи,
+    """A name whose number is not checked: its head word does not choose one (ДанныеЗадачи,
     СведенияОСотруднике, ОчередьСообщений, Номенклатура)."""
     head = next(iter(_WORD_RE.findall(name)), "")
     return head in NUMBER_EXEMPT_HEADS
@@ -540,8 +547,8 @@ def _number_exempt(name: str) -> bool:
 
 @rule("naming/number", "naming/number.title", "D", severity=Severity.WARNING)
 def number(source: SourceFile) -> Iterable[Diagnostic]:
-    """Раздел 3: справочники, документы, регистры и табличные части - во множественном числе,
-    перечисления и структуры - в единственном. Молчит без extra [morph] (pymorphy3)."""
+    """Section 3: catalogs, documents, registers and tabular sections - in the plural,
+    enumerations and structures - in the singular. Silent without the [morph] extra (pymorphy3)."""
     got = _vid(source)
     if got is None or _morph() is None:
         return
@@ -567,8 +574,8 @@ def number(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/boolean-name", "naming/boolean-name.title", "D", severity=Severity.WARNING)
 def boolean_name(source: SourceFile) -> Iterable[Diagnostic]:
-    """1.9: имя булева реквизита образуют от истинного значения признака, без отрицаний;
-    существительное начинают со слов Это, Есть, Содержит (ЭтоАдминистратор, а не Администратор)."""
+    """1.9: a boolean attribute is named after the true value of the flag, with no negations;
+    a noun is prefixed with Это, Есть or Содержит (ЭтоАдминистратор, not Администратор)."""
     got = _vid(source)
     if got is None:
         return
@@ -598,8 +605,8 @@ def boolean_name(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/presentation", "naming/presentation.title", "D", severity=Severity.WARNING)
 def presentation(source: SourceFile) -> Iterable[Diagnostic]:
-    """2.1: у элемента верхнего уровня заполнено Представление; у устаревшего оно начинается
-    с "(не используется)" (1.6). Виды, у которых свойства Представление нет, пропускаем."""
+    """2.1: a top-level element has Представление filled in; for a deprecated one it starts
+    with "(не используется)" (1.6). Kinds that have no Представление property are skipped."""
     got = _vid(source)
     if got is None:
         return
@@ -611,7 +618,7 @@ def presentation(source: SourceFile) -> Iterable[Diagnostic]:
         return
     cls = mm["vid2class"].get(vid)
     if not cls or "Представление" not in _allowed_for_class(cls):
-        return  # у вида такого свойства нет - требовать нечего
+        return  # the kind has no such property - nothing to require
 
     ref = _object_name(_names(source))
     value = data.get("Представление")
@@ -628,9 +635,9 @@ def presentation(source: SourceFile) -> Iterable[Diagnostic]:
 
 @rule("naming/prefix-by-kind", "naming/prefix-by-kind.title", "D", severity=Severity.WARNING)
 def prefix_by_kind(source: SourceFile) -> Iterable[Diagnostic]:
-    """Раздел 3: ключ доступа - КлючДоступа<кого>, право - ПравоНа<что>, навигационная команда -
-    Навигация<что>, переключаемая - Команда<что>, локализованные строки - <Проект>Локализация;
-    в имя HTTP-сервиса не включают web и Api."""
+    """Section 3: an access key is КлючДоступа<whose>, a right is ПравоНа<what>, a navigation
+    command is Навигация<what>, a switchable one is Команда<what>, localized strings are
+    <Project>Локализация; an HTTP service name does not include web or Api."""
     got = _vid(source)
     if got is None:
         return

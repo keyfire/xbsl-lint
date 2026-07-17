@@ -86,7 +86,7 @@ def lint_source(
 
 
 def _page_as_text(doc_id: str | None) -> dict:
-    """Страница документации с текстовой (не HTML) выжимкой – в таком виде её удобно читать модели."""
+    """A documentation page with a plain-text (not HTML) extract - the form a model reads best."""
     page = docs.page(doc_id) if doc_id else None
     if page is None:
         return {}
@@ -126,12 +126,12 @@ def docs_symbol(name: str) -> dict:
     return _page_as_text(docs.for_symbol(name))
 
 
-# --- scaffolding (метаданные) ---------------------------------------------------------
+# --- scaffolding (metadata) ------------------------------------------------------------
 #
-# Пишущие инструменты применяют изменения к диску сами (в отличие от LSP-поверхности,
-# где правки применяет редактор) и возвращают {files, notes, lint}: file-scope линт
-# записанных файлов входит в тот же ответ. Ошибка операции – структурированное поле
-# error, а не исключение: агенту так проще ветвиться.
+# The writing tools apply their changes to disk themselves (unlike the LSP surface, where
+# the editor applies the edits) and return {files, notes, lint}: a file-scope lint of the
+# written files ships in the same response. An operation failure is a structured error
+# field, not an exception: that makes branching easier for an agent.
 
 
 def _apply_and_lint(result: scaffold.ScaffoldResult) -> dict:

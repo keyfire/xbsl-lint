@@ -77,7 +77,7 @@ _DECL_KW = ("VAL", "VAR", "CONST", "REQ", "CATCH", "FOR")
 
 
 def _components(sources: list[SourceFile]) -> dict[str, SourceFile]:
-    """Имя проектного КомпонентИнтерфейса -> его парный модуль X.xbsl."""
+    """Name of a project КомпонентИнтерфейса -> its paired module X.xbsl."""
     modules = {str(s.path): s for s in sources if s.kind == "xbsl"}
     comps: dict[str, SourceFile] = {}
     for s in sources:
@@ -131,7 +131,7 @@ def _annotations_before(toks: list, i: int) -> set[str]:
 
 
 def _method_visibility(module: SourceFile) -> dict[str, set[str]]:
-    """Имя метода модуля -> имена аннотаций над его объявлением (кэш на файле)."""
+    """Module method name -> the annotation names above its declaration (cached on the file)."""
     cached = module.cache.get("local_visibility_methods")
     if cached is not None:
         return cached

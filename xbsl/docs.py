@@ -1,16 +1,18 @@
-"""Рантайм-доступ к документации Элемента (docs.sqlite): поиск, страница, дерево, символ.
+"""Runtime access to the Element documentation (docs.sqlite): search, page, tree, symbol.
 
-База собирается `tools/extract_docs.py` из дистрибутива и лежит в бандле данных
-`<корень>/<версия>/docs.sqlite` рядом со `stdlib.json` (см. dataset.py). Документация
-необязательна: если базы нет, `available()` возвращает Ложь, а прочие функции – пустой
-результат, чтобы MCP-сервер и LSP работали и без неё.
+The database is built by `tools/extract_docs.py` from the distribution and lives in the
+data bundle at `<root>/<version>/docs.sqlite` next to `stdlib.json` (see dataset.py). The
+documentation is optional: when the database is missing, `available()` returns False and
+the other functions return an empty result, so the MCP server and the LSP keep working
+without it.
 
-Соединение открывается на каждый запрос и сразу закрывается: запросы редкие (по действию
-пользователя), зато файл базы не держится открытым – его можно пересобрать при живом сервере
-(на Windows открытое соединение блокирует перезапись).
+A connection is opened per request and closed right away: requests are rare (driven by a
+user action), while the database file is not kept open - it can be rebuilt while the
+server is alive (on Windows an open connection blocks overwriting).
 
-Поверх этого API строятся: инструменты MCP (Клод ищет методы, их свойства и параметры),
-эндпоинт LSP "дока для символа под курсором" и панель расширения (дерево + просмотр HTML).
+Built on top of this API: the MCP tools (Claude searches methods, their properties and
+parameters), the LSP "docs for the symbol under the cursor" endpoint, and the extension
+panel (tree + HTML view).
 """
 from __future__ import annotations
 
@@ -21,9 +23,9 @@ from pathlib import Path
 from xbsl import dataset
 
 _DB_NAME = "docs.sqlite"
-# Токен запроса: буквы (вкл. кириллицу), цифры, подчёркивание – всё прочее для FTS5 отбрасываем.
+# Query token: letters (incl. Cyrillic), digits, underscore - everything else is dropped for FTS5.
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
-# Картинки лежат файлами рядом с базой (`<версия>/assets/...`), mime определяем по расширению.
+# Images live as files next to the database (`<version>/assets/...`), mime is derived from the extension.
 _MIME = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
     ".gif": "image/gif", ".svg": "image/svg+xml", ".webp": "image/webp",
@@ -31,32 +33,32 @@ _MIME = {
 
 
 def available(version: str | None = None) -> bool:
-    """Есть ли база документации для версии данных."""
+    """Whether a documentation database exists for the data version."""
     return dataset.has_data_file(_DB_NAME, version)
 
 
 def _open(version: str | None = None) -> sqlite3.Connection | None:
-    """Свежее соединение только для чтения (закрывать вызывающему) или None, если базы нет."""
+    """A fresh read-only connection (the caller must close it) or None if there is no database."""
     if not available(version):
         return None
-    uri = Path(dataset.data_file(_DB_NAME, version)).as_uri() + "?mode=ro"  # file-URI на любой ОС
+    uri = Path(dataset.data_file(_DB_NAME, version)).as_uri() + "?mode=ro"  # file URI on any OS
     con = sqlite3.connect(uri, uri=True)
     con.row_factory = sqlite3.Row
     return con
 
 
 def _fts_query(query: str) -> str:
-    """Свободный текст -> безопасное выражение FTS5: слова в кавычках через И, последнее с префиксом."""
+    """Free text -> a safe FTS5 expression: quoted words joined with AND, the last one as a prefix."""
     tokens = _TOKEN_RE.findall(query)
     if not tokens:
         return ""
     terms = [f'"{t}"' for t in tokens[:-1]]
-    terms.append(f'"{tokens[-1]}"*')  # префикс на последнем слове – удобно для набора на лету
+    terms.append(f'"{tokens[-1]}"*')  # prefix on the last word - convenient while typing
     return " ".join(terms)
 
 
 def search(query: str, limit: int = 10, version: str | None = None) -> list[dict]:
-    """Полнотекстовый поиск по документации, ранжирование bm25 (лучшее – первым)."""
+    """Full-text search over the documentation, bm25 ranking (best first)."""
     match = _fts_query(query)
     if not match:
         return []
@@ -77,7 +79,7 @@ def search(query: str, limit: int = 10, version: str | None = None) -> list[dict
 
 
 def page(doc_id: str, version: str | None = None) -> dict | None:
-    """Полная запись страницы (с очищенным HTML) по её id или None."""
+    """Full page record (with cleaned HTML) by its id, or None."""
     con = _open(version)
     if con is None:
         return None
@@ -92,11 +94,11 @@ def page(doc_id: str, version: str | None = None) -> dict | None:
 
 
 def tree(version: str | None = None) -> list[dict]:
-    """Плоский список узлов курируемого оглавления – дерево строит потребитель.
+    """Flat list of curated table-of-contents nodes - the consumer builds the tree.
 
-    Узел: node (id узла), parent (id родителя или None у раздела-вкладки), label (подпись),
-    page (id страницы для ссылки, иначе None), anchor (id раздела на странице для узла-заголовка),
-    kind (section/category/link/heading).
+    Node: node (node id), parent (parent id, or None for a tab section), label (caption),
+    page (page id to link to, otherwise None), anchor (section id on the page for a heading
+    node), kind (section/category/link/heading).
     """
     con = _open(version)
     if con is None:
@@ -108,19 +110,19 @@ def tree(version: str | None = None) -> list[dict]:
         ).fetchall()
         return [dict(r) for r in rows]
     except sqlite3.OperationalError:
-        return []  # база старой схемы (без курируемого дерева) – пусто, а не падение
+        return []  # old-schema database (no curated tree) - empty result rather than a failure
     finally:
         con.close()
 
 
 def for_symbol(name: str, version: str | None = None) -> str | None:
-    """id страницы для имени символа/типа при УВЕРЕННОМ совпадении, иначе None.
+    """Page id for a symbol/type name on a CONFIDENT match, otherwise None.
 
-    Совпадение – точный заголовок либо последний сегмент квалификатора (`Стд::...::Массив`);
-    у типа предпочитаем страницу справочника (stdlib) топику руководства с тем же заголовком.
-    Нечёткого (полнотекстового) фолбэка тут НЕТ: для метода-секции (напр. `Настроить`) точной
-    страницы нет, а угаданный по слову топик руководства сбивает с толку – кандидатов подбирает
-    вызывающий через search().
+    A match is an exact title or the last qualifier segment (`Стд::...::Массив`); for a
+    type we prefer the reference (stdlib) page over a guide topic with the same title.
+    There is NO fuzzy (full-text) fallback here: a method section (e.g. `Настроить`) has
+    no exact page, and a guide topic guessed by the word is confusing - candidates are
+    picked by the caller via search().
     """
     if not name:
         return None
@@ -147,10 +149,10 @@ def for_symbol(name: str, version: str | None = None) -> str | None:
 
 
 def asset(asset_id: str, version: str | None = None) -> dict | None:
-    """Байты картинки по её id (`assets/...`) с mime – файл рядом с базой, или None.
+    """Image bytes by its id (`assets/...`) with mime - a file next to the database, or None.
 
-    Картинки хранятся не в базе, а файлами в `<корень>/<версия>/assets/...` (git-lfs). Путь
-    ограничен подкаталогом assets – без выхода за пределы бандла.
+    Images are stored not in the database but as files in `<root>/<version>/assets/...`
+    (git-lfs). The path is confined to the assets subdirectory - no escaping the bundle.
     """
     if not asset_id.startswith("assets/") or ".." in asset_id:
         return None

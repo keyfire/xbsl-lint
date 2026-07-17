@@ -67,7 +67,7 @@ _INPUT_FIELD_RE = re.compile(
 
 
 def _enums_with_default(sources: list[SourceFile]) -> set[str]:
-    """Имена перечислений проекта, у которых есть элемент с ПоУмолчанию: Истина."""
+    """Names of the project enumerations that have an element with ПоУмолчанию: Истина."""
     names: set[str] = set()
     for s in sources:
         if s.kind != "yaml":
@@ -78,7 +78,7 @@ def _enums_with_default(sources: list[SourceFile]) -> set[str]:
         if data.get("ВидЭлемента") != "Перечисление" or not isinstance(data.get("Имя"), str):
             continue
         items = data.get("Элементы")
-        # yaml-парсер видит платформенное 'Истина' строкой, а true - булевым
+        # the yaml parser reads the platform 'Истина' as a string, and true as a boolean
         if isinstance(items, list) and any(
             isinstance(item, dict) and item.get("ПоУмолчанию") in (True, "Истина")
             for item in items
@@ -100,9 +100,9 @@ def _typed_nodes(node) -> Iterable[dict]:
 
 
 def _enum_hit(value: str, enums: set[str]) -> tuple[str, int, str] | None:
-    """(имя перечисления, смещение имени в значении, ключ сообщения) или None.
+    """(enumeration name, offset of the name within the value, message key) or None.
 
-    Ловит ровно две формы: голое имя перечисления и ПолеВвода<Имя> с голым аргументом.
+    Catches exactly two shapes: a bare enumeration name and ПолеВвода<Имя> with a bare argument.
     """
     stripped = value.strip()
     if stripped in enums:
@@ -131,7 +131,7 @@ def enum_needs_nullable(sources: list[SourceFile]) -> Iterable[Diagnostic]:
         data, err = _parsed(s)
         if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
             continue
-        # значение Тип -> (имя, смещение, ключ сообщения); guarded – значения с явным дефолтом
+        # a Тип value -> (name, offset, message key); guarded - values with an explicit default
         candidates: dict[str, tuple[str, int, str]] = {}
         guarded: set[str] = set()
         for node in _typed_nodes(data):
@@ -145,7 +145,7 @@ def enum_needs_nullable(sources: list[SourceFile]) -> Iterable[Diagnostic]:
                 candidates[value] = hit
         for value, (name, off, msg_key) in candidates.items():
             if value in guarded:
-                continue  # позиции текстовые – одноимённое защищённое значение неотличимо
+                continue  # positions are textual - a same-name guarded value is indistinguishable
             positions = _value_positions(s, value)
             positions = [(line, col + off) for line, col in positions] or [(1, 1)]
             diags.extend(

@@ -1,10 +1,10 @@
-"""Чистое ядро навигации LSP-сервера: перенос на Python навигационного ядра расширения (navCore).
+"""Pure navigation core of the LSP server: a Python port of the extension's navCore.
 
-Работает с индексом проекта, который строит `xbsl.indexer` (та же зафиксированная схема,
-что выгружает CLI по ключу `--index`): разрешение definition, completion и hover плюс разбор
-строки на цепочки идентификаторов через точку. Импортов LSP и редактора здесь нет – модуль
-покрыт модульными тестами напрямую, а сервер на pygls (`xbsl.lsp`) – лишь тонкий транспорт
-над ним.
+Works with the project index built by `xbsl.indexer` (the same frozen schema the CLI dumps
+under the `--index` flag): resolving definition, completion and hover, plus parsing a line
+into dot-separated identifier chains. There are no LSP or editor imports here - the module
+is covered by unit tests directly, and the pygls server (`xbsl.lsp`) is just a thin
+transport on top of it.
 """
 
 from __future__ import annotations
@@ -13,16 +13,16 @@ import re
 from typing import Any, Optional
 
 IDENT = r"[A-Za-zА-Яа-яЁё_][A-Za-z0-9А-Яа-яЁё_]*"
-# Символ, который не может стоять непосредственно перед распознаваемой цепочкой идентификаторов.
+# A character that cannot appear immediately before a recognized identifier chain.
 NOT_BEFORE = r"[^.0-9A-Za-zА-Яа-яЁё_]"
 
 _CHAIN_RE = re.compile(rf"{IDENT}(?:\.{IDENT})*")
-# Хвостовой комментарий после значения допускается – частью имени он не является.
+# A trailing comment after the value is allowed - it is not part of the name.
 _HANDLER_RE = re.compile(rf"^(\s*Обработчик\s*:\s*)({IDENT})\s*(?:#.*)?$")
 
 
 class IndexLookup:
-    """Заранее посчитанные выборки по словарю индекса, который строит indexer.build_index."""
+    """Precomputed lookups over the index dict built by indexer.build_index."""
 
     def __init__(self, index: dict) -> None:
         self.index = index
@@ -76,7 +76,7 @@ class IndexLookup:
 
 
 def chain_at(line_text: str, character: int) -> Optional[tuple[list[str], int]]:
-    """Цепочка идентификаторов через точку под позицией `character` (с нуля) и индекс сегмента."""
+    """Dot-separated identifier chain at position `character` (0-based) and the segment index."""
     for m in _CHAIN_RE.finditer(line_text):
         start, end = m.start(), m.end()
         if character < start:
@@ -89,7 +89,7 @@ def chain_at(line_text: str, character: int) -> Optional[tuple[list[str], int]]:
             segment_end = offset + len(part)
             if character <= segment_end:
                 return parts, i
-            offset = segment_end + 1  # пропускаем точку
+            offset = segment_end + 1  # skip the dot
         return parts, len(parts) - 1
     return None
 
@@ -109,11 +109,12 @@ def _resolve(
     file_stem: str,
     file_path: Optional[str] = None,
 ) -> Optional[dict]:
-    """Описатель символа под позицией: {kind, name, module, form, path, line} или None.
+    """Descriptor of the symbol at the position: {kind, name, module, form, path, line} or None.
 
-    kind – "object" | "method" | "component" | "tabular" | "localType" | "enumValue"; module
-    заполнен у методов, form – у компонентов; path/line – место определения. На этом описателе
-    строятся и переход к определению (resolve_definition), и поиск использований (resolve_references).
+    kind is "object" | "method" | "component" | "tabular" | "localType" | "enumValue"; module
+    is filled for methods, form - for components; path/line is the definition site. Both
+    go-to-definition (resolve_definition) and find-usages (resolve_references) are built on
+    this descriptor.
     """
     if language_id == "yaml":
         handler = _HANDLER_RE.match(line_text)
@@ -161,7 +162,7 @@ def _resolve(
         return {"kind": "method", "name": word, "module": method.get("module", parts[1]),
                 "form": "", "path": method["path"], "line": method["line"]}
     if at != 1:
-        return None  # более глубокие цепочки требуют вывода типов – за рамками модуля
+        return None  # deeper chains require type inference - out of scope for this module
 
     qualifier = parts[at - 1]
     obj = lookup.object_by_name(qualifier)
@@ -194,7 +195,7 @@ def resolve_definition(
     file_stem: str,
     file_path: Optional[str] = None,
 ) -> Optional[tuple[str, int]]:
-    """Цель (path, line) для позиции или None, если контекст не распознан."""
+    """Target (path, line) for the position, or None if the context is not recognized."""
     d = _resolve(
         lookup,
         language_id=language_id,
@@ -216,12 +217,13 @@ def resolve_references(
     file_path: Optional[str] = None,
     include_declaration: bool = False,
 ) -> list[tuple[str, int, int, int]]:
-    """Использования символа под позицией: список (path, line, col, length).
+    """Usages of the symbol at the position: a list of (path, line, col, length).
 
-    Поддержаны методы (вызовы в своём модуле, `Модуль.Метод`, `Компоненты.Модуль.Метод`,
-    yaml-обработчики), объекты (корень цепочки) и компоненты (`Компоненты.Имя`). Сайт объявления
-    из списка исключается; при include_declaration добавляется отдельной записью. Прочие виды
-    (табличные части, локальные типы, значения перечисления) в этой версии не разрешаются.
+    Supported are methods (calls in their own module, `Модуль.Метод`, `Компоненты.Модуль.Метод`,
+    yaml handlers), objects (chain root) and components (`Компоненты.Имя`). The declaration
+    site is excluded from the list; with include_declaration it is added as a separate entry.
+    Other kinds (tabular sections, local types, enumeration values) are not resolved in this
+    version.
     """
     d = _resolve(
         lookup,
@@ -258,7 +260,7 @@ def resolve_references(
     out = [loc for loc in out if not (loc[0] == decl_path and loc[1] == decl_line)]
     if include_declaration:
         out.append((decl_path, decl_line, 0, 0))
-    # уникализируем, сохраняя устойчивый порядок по (path, line, col)
+    # deduplicate, keeping a stable (path, line, col) order
     seen: set = set()
     uniq: list[tuple[str, int, int, int]] = []
     for loc in sorted(out):
@@ -303,10 +305,11 @@ def _match_end(prefix: str, pattern: str) -> Optional[re.Match]:
     return re.search(rf"(?:^|{NOT_BEFORE}){pattern}$", prefix)
 
 
-# Стандартные (выбираемые в запросе) поля по виду объекта. Виды и имена полей – по-русски намеренно:
-# метаданные в линтере русско-канонические (semantics._member_family и семейства типов везде русские).
-# Двуязычны только ключевые слова КОДА; блок Запрос{...} распознаёт лексер (query_ranges у вызывающего,
-# он передаёт in_query). Реквизиты объекта берём из индекса (поле "attributes").
+# Standard (query-selectable) fields per object kind. Kinds and field names are in Russian
+# on purpose: linter metadata is Russian-canonical (semantics._member_family and the type
+# families are Russian everywhere). Only CODE keywords are bilingual; the Запрос{...} block
+# is recognized by the lexer (query_ranges at the caller, which passes in_query). Object
+# attributes come from the index (the "attributes" field).
 _STANDARD_QUERY_FIELDS = {
     "Справочник": ["Ссылка", "Код", "Наименование", "ПометкаУдаления", "Предопределённый"],
     "Документ": ["Ссылка", "Номер", "Дата", "Проведён", "ПометкаУдаления"],
@@ -318,7 +321,7 @@ def _name_of(item) -> str:
 
 
 def _query_field_entries(kind: str, attributes: list, tabular: list) -> list[dict]:
-    """Поля таблицы в запросе: стандартные поля вида + реквизиты + ТЧ, без дублей по имени."""
+    """Table fields in a query: standard fields of the kind + attributes + tabular sections, deduplicated by name."""
     seen: set = set()
     entries: list[dict] = []
 
@@ -337,10 +340,10 @@ def _query_field_entries(kind: str, attributes: list, tabular: list) -> list[dic
 
 
 def _stdlib_entries(members) -> list[dict]:
-    """Члены stdlib-типа: свойства и методы раздельно (у методов свой вид и скобки при вставке).
+    """Members of a stdlib type: properties and methods apart (methods get their own kind and insert parentheses).
 
-    Датасет отдаёт {"properties": [...], "methods": [...]}; прежний плоский список имён
-    (свойства и методы вперемешку) понимаем ради совместимости со старыми данными.
+    The dataset provides {"properties": [...], "methods": [...]}; the former flat list of
+    names (properties and methods mixed) is understood for compatibility with old data.
     """
     if not isinstance(members, dict):
         return [{"label": str(x), "kind": "field", "detail": "член"} for x in members or []]
@@ -367,7 +370,7 @@ def resolve_completions(
     query_tables: Optional[dict] = None,
     query_rows: Optional[dict] = None,
 ) -> Optional[list[dict]]:
-    """Элементы дополнения [{label, kind, detail}] для контекста или None, если он неизвестен."""
+    """Completion items [{label, kind, detail}] for the context, or None if it is unknown."""
     m = _match_end(line_prefix, rf"Компоненты\.({IDENT})\.(?:{IDENT})?")
     if m:
         return [_method_entry(x) for x in lookup.methods_by_module(m.group(1))]
@@ -380,9 +383,10 @@ def resolve_completions(
     m = _match_end(line_prefix, rf"({IDENT})\.(?:{IDENT})?")
     if m:
         token = m.group(1)
-        # В блоке Запрос{...} после <Таблица>. – поля таблицы (стандартные + реквизиты + ТЧ), а не
-        # члены объекта/менеджера. Контекст запроса и карту алиасов (`ИЗ Акция КАК А` – в проекте
-        # к таблицам обращаются именно так) определяет вызывающий: язык запросов разбирает лексер.
+        # In a Запрос{...} block after <Таблица>. - table fields (standard + attributes +
+        # tabular sections), not object/manager members. The query context and the alias map
+        # (`ИЗ Акция КАК А` - that is exactly how projects address tables) are determined by
+        # the caller: the query language is parsed by the lexer.
         if in_query:
             table = lookup.object_by_name((query_tables or {}).get(token, token))
             if not table:
@@ -390,24 +394,24 @@ def resolve_completions(
             return _query_field_entries(
                 table.get("kind", ""), table.get("attributes", []), table.get("tabular", [])
             )
-        # Переменная цикла по результату запроса (`для С из Результат`) – её члены суть колонки
-        # выборки: имена считает вызывающий по алиасам ВЫБРАТЬ ... КАК.
+        # A loop variable over a query result (`для С из Результат`) - its members are the
+        # selection columns: the names are computed by the caller from ВЫБРАТЬ ... КАК aliases.
         columns = (query_rows or {}).get(token)
         if columns:
             return [{"label": str(c), "kind": "field", "detail": "колонка запроса"} for c in columns]
-        # Переменная в области видимости перекрывает всё остальное: `пер Список = новый Массив<...>()`
-        # – это про члены Массива, даже если в stdlib есть одноимённый тип Список (компонент) или в
-        # проекте объект с таким именем. Типы видимых переменных считает вызывающий (лексер, двуязычно).
-        # Тип не из stdlib (структура проекта) – подсказать нечем, молчим: пусть работает словарное
-        # дополнение редактора.
+        # A variable in scope shadows everything else: `пер Список = новый Массив<...>()` is
+        # about the members of Массив, even if the stdlib has a type named Список (a component)
+        # or the project has an object with that name. Types of visible variables are computed
+        # by the caller (the lexer, bilingual). A type not from the stdlib (a project structure)
+        # - nothing to suggest, stay silent: let the editor's word-based completion work.
         if local_vars and token in local_vars:
             members = (stdlib_members or {}).get(local_vars[token])
             return _stdlib_entries(members) if members else None
         entries = _object_member_entries(lookup, token)
         if entries is not None:
             return entries
-        # Не проект-объект и не переменная – значит stdlib-тип или глобаль (КонтекстДоступа.):
-        # члены берём из type_members датасета линтера, ключ там под обеими формами имени.
+        # Not a project object and not a variable - so a stdlib type or a global (КонтекстДоступа.):
+        # members come from the linter dataset's type_members, keyed there under both name forms.
         members = (stdlib_members or {}).get(token)
         return _stdlib_entries(members) if members else None
     if language_id == "yaml" and re.search(rf"(?:^|\s)Тип\s*:\s*(?:{IDENT})?$", line_prefix):
@@ -452,7 +456,7 @@ def resolve_hover(
     file_stem: str,
     file_path: Optional[str] = None,
 ) -> Optional[str]:
-    """Текст hover в Markdown для позиции или None. Контексты те же, что и у definition."""
+    """Hover text in Markdown for the position, or None. Same contexts as definition."""
     hit = chain_at(line_text, character)
     if not hit:
         return None
