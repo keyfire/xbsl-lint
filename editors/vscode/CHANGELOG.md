@@ -6,6 +6,16 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.22.1
+
+- Your own code templates now actually reach Ctrl+Space: the extension passes `--templates`
+  to the LSP server, and the server itself (engine 0.22.1) defaults to
+  `.xbsl-templates.json` at the workspace root - the very file the panel writes. Before the
+  fix the saved file was never read back, so only the builtin set was offered.
+- The templates panel no longer breaks Cyrillic on Windows: the engine is spawned with
+  `PYTHONUTF8=1`, so the list renders correctly and saving no longer fails with a
+  UnicodeError on non-UTF-8 stdio pipes.
+
 ## 0.22.0
 
 - Code templates - the mechanism of 1C:EDT, with its export file. Type an abbreviation,
