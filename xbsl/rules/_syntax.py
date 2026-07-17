@@ -554,9 +554,15 @@ def _type_head(toks: list[Token], start: int) -> str | None:
 
 
 def _constructed_type(toks: list[Token], start: int) -> str | None:
-    """The type of a `новый Массив<Строка>()` initializer, or None when the value is something else."""
+    """The type of a `новый Массив<Строка>()` or `Запрос{...}` initializer, or None."""
     i = _skip_comments(toks, start)
-    if i >= len(toks) or toks[i].kind != "KEYWORD" or toks[i].canonical != "NEW":
+    if i >= len(toks) or toks[i].kind != "KEYWORD":
+        return None
+    if toks[i].canonical == "QUERY":
+        # A query literal constructs a typed query (docs topics/query-literal):
+        # `знч З = Запрос{...}` -> З.Выполнить() and friends.
+        return "ТипизированныйЗапрос"
+    if toks[i].canonical != "NEW":
         return None
     return _type_head(toks, _skip_comments(toks, i + 1))
 

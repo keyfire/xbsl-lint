@@ -341,6 +341,10 @@ def build_index(root: Path) -> dict:
                 "line": _top_name_line(s, name),
                 "tabular": _named_items(s, data, "ТабличныеЧасти"),
                 "attributes": _named_items(s, data, "Реквизиты"),
+                # Register fields live in their own sections - the query completion
+                # needs them next to the attributes.
+                "dimensions": _named_items(s, data, "Измерения"),
+                "resources": _named_items(s, data, "Ресурсы"),
                 "local_types": local_types.get(name, []),
             }
             entry["family"] = sorted(

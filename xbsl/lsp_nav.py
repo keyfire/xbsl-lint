@@ -320,8 +320,12 @@ def _name_of(item) -> str:
     return item.get("name", "") if isinstance(item, dict) else str(item)
 
 
-def _query_field_entries(kind: str, attributes: list, tabular: list) -> list[dict]:
-    """Table fields in a query: standard fields of the kind + attributes + tabular sections, deduplicated by name."""
+def _query_field_entries(
+    kind: str, attributes: list, tabular: list,
+    dimensions: list = (), resources: list = (),
+) -> list[dict]:
+    """Table fields in a query: standard fields of the kind + the object's own sections
+    (attributes, register dimensions and resources, tabular sections), deduplicated by name."""
     seen: set = set()
     entries: list[dict] = []
 
@@ -332,6 +336,10 @@ def _query_field_entries(kind: str, attributes: list, tabular: list) -> list[dic
 
     for f in _STANDARD_QUERY_FIELDS.get(kind, []):
         add(f, "стандартное поле")
+    for d in dimensions:
+        add(_name_of(d), "измерение")
+    for r in resources:
+        add(_name_of(r), "ресурс")
     for a in attributes:
         add(_name_of(a), "реквизит")
     for t in tabular:
@@ -392,7 +400,8 @@ def resolve_completions(
             if not table:
                 return None
             return _query_field_entries(
-                table.get("kind", ""), table.get("attributes", []), table.get("tabular", [])
+                table.get("kind", ""), table.get("attributes", []), table.get("tabular", []),
+                table.get("dimensions", []), table.get("resources", []),
             )
         # A loop variable over a query result (`для С из Результат`) - its members are the
         # selection columns: the names are computed by the caller from ВЫБРАТЬ ... КАК aliases.

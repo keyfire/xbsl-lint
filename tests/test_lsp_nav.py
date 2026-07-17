@@ -10,6 +10,7 @@ import pytest
 from xbsl import engine
 from xbsl.lsp_nav import (
     IndexLookup,
+    _query_field_entries,
     chain_at,
     resolve_completions,
     resolve_definition,
@@ -449,3 +450,31 @@ def test_hover_object_method_component():
     assert "Компонент Кнопка" in h
     assert resolve_hover(LOOKUP, language_id="xbsl", line_text="Неведомое", character=2,
                          file_stem="ГлавнаяФорма") is None
+
+
+@pytest.mark.needs_data
+def test_local_var_type_from_query_literal():
+    # `знч З = Запрос{...}` конструирует ТипизированныйЗапрос (topics/query-literal):
+    # после `З.` должны подсказываться Выполнить и компания
+    code = (
+        "метод А()\n"
+        "    знч ЗапросКБД = Запрос{\n"
+        "        ВЫБРАТЬ Значение ИЗ НастройкиПриложения\n"
+        "    }\n"
+        "    знч Р = ЗапросКБД.\n"
+        ";\n"
+    )
+    src = engine.load_text("Модуль.xbsl", code)
+    got = local_var_types(src, code.index("ЗапросКБД.\n") + len("ЗапросКБД."))
+    assert got.get("ЗапросКБД") == "ТипизированныйЗапрос"
+
+
+def test_query_fields_include_register_sections():
+    # у регистров поля живут в Измерениях и Ресурсах - подсказка полей таблицы в
+    # Запрос{...} обязана их видеть (реквизитов у регистра может не быть вовсе)
+    entries = _query_field_entries(
+        "РегистрСведений", [], [],
+        [{"name": "Настройка"}], [{"name": "Значение"}],
+    )
+    got = {e["label"]: e["detail"] for e in entries}
+    assert got == {"Настройка": "измерение", "Значение": "ресурс"}
