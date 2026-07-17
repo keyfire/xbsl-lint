@@ -403,12 +403,18 @@ class Declaration:
     value_start: int | None  # index of the first value token
 
 
-def declarations(toks: list[Token]) -> list[Declaration]:
-    """All declarations introduced by знч/пер/поймать/обз in the token list."""
+def declarations(
+    toks: list[Token], keywords: tuple[str, ...] = DECL_KEYWORDS,
+) -> list[Declaration]:
+    """All declarations introduced by знч/пер/поймать/обз in the token list.
+
+    `keywords` widens the set for callers with different needs: the type inference
+    also wants `исп` (USE) - a resource variable is typed like any other, while the
+    unused-locals rule must NOT see it (an unused `исп` is legal by design)."""
     out: list[Declaration] = []
     n = len(toks)
     for i, t in enumerate(toks):
-        if t.kind != "KEYWORD" or t.canonical not in DECL_KEYWORDS:
+        if t.kind != "KEYWORD" or t.canonical not in keywords:
             continue
         j = _skip_comments(toks, i + 1)
         names: list[Token] = []
@@ -617,20 +623,22 @@ def chain_type(
         i += 1
     else:
         return None
-    # the call links: .Имя(...) each
+    # the member links: .Имя(...) or .Имя - the catalog (`returns`) maps both a method
+    # to its return-type root and a property to its type root
     while i < n and toks[i].kind == "OP" and toks[i].value == ".":
         if stop_offset is not None and toks[i].start >= stop_offset:
             break
         j = _skip_comments(toks, i + 1)
         if j >= n or toks[j].kind != "IDENT":
             break
-        k = _skip_comments(toks, j + 1)
-        if k >= n or toks[k].kind != "OP" or toks[k].value != "(":
-            return None  # a property link - its type is not in the catalog
         current = (returns or {}).get(current, {}).get(toks[j].value)
         if current is None:
             return None
-        i = _skip_balanced(toks, k, "(", ")")
+        k = _skip_comments(toks, j + 1)
+        if k < n and toks[k].kind == "OP" and toks[k].value == "(":
+            i = _skip_balanced(toks, k, "(", ")")
+        else:
+            i = k
     return current
 
 
@@ -752,7 +760,7 @@ def local_var_types(
             name = _type_head(toks, p.type_start) if p.type_start is not None else None
             if name:
                 out[p.name.value] = name
-    for d in declarations(toks):
+    for d in declarations(toks, keywords=DECL_KEYWORDS + ("USE",)):
         if not start <= d.keyword.start < offset:
             continue
         if d.type_start is not None:

@@ -150,7 +150,7 @@ def type_members(name: str) -> dict:
             "error": f"тип '{name}' не найден в каталоге stdlib",
             "close_matches": difflib.get_close_matches(name, members, n=5, cutoff=0.6),
         }
-    returns = (catalog.get("method_returns") or {}).get(name, {})
+    returns = (catalog.get("member_types") or {}).get(name, {})
     out = {
         "type": name,
         "properties": rec.get("properties", []),

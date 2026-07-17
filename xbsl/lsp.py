@@ -423,7 +423,7 @@ def _make_server() -> "LanguageServer":
             **(catalog.get("type_members") or {}),
             **(catalog.get("facet_members") or {}),
         }
-        returns = catalog.get("method_returns") or {}
+        returns = catalog.get("member_types") or {}
         try:
             src = engine.load_text(path.name, doc.source)
             in_query = any(a <= offset < b for a, b in query_ranges(src))
@@ -469,12 +469,50 @@ def _make_server() -> "LanguageServer":
         ]
         return lsp.CompletionList(is_incomplete=False, items=items)
 
+    def _variable_hover(params: lsp.HoverParams) -> Optional[str]:
+        """The inferred type of a local variable under the cursor (`Ответ: ОтветHttp`)."""
+        path = uri_to_path(params.text_document.uri)
+        if path is None or language_of(path) != "xbsl":
+            return None
+        doc = server.workspace.get_text_document(params.text_document.uri)
+        lines = doc.source.split("\n")
+        if params.position.line >= len(lines):
+            return None
+        line = lines[params.position.line]
+        ch = params.position.character
+        m = next(
+            (m for m in re.finditer(r"[\wА-Яа-яЁё]+", line) if m.start() <= ch <= m.end()),
+            None,
+        )
+        if m is None:
+            return None
+        word = m.group(0)
+        offset = sum(len(lines[k]) + 1 for k in range(params.position.line)) + m.end()
+        try:
+            catalog = dataset.load_json("stdlib.json")
+            members = {
+                **(catalog.get("type_members") or {}),
+                **(catalog.get("facet_members") or {}),
+            }
+            src = engine.load_text(path.name, doc.source)
+            local_vars = local_var_types(
+                src, offset,
+                returns=catalog.get("member_types") or {},
+                static_roots=members.keys(),
+            )
+        except Exception:  # noqa: BLE001 - hover must not fail because of parsing
+            return None
+        var_type = local_vars.get(word)
+        if var_type is None:
+            return None
+        return f"**{word}: {var_type}**\n\nлокальная переменная"
+
     @server.feature(lsp.TEXT_DOCUMENT_HOVER)
     def _hover(params: lsp.HoverParams) -> Optional[lsp.Hover]:
         q = nav_query(params.text_document.uri, params.position)
         if q is None or STATE.lookup is None:
             return None
-        text = resolve_hover(STATE.lookup, **q)
+        text = resolve_hover(STATE.lookup, **q) or _variable_hover(params)
         if not text:
             return None
         return lsp.Hover(contents=lsp.MarkupContent(kind=lsp.MarkupKind.Markdown, value=text))

@@ -163,12 +163,13 @@ _SIG_CODE_RE = re.compile(r"<pre class=\"highlight\"><code>(.*?)</code></pre>", 
 _RETURN_HEAD_RE = re.compile(r"^\s*([A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*(?:\.[A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*)?)")
 
 
-def page_method_returns(raw: str) -> dict[str, str]:
-    """Метод страницы -> корень типа возврата (для вывода типа цепочек вызовов).
+def page_member_types(raw: str) -> dict[str, str]:
+    """Член страницы -> корень типа результата (для вывода типа цепочек обращений).
 
-    Сигнатуры лежат в блоках кода после H3-заголовков секции "Методы"; у перегрузок с
-    разными возвратами метод пропускается (вывести общий тип нельзя). Унаследованные
-    методы сигнатур на странице не имеют и не собираются.
+    Сигнатуры лежат в блоках кода после H3-заголовков секций "Методы" (`Имя(...): Тип` –
+    тип возврата) и "Свойства" (`Имя: Тип` – тип свойства); у перегрузок с разными
+    возвратами член пропускается (вывести общий тип нельзя). Унаследованные члены
+    сигнатур на странице не имеют и не собираются.
     """
     ma = _ARTICLE_RE.search(raw)
     if not ma:
@@ -177,9 +178,10 @@ def page_method_returns(raw: str) -> dict[str, str]:
     dropped: set[str] = set()
     for section in _H2_OPEN_RE.split(ma.group(1)):
         head = _plain_text(section[:200])
-        if not head.startswith("Методы"):
+        is_method = head.startswith("Методы")
+        if not is_method and not head.startswith("Свойства"):
             continue
-        # Куски между H3: первый – заголовок секции, дальше по методу на кусок.
+        # Куски между H3: первый – заголовок секции, дальше по члену на кусок.
         parts = _H3_RE.split(section)
         # _H3_RE captures the heading text: parts = [до, имя1, тело1, имя2, тело2...]
         for k in range(1, len(parts) - 1, 2):
@@ -189,10 +191,16 @@ def page_method_returns(raw: str) -> dict[str, str]:
             body = parts[k + 1]
             for m in _SIG_CODE_RE.finditer(body):
                 sig = _plain_text(m.group(1))
-                paren = sig.rfind("):")
-                if paren < 0:
-                    continue
-                ret = _RETURN_HEAD_RE.match(sig[paren + 2:])
+                if is_method:
+                    paren = sig.rfind("):")
+                    tail = sig[paren + 2:] if paren >= 0 else ""
+                else:
+                    colon = sig.find(":")
+                    # a property signature is `Имя: Тип` with the member's own name
+                    if colon < 0 or sig[:colon].strip() != name:
+                        continue
+                    tail = sig[colon + 1:]
+                ret = _RETURN_HEAD_RE.match(tail)
                 if not ret:
                     continue
                 root = ret.group(1)
@@ -296,7 +304,7 @@ def extract(
             if rest == "index.html" or (rest.count("/") == 1 and not top.endswith("_ru")):
                 globals_ |= package_members(raw)
             if props or methods:
-                rets = page_method_returns(raw)
+                rets = page_member_types(raw)
                 for key in (title if _PROP_NAME_RE.match(title) else "", eng or ""):
                     if not key:
                         continue
@@ -391,8 +399,8 @@ def main() -> int:
         # Фасеты сущностных типов (Пользователи.Объект, ДвоичныйОбъект.Ссылка): члены записи
         # и ссылки, не попадающие на страницу самого типа.
         "facet_members": {k: _members_json(v) for k, v in sorted(facets.items())},
-        # Корни типов возвратов методов (сигнатуры со страниц): вывод типа цепочек вызовов.
-        "method_returns": {k: dict(sorted(v.items())) for k, v in sorted(returns.items())},
+        # Корни типов результатов членов (сигнатуры со страниц: возвраты методов и типы свойств).
+        "member_types": {k: dict(sorted(v.items())) for k, v in sorted(returns.items())},
     }
 
     out = Path(args.out) if args.out else _distro.version_dir(version) / "stdlib.json"
@@ -410,8 +418,8 @@ def main() -> int:
           f" (со свойствами {sum(1 for v in types.values() if v['properties'])},"
           f" с методами {sum(1 for v in types.values() if v['methods'])})")
     print(f"  фасетов сущностных типов: {len(facets)}")
-    print(f"  типов с возвратами методов: {len(returns)}"
-          f" (методов с возвратом: {sum(len(v) for v in returns.values())})")
+    print(f"  типов с типами членов: {len(returns)}"
+          f" (членов с типом: {sum(len(v) for v in returns.values())})")
     return 0
 
 

@@ -498,7 +498,7 @@ def test_local_var_type_from_call_chain():
     src = engine.load_text("Модуль.xbsl", code)
     catalog = dataset.load_json("stdlib.json")
     members = {**catalog["type_members"], **catalog["facet_members"]}
-    returns = catalog["method_returns"]
+    returns = catalog["member_types"]
     lv = local_var_types(
         src, code.index("Ответ.\n") + len("Ответ."),
         returns=returns, static_roots=members.keys(),
@@ -519,7 +519,7 @@ def test_chain_type_at_dot_after_call():
     src = engine.load_text("Модуль.xbsl", code)
     catalog = dataset.load_json("stdlib.json")
     members = {**catalog["type_members"], **catalog["facet_members"]}
-    returns = catalog["method_returns"]
+    returns = catalog["member_types"]
     offset = code.index("Выполнить().\n") + len("Выполнить().")
     lv = local_var_types(src, offset, returns=returns, static_roots=members.keys())
     t = chain_type_at(src, offset, var_types=lv, returns=returns, static_roots=members.keys())
@@ -529,3 +529,25 @@ def test_chain_type_at_dot_after_call():
         file_stem="Модуль", stdlib_members=members, expr_type=t,
     )
     assert any(e["label"] == "ПервыйИлиНеопределено" for e in entries)
+
+
+@pytest.mark.needs_data
+def test_local_var_type_through_property_and_use():
+    # `исп` типизируется как обычная переменная; звено-свойство (Ответ.Тело) идёт
+    # через member_types так же, как вызов
+    code = (
+        "метод А()\n"
+        "    исп Ответ = КлиентHttp.ЗапросGet(\"адрес\").Выполнить()\n"
+        "    пер Данные = Ответ.Тело.ПрочитатьКакБайты()\n"
+        "    знч Хвост = Данные\n"
+        ";\n"
+    )
+    src = engine.load_text("Модуль.xbsl", code)
+    catalog = dataset.load_json("stdlib.json")
+    members = {**catalog["type_members"], **catalog["facet_members"]}
+    lv = local_var_types(
+        src, code.index("знч Хвост"),
+        returns=catalog["member_types"], static_roots=members.keys(),
+    )
+    assert lv.get("Ответ") == "ОтветHttp"
+    assert lv.get("Данные") == "Байты"
