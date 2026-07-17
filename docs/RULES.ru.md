@@ -3,7 +3,7 @@
 [English](https://github.com/keyfire/xbsl/blob/main/docs/RULES.md) · **Русский**
 
 Полный перечень проверок линтера. Файл дополняется при добавлении правил; актуальный
-список в рантайме – `xbsl list-rules` (или MCP `list_rules`). Сейчас правил: 78.
+список в рантайме – `xbsl list-rules` (или MCP `list_rules`). Сейчас правил: 79.
 
 ## Граница: линтер дополняет компилятор, но не заменяет его
 
@@ -71,6 +71,7 @@
 
 | Правило | Severity | Умолч. | Область | Что проверяет | Документация |
 |---|---|---|---|---|---|
+| `code/parse-error` | error | вкл | файл | Синтаксическая ошибка (полный разбор по грамматике платформы) | [доки](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/brackets` | error | вкл | файл | Дисбаланс скобок () [] {} | – |
 | `code/blocks` | error | вкл | файл | Дисбаланс блоков и ';' | [доки](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/ternary-and-or` | error | вкл | файл | Составное условие тернарного оператора без скобок | [доки](https://1cmycloud.com/docs/help/topics/question-mark-operation/) |

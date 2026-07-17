@@ -92,6 +92,44 @@ class _LineMap:
         return line, offset - self._starts[line - 1] + 1
 
 
+def _skip_interpolation(text: str, start: int) -> int:
+    """The position right after the `}` closing an interpolation opened at start-2.
+
+    The expression inside may contain nested strings (with their own interpolations)
+    and braces of collection literals - both are balanced here.
+    """
+    depth = 1
+    j, n = start, len(text)
+    while j < n:
+        cj = text[j]
+        if cj == "\\":
+            j += 2
+            continue
+        if cj == '"':  # a nested string - skip it with its own interpolations
+            j += 1
+            while j < n:
+                ck = text[j]
+                if ck == "\\":
+                    j += 2
+                    continue
+                if ck == '"':
+                    j += 1
+                    break
+                if ck in "%$" and j + 1 < n and text[j + 1] == "{":
+                    j = _skip_interpolation(text, j + 2)
+                    continue
+                j += 1
+            continue
+        if cj == "{":
+            depth += 1
+        elif cj == "}":
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        j += 1
+    return n
+
+
 def tokenize(text: str) -> list[Token]:
     """Parse source text into a list of tokens (whitespace and line breaks omitted)."""
     lm = _LineMap(text)
@@ -145,7 +183,9 @@ def tokenize(text: str) -> list[Token]:
                 i = end
                 continue
 
-        # Strings (multi-line, with \ escaping)
+        # Strings (multi-line, with \ escaping). A rich string is ONE token including its
+        # interpolations: inside %{...} / ${...} nested strings and braces occur (the
+        # grammar's richString), so the closing quote is found by balancing them.
         if c == '"':
             j = i + 1
             unterminated = True
@@ -158,6 +198,9 @@ def tokenize(text: str) -> list[Token]:
                     j += 1
                     unterminated = False
                     break
+                if cj in "%$" and j + 1 < n and text[j + 1] == "{":
+                    j = _skip_interpolation(text, j + 2)
+                    continue
                 j += 1
             flags = {"unterminated": True} if unterminated else {}
             emit("STRING", i, min(j, n), flags=flags)

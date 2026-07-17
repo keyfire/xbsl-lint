@@ -84,6 +84,7 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   { match: (r) => r === "style/negated-is", page: "topics/is-operator" },
 
   // --- язык: конструкции ---
+  { match: (r) => r === "code/parse-error", page: DESIGN },
   { match: (r) => r === "code/param-type-required", page: METHODS, anchor: "определение-метода" },
   { match: (r) => r === "code/loop-header", page: "topics/for-in-loop", anchor: "синтаксис" },
   { match: (r) => r === "code/ternary-and-or", page: "topics/question-mark-operation", anchor: "синтаксис" },

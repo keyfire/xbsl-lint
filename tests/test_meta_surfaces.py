@@ -280,6 +280,7 @@ def test_cli_set_access(capsys, tmp_path):
     assert code == 2 and "ПРАВО=СПОСОБ" in err["error"]
 
 
+@pytest.mark.needs_data  # линт записанного Проект.xbsl токенизирует - нужен language.json
 def test_mcp_meta_add_dependency(mcp_module, tmp_path):
     mcp_module.meta_new_project(str(tmp_path), "vendor", "Приложение")
     res = mcp_module.meta_add_dependency(str(tmp_path), "e1c", "CurrencyConverter", "9.0.2")

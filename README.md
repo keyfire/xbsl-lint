@@ -144,7 +144,7 @@ lint:
 
 ## Rule tiers
 
-**The full list of all 78 rules** (severity, default state, scope, links to platform
+**The full list of all 79 rules** (severity, default state, scope, links to platform
 documentation sections) is in [docs/RULES.md](docs/RULES.md); at runtime – `xbsl list-rules`.
 Below is an overview by tier.
 

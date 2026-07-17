@@ -32,6 +32,7 @@ _DATA_DEPENDENT = {
     "test_baseline",
     "test_rule_query_tables",
     "test_rule_query_in_composite",
+    "test_parser",  # парсер сидит на лексере, а тот – на language.json
 }
 
 
