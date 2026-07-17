@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import os
 import re
 import threading
 from pathlib import Path
@@ -109,11 +110,12 @@ class _State:
         self.ignore: Optional[set[str]] = None
         self.enable: Optional[set[str]] = None
         self.lookup: Optional[IndexLookup] = None
-        self.dirty: set[str] = set()  # uris changed since the last save
-        self.published: set[str] = set()  # uris we have published diagnostics for
-        # Project-scope findings of the last whole-project pass, by uri. A per-file pass
-        # (on open and on every keystroke) runs file rules only - without this the
-        # project findings of the opened file would vanish from the Problems panel until
+        self.dirty: set[str] = set()  # keys changed since the last save
+        # key -> the uri diagnostics were published at (see uri_key)
+        self.published: dict[str, str] = {}
+        # Project-scope findings of the last whole-project pass, by key (see uri_key). A
+        # per-file pass (on open and on every keystroke) runs file rules only - without this
+        # the project findings of the opened file would vanish from the Problems panel until
         # the next save, which is exactly how it looked to the user.
         self.project_diags: dict[str, list[Diagnostic]] = {}
         self.file_timers: dict[str, threading.Timer] = {}
@@ -191,6 +193,18 @@ def _to_lsp_diag(d: Diagnostic, doc_text: Optional[str]) -> "lsp.Diagnostic":
     )
 
 
+def _doc_key(path: Optional[Path], uri: str) -> str:
+    """The canonical key of a document - never the uri string itself.
+
+    One file has two spellings: the editor sends `file:///d%3A/...` (the drive colon
+    percent-encoded) while the server builds `file:///d:/...`, and on Windows the path is
+    case-insensitive besides. Comparing the strings silently never matches, so everything
+    keyed per document (the project findings of a file, what has been published, which
+    buffers are dirty) is keyed by the normalized path instead.
+    """
+    return os.path.normcase(str(path)) if path is not None else uri
+
+
 def _make_server() -> "LanguageServer":
     server = LanguageServer("xbsl-lsp", f"v{__version__}")
 
@@ -204,6 +218,9 @@ def _make_server() -> "LanguageServer":
         from pygls import uris
 
         return uris.from_fs_path(str(path)) or path.as_uri()
+
+    def uri_key(uri: str) -> str:
+        return _doc_key(uri_to_path(uri), uri)
 
     def language_of(path: Path) -> str:
         return "xbsl" if path.suffix.lower() == ".xbsl" else "yaml"
@@ -234,9 +251,9 @@ def _make_server() -> "LanguageServer":
         # The project findings of this file survive the per-file pass: they come from the
         # last whole-project run (already baselined there) and are refreshed on save.
         # Their positions may lag behind an edited buffer - that beats losing them.
-        diags = diags + STATE.project_diags.get(uri, [])
+        diags = diags + STATE.project_diags.get(uri_key(uri), [])
         server.publish_diagnostics(uri, [_to_lsp_diag(d, doc.source) for d in diags])
-        STATE.published.add(uri)
+        STATE.published[uri_key(uri)] = uri
 
     def schedule_buffer_lint(uri: str) -> None:
         t = STATE.file_timers.pop(uri, None)
@@ -261,7 +278,10 @@ def _make_server() -> "LanguageServer":
             diags, problem = apply_baseline_file(diags, STATE.baseline)
             if problem:
                 server.show_message_log(f"xbsl-lsp: базлайн не применён: {problem}")
-            by_uri: dict[str, list] = {}
+            # Everything is collected by the canonical key; the uri is carried alongside,
+            # because publishing needs a uri and the key is not one.
+            by_key: dict[str, list] = {}
+            uri_of: dict[str, str] = {}
             texts: dict[str, str] = {}
             project_ids = {r.id for r in engine.RULES if r.scope == "project"}
             project_diags: dict[str, list[Diagnostic]] = {}
@@ -270,21 +290,27 @@ def _make_server() -> "LanguageServer":
                 if not p.is_absolute():
                     p = root / p
                 uri = path_to_uri(p)
-                if uri not in texts:
+                key = uri_key(uri)
+                uri_of.setdefault(key, uri)
+                if key not in texts:
                     try:
-                        texts[uri] = p.read_text(encoding="utf-8-sig")
+                        texts[key] = p.read_text(encoding="utf-8-sig")
                     except OSError:
-                        texts[uri] = ""
-                by_uri.setdefault(uri, []).append(_to_lsp_diag(d, texts[uri]))
+                        texts[key] = ""
+                by_key.setdefault(key, []).append(_to_lsp_diag(d, texts[key]))
                 if d.rule_id in project_ids:
-                    project_diags.setdefault(uri, []).append(d)
+                    project_diags.setdefault(key, []).append(d)
             STATE.project_diags = project_diags
-            open_dirty = {u for u in STATE.dirty}
-            for uri in set(STATE.published) | set(by_uri):
-                if uri in open_dirty:
+            open_dirty = set(STATE.dirty)
+            for key in set(STATE.published) | set(by_key):
+                if key in open_dirty:
                     continue  # a dirty buffer keeps its live per-file picture
-                server.publish_diagnostics(uri, by_uri.get(uri, []))
-            STATE.published = set(by_uri) | (STATE.published & open_dirty)
+                # An open document is answered at the uri the editor itself used.
+                server.publish_diagnostics(
+                    STATE.published.get(key) or uri_of[key], by_key.get(key, []),
+                )
+            kept = {k: u for k, u in STATE.published.items() if k in open_dirty}
+            STATE.published = {k: STATE.published.get(k) or uri_of[k] for k in by_key} | kept
             # the index is rebuilt in the same background pass
             try:
                 STATE.lookup = IndexLookup(indexer.build_index(root))
@@ -333,17 +359,17 @@ def _make_server() -> "LanguageServer":
 
     @server.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
     def _did_change(params: lsp.DidChangeTextDocumentParams) -> None:
-        STATE.dirty.add(params.text_document.uri)
+        STATE.dirty.add(uri_key(params.text_document.uri))
         schedule_buffer_lint(params.text_document.uri)
 
     @server.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
     def _did_save(params: lsp.DidSaveTextDocumentParams) -> None:
-        STATE.dirty.discard(params.text_document.uri)
+        STATE.dirty.discard(uri_key(params.text_document.uri))
         schedule_project_lint()
 
     @server.feature(lsp.TEXT_DOCUMENT_DID_CLOSE)
     def _did_close(params: lsp.DidCloseTextDocumentParams) -> None:
-        STATE.dirty.discard(params.text_document.uri)
+        STATE.dirty.discard(uri_key(params.text_document.uri))
 
     @server.feature("xbsl/relint")
     def _relint(params: object = None) -> dict:

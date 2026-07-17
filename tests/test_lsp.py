@@ -29,3 +29,33 @@ def test_param_dict_and_object():
 
     assert lsp._param(P(), "query") == "z"
     assert lsp._param(P(), "missing", 5) == 5
+
+
+def test_doc_key_meets_both_uri_spellings(tmp_path):
+    """Редактор шлёт file:///d%3A/..., сервер строит file:///d:/... – ключ обязан совпасть.
+
+    Пока сравнивались строки uri, project-находки открытого файла терялись: ключ,
+    под который их клали, не находился по ключу от редактора.
+    """
+    import os
+    import re
+    from pathlib import Path
+
+    import pytest
+
+    uris = pytest.importorskip("pygls.uris")
+    f = tmp_path / "М.yaml"
+    f.write_text("ВидЭлемента: Справочник\n", encoding="utf-8")
+
+    серверный = uris.from_fs_path(str(f))
+    # ровно то, чем отличается запись редактора на Windows
+    редакторский = re.sub(r"^file:///([A-Za-z]):", r"file:///\1%3A", серверный)
+    if os.name == "nt":
+        assert серверный != редакторский  # иначе тест ничего не проверяет
+
+    ключ = lambda u: lsp._doc_key(Path(uris.to_fs_path(u)), u)
+    assert ключ(серверный) == ключ(редакторский)
+
+
+def test_doc_key_without_path_falls_back_to_uri():
+    assert lsp._doc_key(None, "untitled:Untitled-1") == "untitled:Untitled-1"
