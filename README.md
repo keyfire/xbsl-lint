@@ -166,12 +166,21 @@ Below is an overview by tier.
 
 The type rules of tier D cover every type position in code (`новый`, `как` casts, annotations,
 signatures) and every `Тип:` value in yaml (unions `А|Б|?`, generics, nullable): the root must
-be a known type – stdlib, a project object or a module-declared local type – and a dotted chain
+be a known type – stdlib, a project object, a module-declared local type or a global type of a
+declared library (see below) – and a dotted chain
 rooted at a project object must stay within the family that object generates: the derived types
 extracted from the distribution docs (`Ссылка`, `Объект`, `СоздатьОбъект`, the automatic
 forms...), its tabular sections and module structures. Namespace-qualified references
 (`Справочник.X.Ссылка`) also check that the object exists under that kind, and the values of
 project enumerations are verified both in code and in yaml bindings.
+
+The types of the declared libraries come from their archives. `Проект.yaml` declares the
+coordinates only (`Поставщик`, `Имя`, `Версия`), so the names are read from the
+`{Поставщик}-{Имя}-{Версия}.xlib` archive, looked up in the project descriptor's directory and
+above it (up to four levels) - where the archive sits when the sources are shipped. An element
+becomes known when it is `ОбластьВидимости: Глобально`; the rest is the library's own business.
+With no archive next to the sources the library types stay unknown, exactly as they were before
+libraries were understood at all.
 
 The cross-file rules of tier D catch what the compiler reports late or not at all: a yaml
 handler missing from the paired module, a foreign-subsystem type used without an `Импорт:`

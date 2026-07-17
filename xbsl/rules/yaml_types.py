@@ -37,6 +37,7 @@ from xbsl.lexer import linemap
 from xbsl.rules.semantics import (
     _checked_kinds,
     _file_local_types,
+    _library_type_names,
     _member_family,
     _row_type_names,
     _stdlib_names,
@@ -178,6 +179,9 @@ def _yaml_type_mapper(source: SourceFile) -> dict | None:
     stdlib = _stdlib_names()
     if not stdlib:
         return None  # the catalog is not generated – skip the check
+    lib_names = _library_type_names(source)
+    if lib_names:  # the project descriptor: the types its libraries make visible
+        return {"k": "lib", "names": lib_names}
     data, err = _parsed(source)
     if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
         return None
@@ -225,8 +229,11 @@ def unknown_yaml_type(facts: dict[str, dict]) -> Iterable[Diagnostic]:
     # The project model from the facts: object records plus the local types of their modules.
     objects: dict[str, dict] = {}
     all_local: set[str] = set()
+    from_libs: set[str] = set()
     for fact in facts.values():
-        if fact["k"] == "y" and fact["name"]:
+        if fact["k"] == "lib":
+            from_libs.update(fact["names"])
+        elif fact["k"] == "y" and fact["name"]:
             objects[fact["name"]] = {
                 "kind": fact["kind"], "members": set(fact["tab_members"]),
             }
@@ -237,7 +244,7 @@ def unknown_yaml_type(facts: dict[str, dict]) -> Iterable[Diagnostic]:
         rec = objects.get(fact["owner"])
         if rec is not None:
             rec["members"].update(fact["local_types"])
-    known = set(stdlib) | set(objects) | all_local
+    known = set(stdlib) | set(objects) | all_local | from_libs
     checked = _checked_kinds()
     for rel, fact in facts.items():
         if fact["k"] != "y":

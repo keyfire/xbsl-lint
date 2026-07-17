@@ -42,7 +42,7 @@ import re
 from collections.abc import Iterable
 from functools import lru_cache
 
-from xbsl import dataset, i18n
+from xbsl import dataset, i18n, libs
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
 from xbsl.lexer import tokens
@@ -410,6 +410,16 @@ def _signature_type_starts(toks: list, i: int) -> list[int]:
     return starts
 
 
+def _library_type_names(s: SourceFile) -> list[str]:
+    """Global types of the libraries this file declares - it is the project descriptor - or
+    an empty list, which is the answer for every other yaml (a cheap regex on the text)."""
+    cached = s.cache.get("library_types")
+    if cached is None:
+        cached = libs.project_library_types(s.path, s.text)
+        s.cache["library_types"] = cached
+    return cached
+
+
 def _type_ref_starts(toks: list) -> list[int]:
     """The start indices of all type expressions of the module (by anchor constructs)."""
     starts: list[int] = []
@@ -455,9 +465,13 @@ def _type_token_facts(s: SourceFile) -> tuple[list, list]:
 
 
 def _unknown_type_mapper(source: SourceFile) -> dict | None:
-    """The map phase: a yaml contributes its object name, an xbsl its local types and
-    the type roots unknown to the stdlib (the project names settle in the reduce)."""
+    """The map phase: a yaml contributes its object name (or, for the project descriptor,
+    the global types of the declared libraries), an xbsl its local types and the type roots
+    unknown to the stdlib (the project names settle in the reduce)."""
     if source.kind == "yaml":
+        lib_names = _library_type_names(source)
+        if lib_names:
+            return {"k": "lib", "names": lib_names}
         nm = _object_name_fast(source)
         return {"k": "y", "name": nm} if nm else None
     if source.kind != "xbsl":
@@ -482,6 +496,8 @@ def unknown_type(facts: dict[str, dict]) -> Iterable[Diagnostic]:
     for fact in facts.values():
         if fact["k"] == "y":
             known.add(fact["name"])
+        elif fact["k"] == "lib":
+            known.update(fact["names"])
         else:
             known.update(fact["local_types"])
     for rel, fact in facts.items():
