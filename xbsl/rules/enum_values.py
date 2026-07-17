@@ -91,12 +91,16 @@ def _shadowed_names(toks: list) -> set[str]:
     return names
 
 
-def _code_diags(s: SourceFile, enums: dict[str, set[str]]) -> Iterable[Diagnostic]:
+def _code_accesses(s: SourceFile) -> dict[tuple[str, str], list[tuple[int, int]]]:
+    """Bare `Root.Seg` accesses of a module with the local skips settled:
+    (root, seg) -> positions of the seg. Which roots are enumerations is the reduce's
+    knowledge - here every non-shadowed dotted access is a candidate."""
     toks = code_tokens(s)
     shadowed = _shadowed_names(toks)
     n = len(toks)
+    out: dict[tuple[str, str], list[tuple[int, int]]] = {}
     for i, t in enumerate(toks):
-        if t.kind != "IDENT" or t.value not in enums or t.value in shadowed:
+        if t.kind != "IDENT" or t.value in shadowed:
             continue
         if i > 0 and toks[i - 1].kind == "OP" and toks[i - 1].value == ".":
             continue  # member of another object, not the enumeration
@@ -104,13 +108,10 @@ def _code_diags(s: SourceFile, enums: dict[str, set[str]]) -> Iterable[Diagnosti
                 and toks[i + 2].kind == "IDENT"):
             continue
         seg = toks[i + 2]
-        if seg.value in enums[t.value] or seg.value in _ENUM_BUILTIN_MEMBERS:
+        if seg.value in _ENUM_BUILTIN_MEMBERS:
             continue
-        yield Diagnostic(
-            s.rel, seg.line, seg.col, "code/unknown-enum-value", Severity.WARNING,
-            i18n.t("code/unknown-enum-value.unknown",
-                   name=f"{t.value}.{seg.value}", root=t.value, seg=seg.value),
-        )
+        out.setdefault((t.value, seg.value), []).append((seg.line, seg.col))
+    return out
 
 
 def _binding_values(node) -> Iterable[str]:
@@ -139,49 +140,82 @@ def _name_values(node) -> set[str]:
     return names
 
 
-def _yaml_diags(s: SourceFile, enums: dict[str, set[str]]) -> Iterable[Diagnostic]:
-    data, err = _parsed(s)
-    if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
-        return
+def _yaml_accesses(s: SourceFile, data: dict) -> dict[tuple[str, str], list[tuple[int, int]]]:
+    """Dotted pairs of the binding strings with positions; roots that occur as any local
+    `Имя:` are skipped here (the file's own knowledge)."""
     local_names = _name_values(data)
-    bad: set[tuple[str, str]] = set()
+    pairs: set[tuple[str, str]] = set()
     for binding in _binding_values(data):
         for root, seg in re.findall(
             r"(?<![\wА-Яа-яЁё.])([А-ЯЁ][\wА-Яа-яЁё]*)\.([А-Яа-яЁёA-Za-z_][\wА-Яа-яЁё]*)",
             binding,
         ):
-            values = enums.get(root)
-            if values is None or root in local_names:
+            if root in local_names or seg in _ENUM_BUILTIN_MEMBERS:
                 continue
-            if seg not in values and seg not in _ENUM_BUILTIN_MEMBERS:
-                bad.add((root, seg))
-    lm = linemap(s)
-    for root, seg in sorted(bad):
+            pairs.add((root, seg))
+    out: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    lm = linemap(s) if pairs else None
+    for root, seg in sorted(pairs):
         pat = re.compile(r"(?<![\wА-Яа-яЁё.])" + re.escape(f"{root}.{seg}") + r"(?![\wА-Яа-яЁё])")
-        positions = [lm.linecol(m.start()) for m in pat.finditer(s.text)] or [(1, 1)]
-        for line, col in positions:
-            yield Diagnostic(
-                s.rel, line, col, "code/unknown-enum-value", Severity.WARNING,
-                i18n.t("code/unknown-enum-value.unknown",
-                       name=f"{root}.{seg}", root=root, seg=seg),
-            )
+        out[(root, seg)] = [lm.linecol(m.start()) for m in pat.finditer(s.text)] or [(1, 1)]
+    return out
+
+
+def _enum_values_mapper(source: SourceFile) -> dict | None:
+    """The map phase: an enumeration yaml contributes its declared values; every module
+    and every object yaml contributes its dotted-access candidates with positions."""
+    if not _HAVE_YAML:
+        return None
+    if source.kind == "xbsl":
+        accesses = _code_accesses(source)
+        if not accesses:
+            return None
+        return {"k": "x", "acc": [(r, s2, pos) for (r, s2), pos in accesses.items()]}
+    if source.kind != "yaml":
+        return None
+    data, err = _parsed(source)
+    if err is not None or not isinstance(data, dict):
+        return None
+    fact: dict = {}
+    if data.get("ВидЭлемента") == "Перечисление" and isinstance(data.get("Имя"), str):
+        values = [
+            item["Имя"] for item in (data.get("Элементы") or [])
+            if isinstance(item, dict) and isinstance(item.get("Имя"), str)
+        ] if isinstance(data.get("Элементы"), list) else []
+        fact["enum"] = (data["Имя"], values)
+    if data.get("ВидЭлемента"):
+        accesses = _yaml_accesses(source, data)
+        if accesses:
+            fact["acc"] = [(r, s2, pos) for (r, s2), pos in accesses.items()]
+    if not fact:
+        return None
+    fact["k"] = "y"
+    return fact
 
 
 @rule(
     "code/unknown-enum-value", "code/unknown-enum-value.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_enum_values_mapper,
 )
-def unknown_enum_value(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    if not _HAVE_YAML:
-        return []
-    enums = _project_enums(sources)
+def unknown_enum_value(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    enums: dict[str, set[str]] = {}
+    for fact in facts.values():
+        if fact["k"] == "y" and "enum" in fact:
+            name, values = fact["enum"]
+            enums[name] = set(values)
     if not enums:
         return []
 
     diags: list[Diagnostic] = []
-    for s in sources:
-        if s.kind == "xbsl":
-            diags.extend(_code_diags(s, enums))
-        elif s.kind == "yaml":
-            diags.extend(_yaml_diags(s, enums))
+    for rel, fact in facts.items():
+        for root, seg, positions in fact.get("acc", ()):
+            values = enums.get(root)
+            if values is None or seg in values:
+                continue
+            for line, col in positions:
+                diags.append(Diagnostic(
+                    rel, line, col, "code/unknown-enum-value", Severity.WARNING,
+                    i18n.t("code/unknown-enum-value.unknown",
+                           name=f"{root}.{seg}", root=root, seg=seg),
+                ))
     return diags

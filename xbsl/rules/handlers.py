@@ -57,34 +57,62 @@ def _module_methods(source: SourceFile) -> set[str]:
     return names
 
 
+def _handler_pair_stem(rel: str) -> str:
+    slash = rel.replace("\\", "/")
+    return slash[: slash.rfind(".")] if "." in slash.rsplit("/", 1)[-1] else slash
+
+
+def _handler_mapper(source: SourceFile) -> dict | None:
+    """The map phase: a yaml contributes its handler references with positions, a module
+    the set of its method names - the reduce joins the pair."""
+    if source.kind == "xbsl":
+        # Even an empty method set matters: a paired module WITHOUT the referenced
+        # method is exactly what the rule flags.
+        methods = _module_methods(source)
+        return {"k": "x", "stem": _handler_pair_stem(source.rel), "methods": sorted(methods)}
+    if source.kind != "yaml":
+        return None
+    refs: list[tuple[str, int, int]] = []
+    lm = None
+    for m in _HANDLER_RE.finditer(source.text):
+        name = m.group(1).strip()
+        if not _IDENT_RE.match(name):
+            continue  # FQN reference to an external module or a non-identifier – skip
+        if lm is None:
+            lm = linemap(source)
+        line, col = lm.linecol(m.start(1))
+        refs.append((name, line, col))
+    if not refs:
+        return None
+    return {
+        "k": "y",
+        "stem": _handler_pair_stem(source.rel),
+        "module_file": source.path.with_suffix(".xbsl").name,
+        "refs": refs,
+    }
+
+
 @rule(
     "form/unknown-handler", "form/unknown-handler.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_handler_mapper,
 )
-def unknown_handler(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    modules = {str(s.path): s for s in sources if s.kind == "xbsl"}
-
-    diags: list[Diagnostic] = []
-    for s in sources:
-        if s.kind != "yaml":
+def unknown_handler(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    methods_by_stem: dict[str, set[str]] = {}
+    for fact in facts.values():
+        if fact["k"] == "x":
+            methods_by_stem[fact["stem"]] = set(fact["methods"])
+    for rel, fact in facts.items():
+        if fact["k"] != "y":
             continue
-        module = modules.get(str(s.path.with_suffix(".xbsl")))
-        if module is None:
+        methods = methods_by_stem.get(fact["stem"])
+        if methods is None:
             continue  # no paired module – nothing to resolve handlers against
-        methods = _module_methods(module)
-        lm = linemap(s)
-        for m in _HANDLER_RE.finditer(s.text):
-            name = m.group(1).strip()
-            if not _IDENT_RE.match(name):
-                continue  # FQN reference to an external module or a non-identifier – skip
+        for name, line, col in fact["refs"]:
             if name not in methods:
-                line, col = lm.linecol(m.start(1))
-                diags.append(Diagnostic(
-                    s.rel, line, col, "form/unknown-handler", Severity.WARNING,
+                yield Diagnostic(
+                    rel, line, col, "form/unknown-handler", Severity.WARNING,
                     i18n.t(
                         "form/unknown-handler.not-found",
-                        name=name,
-                        module=s.path.with_suffix(".xbsl").name,
+                        name=name, module=fact["module_file"],
                     ),
-                ))
-    return diags
+                )

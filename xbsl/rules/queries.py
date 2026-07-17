@@ -136,41 +136,41 @@ def _query_tables(source: SourceFile) -> Iterable[tuple]:
             yield from tables
 
 
-def _tabular_catalog(sources: list[SourceFile]) -> dict[str, dict]:
-    """Project objects: name -> {kind, tabular, fields}.
+def _catalog_slice(source: SourceFile) -> tuple[str, dict] | None:
+    """One yaml file's slice of the project object catalog: (name, {kind, tabular, fields}).
 
     Tabular sections come only from yaml (local module types are not database tables); the
     fields are attributes, dimensions and resources together with their type spec
-    (`Строка|Число|?`).
+    (`Строка|Число|?`). Cached on the file - both query rules share it.
     """
-    info: dict[str, dict] = {}
-    if not _HAVE_YAML:
-        return info
-    for s in sources:
-        if s.kind != "yaml":
-            continue
-        data, err = _parsed(s)
-        if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
-            continue
+    if not _HAVE_YAML or source.kind != "yaml":
+        return None
+    key = "query_catalog_slice"
+    if key in source.cache:
+        return source.cache[key]
+    result: tuple[str, dict] | None = None
+    data, err = _parsed(source)
+    if err is None and isinstance(data, dict) and data.get("ВидЭлемента"):
         nm = data.get("Имя")
-        if not isinstance(nm, str):
-            continue
-        tabular: set[str] = set()
-        parts = data.get("ТабличныеЧасти")
-        if isinstance(parts, list):
-            for p in parts:
-                if isinstance(p, dict) and isinstance(p.get("Имя"), str):
-                    tabular.add(p["Имя"])
-        fields: dict[str, str] = {}
-        for section in _FIELD_SECTIONS:
-            items = data.get(section)
-            if not isinstance(items, list):
-                continue
-            for it in items:
-                if isinstance(it, dict) and isinstance(it.get("Имя"), str) and isinstance(it.get("Тип"), str):
-                    fields[it["Имя"]] = it["Тип"]
-        info[nm] = {"kind": data["ВидЭлемента"], "tabular": tabular, "fields": fields}
-    return info
+        if isinstance(nm, str):
+            tabular: list[str] = []
+            parts = data.get("ТабличныеЧасти")
+            if isinstance(parts, list):
+                tabular = [
+                    p["Имя"] for p in parts
+                    if isinstance(p, dict) and isinstance(p.get("Имя"), str)
+                ]
+            fields: dict[str, str] = {}
+            for section in _FIELD_SECTIONS:
+                items = data.get(section)
+                if not isinstance(items, list):
+                    continue
+                for it in items:
+                    if isinstance(it, dict) and isinstance(it.get("Имя"), str) and isinstance(it.get("Тип"), str):
+                        fields[it["Имя"]] = it["Тип"]
+            result = (nm, {"kind": data["ВидЭлемента"], "tabular": tabular, "fields": fields})
+    source.cache[key] = result
+    return result
 
 
 def _alternatives(spec: str) -> list[str]:
@@ -247,79 +247,107 @@ def _in_subqueries(source: SourceFile) -> Iterator[tuple[Token, Token, bool, dic
             yield prefix, field, negated, aliases
 
 
+def _query_table_mapper(source: SourceFile) -> dict | None:
+    """The map phase: a yaml contributes its catalog slice, a module its query table
+    references with per-segment positions."""
+    if source.kind == "yaml":
+        got = _catalog_slice(source)
+        return {"k": "y", "slice": got} if got else None
+    if source.kind != "xbsl":
+        return None
+    tables = [
+        [(t.value, t.line, t.col) for t in segs]
+        for segs in _query_tables(source)
+    ]
+    return {"k": "x", "tables": tables} if tables else None
+
+
 @rule(
     "query/unknown-table", "query/unknown-table.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_query_table_mapper,
 )
-def unknown_query_table(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    catalog = _tabular_catalog(sources)
+def unknown_query_table(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    catalog: dict[str, dict] = {}
+    for fact in facts.values():
+        if fact["k"] == "y":
+            name, rec = fact["slice"]
+            catalog[name] = rec
     if not catalog:
-        return []  # yaml not parsed (no PyYAML) or a project with no objects - stay silent
-
-    diags: list[Diagnostic] = []
-    for s in sources:
-        if s.kind != "xbsl":
-            continue
-        for segs in _query_tables(s):
-            root = segs[0]
-            name = ".".join(t.value for t in segs)
-            rec = catalog.get(root.value)
+        return  # yaml not parsed (no PyYAML) or a project with no objects - stay silent
+    for rel, fact in facts.items():
+        for segs in fact.get("tables", ()):
+            root_value, root_line, root_col = segs[0]
+            name = ".".join(v for v, _l, _c in segs)
+            rec = catalog.get(root_value)
             if len(segs) == 1:
                 if rec is None:
-                    diags.append(Diagnostic(
-                        s.rel, root.line, root.col, "query/unknown-table",
+                    yield Diagnostic(
+                        rel, root_line, root_col, "query/unknown-table",
                         Severity.WARNING,
                         i18n.t("query/unknown-table.unknown", name=name),
-                    ))
+                    )
                 continue
             if len(segs) != 2 or rec is None:
                 continue  # deep chains and external roots - out of scope
-            seg = segs[1]
-            if seg.value in rec["tabular"] or seg.value.upper() in _VIRTUAL:
+            seg_value, seg_line, seg_col = segs[1]
+            if seg_value in rec["tabular"] or seg_value.upper() in _VIRTUAL:
                 continue
-            diags.append(Diagnostic(
-                s.rel, seg.line, seg.col, "query/unknown-table",
+            yield Diagnostic(
+                rel, seg_line, seg_col, "query/unknown-table",
                 Severity.WARNING,
                 i18n.t(
                     "query/unknown-table.tabular",
-                    name=name, root=root.value, kind=rec["kind"], seg=seg.value,
+                    name=name, root=root_value, kind=rec["kind"], seg=seg_value,
                 ),
-            ))
-    return diags
+            )
+
+
+def _in_subquery_mapper(source: SourceFile) -> dict | None:
+    """The map phase: a yaml contributes its catalog slice, a module its `В (ВЫБРАТЬ ...)`
+    conditions (prefix, field, negation, aliases, position)."""
+    if source.kind == "yaml":
+        got = _catalog_slice(source)
+        return {"k": "y", "slice": got} if got else None
+    if source.kind != "xbsl":
+        return None
+    ins = [
+        (prefix.value, field.value, negated, dict(aliases), prefix.line, prefix.col)
+        for prefix, field, negated, aliases in _in_subqueries(source)
+    ]
+    return {"k": "x", "ins": ins} if ins else None
 
 
 @rule(
     "query/in-subquery-composite", "query/in-subquery-composite.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_in_subquery_mapper,
 )
-def in_subquery_composite(sources: list[SourceFile]) -> Iterable[Diagnostic]:
+def in_subquery_composite(facts: dict[str, dict]) -> Iterable[Diagnostic]:
     """A composite-type field in `В (ВЫБРАТЬ ...)` - the condition is rewritten via СУЩЕСТВУЕТ."""
-    catalog = _tabular_catalog(sources)
+    catalog: dict[str, dict] = {}
+    for fact in facts.values():
+        if fact["k"] == "y":
+            name, rec = fact["slice"]
+            catalog[name] = rec
     if not catalog:
-        return []  # yaml not parsed (no PyYAML) or a project with no objects - stay silent
-
-    diags: list[Diagnostic] = []
-    for s in sources:
-        if s.kind != "xbsl":
-            continue
-        for prefix, field, negated, aliases in _in_subqueries(s):
-            table = aliases.get(prefix.value)
-            if table is None and prefix.value in catalog:
-                table = prefix.value  # the table is referenced by its own name, without an alias
+        return  # yaml not parsed (no PyYAML) or a project with no objects - stay silent
+    for rel, fact in facts.items():
+        for prefix, field, negated, aliases, line, col in fact.get("ins", ()):
+            table = aliases.get(prefix)
+            if table is None and prefix in catalog:
+                table = prefix  # the table is referenced by its own name, without an alias
             rec = catalog.get(table) if table else None
             if rec is None:
                 continue
-            alternatives = _alternatives(rec["fields"].get(field.value, ""))
+            alternatives = _alternatives(rec["fields"].get(field, ""))
             if len(alternatives) < 2:
                 continue  # a plain or nullable type - the standard says nothing about it
             key = ".not-in" if negated else ".in"
-            diags.append(Diagnostic(
-                s.rel, prefix.line, prefix.col, "query/in-subquery-composite",
+            yield Diagnostic(
+                rel, line, col, "query/in-subquery-composite",
                 Severity.WARNING,
                 i18n.t(
                     "query/in-subquery-composite" + key,
-                    expr=f"{prefix.value}.{field.value}",
+                    expr=f"{prefix}.{field}",
                     types="|".join(alternatives),
                 ),
-            ))
-    return diags
+            )

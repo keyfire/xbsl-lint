@@ -200,20 +200,29 @@ def yaml_name_matches_file(source: SourceFile) -> Iterable[Diagnostic]:
         )
 
 
-@rule("yaml/id-unique", "yaml/id-unique.title", "A", scope="project", severity=Severity.ERROR)
-def yaml_id_unique(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    occ: dict[str, list[tuple[SourceFile, int, int]]] = defaultdict(list)
-    for s in sources:
-        if s.kind != "yaml":
-            continue
-        for value, line, col in _id_lines(s):
-            occ[value].append((s, line, col))
+def _id_unique_mapper(source: SourceFile) -> list[tuple[str, int, int]] | None:
+    """The map phase: every Ид value of the file with its position."""
+    if source.kind != "yaml":
+        return None
+    ids = _id_lines(source)
+    return ids or None
+
+
+@rule(
+    "yaml/id-unique", "yaml/id-unique.title", "A",
+    scope="project", severity=Severity.ERROR, mapper=_id_unique_mapper,
+)
+def yaml_id_unique(facts: dict[str, list[tuple[str, int, int]]]) -> Iterable[Diagnostic]:
+    occ: dict[str, list[tuple[str, int, int]]] = defaultdict(list)
+    for rel, ids in facts.items():
+        for value, line, col in ids:
+            occ[value].append((rel, line, col))
     for value, places in occ.items():
         if len(places) < 2:
             continue
-        for i, (s, line, col) in enumerate(places):
-            others = [f"{o.rel}:{ol}" for j, (o, ol, _oc) in enumerate(places) if j != i]
+        for i, (rel, line, col) in enumerate(places):
+            others = [f"{orel}:{ol}" for j, (orel, ol, _oc) in enumerate(places) if j != i]
             yield Diagnostic(
-                s.rel, line, col, "yaml/id-unique", Severity.ERROR,
+                rel, line, col, "yaml/id-unique", Severity.ERROR,
                 i18n.t("yaml/id-unique.duplicate", value=value, others=", ".join(others[:3])),
             )

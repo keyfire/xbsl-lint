@@ -93,69 +93,105 @@ def _subsystem_of(path: Path, roots: dict[Path, str]) -> str | None:
     return None
 
 
+def _yaml_import_mapper(source: SourceFile) -> dict | None:
+    """The map phase: a subsystem yaml contributes its root directory, an object yaml its
+    placement slice (name, visibility, imports) and its candidate type roots (stdlib
+    settles here), a module its local types (the collision guard)."""
+    if not _HAVE_YAML:
+        return None
+    if source.kind == "xbsl":
+        try:
+            local = semantics._file_local_types(source)
+        except DatasetError:
+            return None  # no language data – the collision guard has nothing to skip
+        if not local:
+            return None
+        return {"k": "x", "local_types": sorted(local)}
+    if source.kind != "yaml":
+        return None
+    if source.path.name == _SUBSYSTEM_FILE:
+        data, err = _parsed(source)
+        name = data.get("Имя") if err is None and isinstance(data, dict) else None
+        return {
+            "k": "sub",
+            "dir": str(source.path.parent),
+            "name": name if isinstance(name, str) else source.path.parent.name,
+        }
+    data, err = _parsed(source)
+    if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
+        return None
+    stdlib = semantics._stdlib_names()
+    raw = data.get("Импорт")
+    imports = [e for e in raw if isinstance(e, str)] if isinstance(raw, list) else []
+    cands: list[tuple[str, str, int, int]] = []
+    for value in dict.fromkeys(_type_values(data)):  # unique, in document order
+        chains = _parse_type_string(value)
+        if not chains:
+            continue
+        position: tuple[int, int] | None = None
+        for chain in chains:
+            root = chain[0]
+            if root in stdlib:
+                continue
+            if position is None:
+                position = (_value_positions(source, value) or [(1, 1)])[0]
+            cands.append((root, ".".join(chain), position[0], position[1]))
+    nm = data.get("Имя")
+    return {
+        "k": "el",
+        "path": str(source.path),
+        "name": nm if isinstance(nm, str) else None,
+        "vis": data.get("ОбластьВидимости"),
+        "imports": imports,
+        "cands": cands,
+    }
+
+
 @rule(
     "yaml/missing-import", "yaml/missing-import.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_yaml_import_mapper,
 )
-def missing_yaml_import(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    if not _HAVE_YAML:
-        return []
-    roots = _subsystem_roots(sources)
+def missing_yaml_import(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    # Subsystem roots and the placement model from the facts.
+    roots: dict[Path, str] = {}
+    for fact in facts.values():
+        if fact["k"] == "sub":
+            roots[Path(fact["dir"])] = fact["name"]
     if not roots:
-        return []
-
-    # The element name -> {subsystem: ОбластьВидимости} placement, and the elements to check.
+        return
+    local_types: set[str] = set()
+    for fact in facts.values():
+        if fact["k"] == "x":
+            local_types.update(fact["local_types"])
     placement: dict[str, dict[str, object]] = {}
-    elements: list[tuple[SourceFile, dict, str]] = []
-    for s in sources:
-        if s.kind != "yaml":
+    elements: list[tuple[str, dict, str]] = []
+    for rel, fact in facts.items():
+        if fact["k"] != "el":
             continue
-        data, err = _parsed(s)
-        if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
-            continue
-        sub = _subsystem_of(s.path, roots)
+        sub = _subsystem_of(Path(fact["path"]), roots)
         if sub is None:
             continue
-        elements.append((s, data, sub))
-        nm = data.get("Имя")
-        if isinstance(nm, str):
-            placement.setdefault(nm, {})[sub] = data.get("ОбластьВидимости")
-
-    stdlib = semantics._stdlib_names()
-    try:
-        local_types = semantics._local_type_names(sources)
-    except DatasetError:
-        local_types = set()  # no language data – the collision guard has nothing to skip
-
-    diags: list[Diagnostic] = []
-    for s, data, my_sub in elements:
-        raw = data.get("Импорт")
-        imports = {e for e in raw if isinstance(e, str)} if isinstance(raw, list) else set()
+        elements.append((rel, fact, sub))
+        if fact["name"]:
+            placement.setdefault(fact["name"], {})[sub] = fact["vis"]
+    for rel, fact, my_sub in elements:
+        imports = set(fact["imports"])
         reported: set[tuple[str, ...]] = set()
-        for value in dict.fromkeys(_type_values(data)):  # unique, in document order
-            chains = _parse_type_string(value)
-            if not chains:
+        for root, chain_name, line, col in fact["cands"]:
+            if root in local_types:
                 continue
-            for chain in chains:
-                root = chain[0]
-                subs = placement.get(root)
-                if not subs or my_sub in subs or root in stdlib or root in local_types:
-                    continue
-                candidates = tuple(sorted(
-                    sub for sub, vis in subs.items() if vis in _PUBLIC_SCOPES
-                ))
-                if not candidates or imports.intersection(candidates):
-                    continue
-                if candidates in reported:
-                    continue
-                reported.add(candidates)
-                line, col = (_value_positions(s, value) or [(1, 1)])[0]
-                diags.append(Diagnostic(
-                    s.rel, line, col, "yaml/missing-import", Severity.WARNING,
-                    i18n.t(
-                        "yaml/missing-import.missing",
-                        name=".".join(chain),
-                        sub="/".join(candidates),
-                    ),
-                ))
-    return diags
+            subs = placement.get(root)
+            if not subs or my_sub in subs:
+                continue
+            candidates = tuple(sorted(
+                sub for sub, vis in subs.items() if vis in _PUBLIC_SCOPES
+            ))
+            if not candidates or imports.intersection(candidates):
+                continue
+            if candidates in reported:
+                continue
+            reported.add(candidates)
+            yield Diagnostic(
+                rel, line, col, "yaml/missing-import", Severity.WARNING,
+                i18n.t("yaml/missing-import.missing", name=chain_name, sub="/".join(candidates)),
+            )

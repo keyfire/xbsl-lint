@@ -111,48 +111,64 @@ def _is_annotated(toks: list, i: int) -> bool:
     return False
 
 
-def _is_http_service_module(source: SourceFile, yamls: dict[str, SourceFile]) -> bool:
-    pair = yamls.get(str(source.path.with_suffix(".yaml")))
-    return pair is not None and _HTTP_SERVICE_RE.search(pair.text) is not None
+def _pair_stem(rel: str) -> str:
+    slash = rel.replace("\\", "/")
+    return slash[: slash.rfind(".")] if "." in slash.rsplit("/", 1)[-1] else slash
+
+
+def _unused_mapper(source: SourceFile) -> dict | None:
+    """The map phase. Every file contributes its word-mention counter slice; a yaml also
+    flags an HTTP service pair, a module also lists its unannotated method declarations
+    (positions included). The mention counting joins in the reduce."""
+    fact: dict = {"k": source.kind, "stem": _pair_stem(source.rel)}
+    # Every word-like token of every file (code, yaml, strings, comments) is a mention.
+    fact["mentions"] = dict(Counter(_WORD_RE.findall(source.text)))
+    if source.kind == "yaml":
+        if _HTTP_SERVICE_RE.search(source.text) is not None:
+            fact["http"] = True
+        return fact
+    if source.kind != "xbsl":
+        return fact
+    if source.path.stem.endswith(".Объект"):
+        return fact  # object module – platform event handlers, no declarations to check
+    decls: list[tuple[str, int, int]] = []
+    toks = code_tokens(source)
+    for i, t in enumerate(toks):
+        if t.kind != "KEYWORD" or t.canonical != "METHOD" or not t.value[:1].islower():
+            continue
+        if i + 1 >= len(toks) or toks[i + 1].kind != "IDENT":
+            continue
+        name_tok = toks[i + 1]
+        if name_tok.value in _PLATFORM_EVENTS:
+            continue
+        if _is_annotated(toks, i):
+            continue
+        decls.append((name_tok.value, name_tok.line, name_tok.col))
+    if decls:
+        fact["decls"] = decls
+    return fact
 
 
 @rule(
     "code/unused-method", "code/unused-method.title", "D",
     scope="project", severity=Severity.WARNING, enabled_by_default=False,
+    mapper=_unused_mapper,
 )
-def unused_method(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    modules = [s for s in sources if s.kind == "xbsl"]
-    if not modules:
-        return []
-    yamls = {str(s.path): s for s in sources if s.kind == "yaml"}
-
-    # Every word-like token of every file (code, yaml, strings, comments) is a mention.
+def unused_method(facts: dict[str, dict]) -> Iterable[Diagnostic]:
     mentions: Counter = Counter()
-    for s in sources:
-        mentions.update(_WORD_RE.findall(s.text))
-
-    diags: list[Diagnostic] = []
-    for s in modules:
-        if s.path.stem.endswith(".Объект"):
-            continue  # object module – platform event handlers
-        if _is_http_service_module(s, yamls):
+    http_stems: set[str] = set()
+    for fact in facts.values():
+        mentions.update(fact["mentions"])
+        if fact.get("http"):
+            http_stems.add(fact["stem"])
+    for rel, fact in facts.items():
+        if fact["k"] != "xbsl" or "decls" not in fact:
+            continue
+        if fact["stem"] in http_stems:
             continue  # HTTP service module – methods are wired to endpoints
-        toks = code_tokens(s)
-        for i, t in enumerate(toks):
-            if t.kind != "KEYWORD" or t.canonical != "METHOD" or not t.value[:1].islower():
-                continue
-            if i + 1 >= len(toks) or toks[i + 1].kind != "IDENT":
-                continue
-            name_tok = toks[i + 1]
-            name = name_tok.value
-            if name in _PLATFORM_EVENTS:
-                continue
-            if _is_annotated(toks, i):
-                continue
+        for name, line, col in fact["decls"]:
             if mentions[name] <= 1:  # the declaration itself and nothing else
-                diags.append(Diagnostic(
-                    s.rel, name_tok.line, name_tok.col,
-                    "code/unused-method", Severity.WARNING,
+                yield Diagnostic(
+                    rel, line, col, "code/unused-method", Severity.WARNING,
                     i18n.t("code/unused-method.unreferenced", name=name),
-                ))
-    return diags
+                )

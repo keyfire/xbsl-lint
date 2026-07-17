@@ -76,27 +76,6 @@ _WIDE = _VISIBILITY - {"Локально"}
 _DECL_KW = ("VAL", "VAR", "CONST", "REQ", "CATCH", "FOR")
 
 
-def _components(sources: list[SourceFile]) -> dict[str, SourceFile]:
-    """Name of a project КомпонентИнтерфейса -> its paired module X.xbsl."""
-    modules = {str(s.path): s for s in sources if s.kind == "xbsl"}
-    comps: dict[str, SourceFile] = {}
-    for s in sources:
-        if s.kind != "yaml":
-            continue
-        data, err = _parsed(s)
-        if err is not None or not isinstance(data, dict):
-            continue
-        if data.get("ВидЭлемента") != "КомпонентИнтерфейса":
-            continue
-        name = data.get("Имя")
-        if not isinstance(name, str):
-            continue
-        module = modules.get(str(s.path.with_suffix(".xbsl")))
-        if module is not None:
-            comps[name] = module
-    return comps
-
-
 def _annotations_before(toks: list, i: int) -> set[str]:
     """Names of the annotations directly above the method keyword at index i.
 
@@ -181,48 +160,42 @@ def _instance_types(node, out: dict[str, set[str]]) -> None:
             _instance_types(item, out)
 
 
-def _caller_instances(sources_by_path: dict[str, SourceFile], module: SourceFile) -> dict[str, set[str]] | None:
-    """Instance name -> types from the caller's paired КомпонентИнтерфейса yaml.
-
-    None when the module is not the paired module of an interface component – such a
-    module has no components collection, and the rule skips it.
-    """
-    pair = sources_by_path.get(str(module.path.with_suffix(".yaml")))
-    if pair is None:
-        return None
-    data, err = _parsed(pair)
-    if err is not None or not isinstance(data, dict):
-        return None
-    if data.get("ВидЭлемента") != "КомпонентИнтерфейса":
-        return None
-    out: dict[str, set[str]] = {}
-    _instance_types(data, out)
-    return out
+def _pair_stem(rel: str) -> str:
+    slash = rel.replace("\\", "/")
+    return slash[: slash.rfind(".")] if "." in slash.rsplit("/", 1)[-1] else slash
 
 
-@rule(
-    "code/local-method-cross-component", "code/local-method-cross-component.title", "D",
-    scope="project", severity=Severity.WARNING,
-)
-def local_method_cross_component(sources: list[SourceFile]) -> Iterable[Diagnostic]:
+def _cross_component_mapper(source: SourceFile) -> dict | None:
+    """The map phase. The yaml of an interface component contributes its name and the
+    embedded instances; a module contributes its method visibility and its
+    `Компоненты.X.Y(...)` calls with the local skips settled. The reduce joins the
+    caller's pair, resolves X to the component's module and checks the visibility."""
     if not _HAVE_YAML:
-        return []
-    comps = _components(sources)
-    if not comps:
-        return []
-    yaml_by_path = {str(s.path): s for s in sources if s.kind == "yaml"}
-
-    diags: list[Diagnostic] = []
-    for s in sources:
-        if s.kind != "xbsl":
-            continue
-        instances = _caller_instances(yaml_by_path, s)
-        if instances is None:
-            continue  # not an interface component module – no components collection
-        toks = code_tokens(s)
-        if _shadows(toks, "Компоненты"):
-            continue
-        owner = s.path.name[: -len(".xbsl")].split(".", 1)[0]
+        return None
+    if source.kind == "yaml":
+        data, err = _parsed(source)
+        if err is not None or not isinstance(data, dict):
+            return None
+        if data.get("ВидЭлемента") != "КомпонентИнтерфейса":
+            return None
+        name = data.get("Имя")
+        instances: dict[str, set[str]] = {}
+        _instance_types(data, instances)
+        return {
+            "k": "y",
+            "stem": _pair_stem(source.rel),
+            "name": name if isinstance(name, str) else None,
+            "instances": {inst: sorted(types) for inst, types in instances.items()},
+        }
+    if source.kind != "xbsl":
+        return None
+    toks = code_tokens(source)
+    visibility = {
+        name: sorted(anns) for name, anns in _method_visibility(source).items()
+    }
+    calls: list[tuple[str, str, int, int]] = []
+    if not _shadows(toks, "Компоненты"):
+        owner = source.path.name[: -len(".xbsl")].split(".", 1)[0]
         n = len(toks)
         for i, t in enumerate(toks):
             if t.kind != "IDENT" or t.value != "Компоненты" or i + 5 >= n:
@@ -238,22 +211,62 @@ def local_method_cross_component(sources: list[SourceFile]) -> Iterable[Diagnost
             comp, meth = toks[i + 2], toks[i + 4]
             if comp.value == owner:
                 continue  # the component's own module – locality never restricts it
-            module = comps.get(comp.value)
-            if module is None or str(module.path) == str(s.path):
+            calls.append((comp.value, meth.value, meth.line, meth.col))
+    if not visibility and not calls:
+        return None
+    return {
+        "k": "x",
+        "stem": _pair_stem(source.rel),
+        "file": source.path.name,
+        "visibility": visibility,
+        "calls": calls,
+    }
+
+
+@rule(
+    "code/local-method-cross-component", "code/local-method-cross-component.title", "D",
+    scope="project", severity=Severity.WARNING, mapper=_cross_component_mapper,
+)
+def local_method_cross_component(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    # Component name -> the stem of its paired module; caller stem -> its instances.
+    comp_stems: dict[str, str] = {}
+    instances_by_stem: dict[str, dict[str, list[str]]] = {}
+    module_facts: dict[str, dict] = {}
+    for fact in facts.values():
+        if fact["k"] == "y":
+            instances_by_stem[fact["stem"]] = fact["instances"]
+            if fact["name"]:
+                comp_stems[fact["name"]] = fact["stem"]
+    for fact in facts.values():
+        if fact["k"] == "x":
+            module_facts[fact["stem"]] = fact
+    if not comp_stems:
+        return
+    for rel, fact in facts.items():
+        if fact["k"] != "x" or not fact["calls"]:
+            continue
+        instances = instances_by_stem.get(fact["stem"])
+        if instances is None:
+            continue  # not an interface component module – no components collection
+        for comp, meth, line, col in fact["calls"]:
+            target_stem = comp_stems.get(comp)
+            if target_stem is None or target_stem == fact["stem"]:
                 continue  # X is not a project component with a paired module
-            if instances.get(comp.value) != {comp.value}:
+            target = module_facts.get(target_stem)
+            if target is None:
+                continue
+            if instances.get(comp) != [comp]:
                 continue  # the form embeds no instance X of type X – ambiguous, skip
-            annotations = _method_visibility(module).get(meth.value)
+            annotations = target["visibility"].get(meth)
             if annotations is None:
                 continue  # not declared in the module – a platform built-in, skip
-            if annotations & _WIDE:
+            if set(annotations) & _WIDE:
                 continue
-            diags.append(Diagnostic(
-                s.rel, meth.line, meth.col, "code/local-method-cross-component",
+            yield Diagnostic(
+                rel, line, col, "code/local-method-cross-component",
                 Severity.WARNING,
                 i18n.t(
                     "code/local-method-cross-component.invisible",
-                    method=meth.value, comp=comp.value, module=module.path.name,
+                    method=meth, comp=comp, module=target["file"],
                 ),
-            ))
-    return diags
+            )

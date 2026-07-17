@@ -34,7 +34,6 @@ from collections.abc import Iterable
 from xbsl import i18n
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
-from xbsl.rules.enum_values import _project_enums
 from xbsl.rules.yaml_schema import _HAVE_YAML, _parsed
 from xbsl.rules.yaml_types import _value_positions
 
@@ -66,27 +65,6 @@ _INPUT_FIELD_RE = re.compile(
 )
 
 
-def _enums_with_default(sources: list[SourceFile]) -> set[str]:
-    """Names of the project enumerations that have an element with ПоУмолчанию: Истина."""
-    names: set[str] = set()
-    for s in sources:
-        if s.kind != "yaml":
-            continue
-        data, err = _parsed(s)
-        if err is not None or not isinstance(data, dict):
-            continue
-        if data.get("ВидЭлемента") != "Перечисление" or not isinstance(data.get("Имя"), str):
-            continue
-        items = data.get("Элементы")
-        # the yaml parser reads the platform 'Истина' as a string, and true as a boolean
-        if isinstance(items, list) and any(
-            isinstance(item, dict) and item.get("ПоУмолчанию") in (True, "Истина")
-            for item in items
-        ):
-            names.add(data["Имя"])
-    return names
-
-
 def _typed_nodes(node) -> Iterable[dict]:
     """All dict nodes of the parsed yaml tree that carry a string `Тип` key."""
     if isinstance(node, dict):
@@ -99,58 +77,87 @@ def _typed_nodes(node) -> Iterable[dict]:
             yield from _typed_nodes(item)
 
 
-def _enum_hit(value: str, enums: set[str]) -> tuple[str, int, str] | None:
-    """(enumeration name, offset of the name within the value, message key) or None.
-
-    Catches exactly two shapes: a bare enumeration name and ПолеВвода<Имя> with a bare argument.
-    """
-    stripped = value.strip()
-    if stripped in enums:
-        return stripped, value.index(stripped), "yaml/enum-needs-nullable.bare"
-    m = _INPUT_FIELD_RE.match(value)
-    if m and m.group(1) in enums:
-        return m.group(1), m.start(1), "yaml/enum-needs-nullable.input"
-    return None
-
-
-@rule(
-    "yaml/enum-needs-nullable", "yaml/enum-needs-nullable.title", "D",
-    scope="project", severity=Severity.WARNING,
-)
-def enum_needs_nullable(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    if not _HAVE_YAML:
-        return []
-    enums = set(_project_enums(sources)) - _enums_with_default(sources)
-    if not enums:
-        return []
-
-    diags: list[Diagnostic] = []
-    for s in sources:
-        if s.kind != "yaml":
-            continue
-        data, err = _parsed(s)
-        if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
-            continue
-        # a Тип value -> (name, offset, message key); guarded - values with an explicit default
+def _enum_nullable_mapper(source: SourceFile) -> dict | None:
+    """The map phase: an enumeration yaml contributes (name, has-default); every object
+    yaml contributes its plain-shape Тип candidates - (potential enum name, message key,
+    guarded flag, positions). Which names are project enumerations is the reduce's call."""
+    if not _HAVE_YAML or source.kind != "yaml":
+        return None
+    data, err = _parsed(source)
+    if err is not None or not isinstance(data, dict):
+        return None
+    fact: dict = {}
+    if data.get("ВидЭлемента") == "Перечисление" and isinstance(data.get("Имя"), str):
+        items = data.get("Элементы")
+        has_default = isinstance(items, list) and any(
+            isinstance(item, dict) and item.get("ПоУмолчанию") in (True, "Истина")
+            for item in items
+        )
+        fact["enum"] = (data["Имя"], has_default)
+    if data.get("ВидЭлемента"):
+        # a Тип value -> candidate; guarded - values with an explicit default
         candidates: dict[str, tuple[str, int, str]] = {}
         guarded: set[str] = set()
         for node in _typed_nodes(data):
             value = node["Тип"]
-            hit = _enum_hit(value, enums)
+            hit = _plain_enum_shape(value)
             if hit is None:
                 continue
             if "ЗначениеПоУмолчанию" in node:
                 guarded.add(value)
             else:
                 candidates[value] = hit
+        cands = []
         for value, (name, off, msg_key) in candidates.items():
             if value in guarded:
                 continue  # positions are textual - a same-name guarded value is indistinguishable
-            positions = _value_positions(s, value)
+            positions = _value_positions(source, value)
             positions = [(line, col + off) for line, col in positions] or [(1, 1)]
-            diags.extend(
-                Diagnostic(s.rel, line, col, "yaml/enum-needs-nullable", Severity.WARNING,
-                           i18n.t(msg_key, name=name))
-                for line, col in positions
-            )
-    return diags
+            cands.append((name, msg_key, positions))
+        if cands:
+            fact["cands"] = cands
+    if not fact:
+        return None
+    fact["k"] = "y"
+    return fact
+
+
+def _plain_enum_shape(value: str) -> tuple[str, int, str] | None:
+    """(potential enumeration name, offset within the value, message key) or None.
+
+    Catches exactly two shapes: a bare name and ПолеВвода<Имя> with a bare argument.
+    """
+    stripped = value.strip()
+    if stripped and re.match(r"^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё_0-9]*$", stripped):
+        return stripped, value.index(stripped), "yaml/enum-needs-nullable.bare"
+    m = _INPUT_FIELD_RE.match(value)
+    if m:
+        return m.group(1), m.start(1), "yaml/enum-needs-nullable.input"
+    return None
+
+
+@rule(
+    "yaml/enum-needs-nullable", "yaml/enum-needs-nullable.title", "D",
+    scope="project", severity=Severity.WARNING, mapper=_enum_nullable_mapper,
+)
+def enum_needs_nullable(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    enums: set[str] = set()
+    with_default: set[str] = set()
+    for fact in facts.values():
+        if "enum" in fact:
+            name, has_default = fact["enum"]
+            enums.add(name)
+            if has_default:
+                with_default.add(name)
+    enums -= with_default
+    if not enums:
+        return
+    for rel, fact in facts.items():
+        for name, msg_key, positions in fact.get("cands", ()):
+            if name not in enums:
+                continue
+            for line, col in positions:
+                yield Diagnostic(
+                    rel, line, col, "yaml/enum-needs-nullable", Severity.WARNING,
+                    i18n.t(msg_key, name=name),
+                )

@@ -156,159 +156,239 @@ def _decl_anchors(toks: list) -> list[int]:
     ]
 
 
-def _paired_modules(sources: list[SourceFile]) -> dict[str, SourceFile]:
-    return {str(s.path): s for s in sources if s.kind == "xbsl"}
+def _pair_stem(rel: str) -> str:
+    """The pairing key of X.yaml <-> X.xbsl: the rel path without the last extension."""
+    slash = rel.replace("\\", "/")
+    return slash[: slash.rfind(".")] if "." in slash.rsplit("/", 1)[-1] else slash
 
 
-def _yaml_objects(sources: list[SourceFile]) -> Iterable[tuple[SourceFile, dict]]:
-    """The parsed yaml descriptions of the project objects (with a ВидЭлемента)."""
-    for s in sources:
-        if s.kind != "yaml":
-            continue
-        data, err = _parsed(s)
-        if err is None and isinstance(data, dict) and data.get("ВидЭлемента"):
-            yield s, data
+def _parsed_object(source: SourceFile) -> dict | None:
+    """The parsed yaml of a project object (with a ВидЭлемента), else None."""
+    data, err = _parsed(source)
+    if err is None and isinstance(data, dict) and data.get("ВидЭлемента"):
+        return data
+    return None
+
+
+def _server_call_mapper(source: SourceFile) -> dict | None:
+    """The map phase. The yaml of an interface component contributes its handler names;
+    the module contributes, per method: the annotations and the bare calls of its own
+    @НаСервере-without-client methods (all the local skips are settled here). The reduce
+    joins the pair and picks the client handlers."""
+    if not _HAVE_YAML:
+        return None
+    if source.kind == "yaml":
+        data = _parsed_object(source)
+        if data is None or data.get("ВидЭлемента") != "КомпонентИнтерфейса":
+            return None
+        handlers = []
+        for m in _HANDLER_RE.finditer(source.text):
+            value = m.group(1).strip()
+            if _IDENT_RE.match(value):
+                handlers.append(value)
+        return {"k": "y", "stem": _pair_stem(source.rel), "handlers": handlers}
+    if source.kind != "xbsl":
+        return None
+    toks = code_tokens(source)
+    decls, methods = _module_decls(toks)
+    method_anns = {name: anns for name, anns, _ in methods}
+    server_only = {
+        name for name, anns in method_anns.items()
+        if "НаСервере" in anns and not any(a in anns for a in _CLIENT_SIDE_ANNS)
+    }
+    if not server_only:
+        return None
+    bodies = _method_bodies(toks, methods, _decl_anchors(toks))
+    shadowed = _shadowed_names(toks)
+    n = len(toks)
+    calls: dict[str, list[tuple[str, int, int]]] = {}
+    for name, (start, end) in bodies.items():
+        for i in range(start, end):
+            t = toks[i]
+            if t.kind != "IDENT" or t.value not in server_only or t.value in shadowed:
+                continue
+            if i > 0 and toks[i - 1].kind == "OP" and toks[i - 1].value == ".":
+                continue  # a member of another object, not a bare module method
+            if not (i + 1 < n and toks[i + 1].kind == "OP" and toks[i + 1].value == "("):
+                continue  # not a call
+            calls.setdefault(name, []).append((t.value, t.line, t.col))
+    if not calls:
+        return None
+    return {
+        "k": "x",
+        "stem": _pair_stem(source.rel),
+        "anns": {name: sorted(anns) for name, anns in method_anns.items()},
+        "calls": calls,
+    }
 
 
 @rule(
     "code/server-call-from-handler", "code/server-call-from-handler.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_server_call_mapper,
 )
-def server_call_from_handler(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    if not _HAVE_YAML:
-        return []
-    modules = _paired_modules(sources)
-
-    diags: list[Diagnostic] = []
-    for s, data in _yaml_objects(sources):
-        if data.get("ВидЭлемента") != "КомпонентИнтерфейса":
+def server_call_from_handler(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    yaml_handlers: dict[str, list[str]] = {}
+    for fact in facts.values():
+        if fact["k"] == "y":
+            yaml_handlers[fact["stem"]] = fact["handlers"]
+    for rel, fact in facts.items():
+        if fact["k"] != "x" or fact["stem"] not in yaml_handlers:
             continue
-        module = modules.get(str(s.path.with_suffix(".xbsl")))
-        if module is None:
-            continue
-        toks = code_tokens(module)
-        decls, methods = _module_decls(toks)
-        method_anns = {name: anns for name, anns, _ in methods}
-        server_only = {
-            name for name, anns in method_anns.items()
-            if "НаСервере" in anns and not any(a in anns for a in _CLIENT_SIDE_ANNS)
-        }
-        if not server_only:
-            continue
-
-        handlers = {name for name, anns in method_anns.items() if "Обработчик" in anns}
-        for m in _HANDLER_RE.finditer(s.text):
-            value = m.group(1).strip()
-            if _IDENT_RE.match(value):
-                handlers.add(value)
-
-        bodies = _method_bodies(toks, methods, _decl_anchors(toks))
-        shadowed = _shadowed_names(toks)
-        n = len(toks)
+        anns = fact["anns"]
+        handlers = set(yaml_handlers[fact["stem"]])
+        handlers.update(name for name, a in anns.items() if "Обработчик" in a)
         for handler in sorted(handlers):
-            anns = method_anns.get(handler)
-            if anns is None or "НаСервере" in anns:
+            a = anns.get(handler)
+            if a is None or "НаСервере" in a:
                 continue  # not found in the module, or runs on the server itself
-            start, end = bodies[handler]
-            for i in range(start, end):
-                t = toks[i]
-                if t.kind != "IDENT" or t.value not in server_only or t.value in shadowed:
-                    continue
-                if i > 0 and toks[i - 1].kind == "OP" and toks[i - 1].value == ".":
-                    continue  # a member of another object, not a bare module method
-                if not (i + 1 < n and toks[i + 1].kind == "OP" and toks[i + 1].value == "("):
-                    continue  # not a call
-                diags.append(Diagnostic(
-                    module.rel, t.line, t.col, "code/server-call-from-handler",
+            for name, line, col in fact["calls"].get(handler, ()):
+                yield Diagnostic(
+                    rel, line, col, "code/server-call-from-handler",
                     Severity.WARNING,
                     i18n.t("code/server-call-from-handler.call",
-                           handler=handler, name=t.value),
-                ))
-    return diags
+                           handler=handler, name=name),
+                )
+
+
+def _client_ann_mapper(source: SourceFile) -> dict | None:
+    """The map phase: a yaml contributes its server common modules, a module its client
+    annotation positions - the reduce joins the pair."""
+    if not _HAVE_YAML:
+        return None
+    if source.kind == "yaml":
+        data = _parsed_object(source)
+        if (data is None or data.get("ВидЭлемента") != "ОбщийМодуль"
+                or data.get("Окружение") != "Сервер"):
+            return None
+        name = data.get("Имя")
+        if not isinstance(name, str):
+            return None
+        return {"k": "y", "stem": _pair_stem(source.rel), "name": name}
+    if source.kind != "xbsl":
+        return None
+    toks = code_tokens(source)
+    n = len(toks)
+    anns: list[tuple[str, int, int]] = []
+    for i, t in enumerate(toks):
+        if (t.kind == "OP" and t.value == "@" and i + 1 < n
+                and toks[i + 1].kind == "IDENT"
+                and toks[i + 1].value in _CLIENT_SIDE_ANNS):
+            a = toks[i + 1]
+            anns.append((a.value, a.line, a.col))
+    if not anns:
+        return None
+    return {"k": "x", "stem": _pair_stem(source.rel), "anns": anns}
 
 
 @rule(
     "code/client-annotation-in-server-module",
     "code/client-annotation-in-server-module.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_client_ann_mapper,
 )
-def client_annotation_in_server_module(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    if not _HAVE_YAML:
-        return []
-    modules = _paired_modules(sources)
+def client_annotation_in_server_module(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    server_modules: dict[str, str] = {}
+    for fact in facts.values():
+        if fact["k"] == "y":
+            server_modules[fact["stem"]] = fact["name"]
+    if not server_modules:
+        return
+    for rel, fact in facts.items():
+        if fact["k"] != "x":
+            continue
+        name = server_modules.get(fact["stem"])
+        if name is None:
+            continue
+        for ann, line, col in fact["anns"]:
+            yield Diagnostic(
+                rel, line, col, "code/client-annotation-in-server-module",
+                Severity.WARNING,
+                i18n.t("code/client-annotation-in-server-module.annotation",
+                       ann=ann, module=name),
+            )
 
-    diags: list[Diagnostic] = []
-    for s, data in _yaml_objects(sources):
-        if data.get("ВидЭлемента") != "ОбщийМодуль" or data.get("Окружение") != "Сервер":
+
+def _client_http_mapper(source: SourceFile) -> dict | None:
+    """The map phase. A yaml marks its pair as a client common module or an HTTP service;
+    a module contributes its declarations (with the НаСервере bit) and its bare
+    `Модуль.Член(...)` accesses with the local skips settled. The reduce joins the pairs
+    and matches the accesses of the HTTP service modules against the client modules."""
+    if not _HAVE_YAML:
+        return None
+    if source.kind == "yaml":
+        data = _parsed_object(source)
+        if data is None:
+            return None
+        kind = data.get("ВидЭлемента")
+        if (kind == "ОбщийМодуль" and data.get("Окружение") == "Клиент"
+                and isinstance(data.get("Имя"), str)):
+            return {"k": "y", "stem": _pair_stem(source.rel),
+                    "role": "client", "name": data["Имя"]}
+        if kind == "HttpСервис":
+            return {"k": "y", "stem": _pair_stem(source.rel), "role": "http"}
+        return None
+    if source.kind != "xbsl":
+        return None
+    toks = code_tokens(source)
+    decls, _methods = _module_decls(toks)
+    shadowed = _shadowed_names(toks)
+    n = len(toks)
+    accesses: list[tuple[str, str, int, int]] = []
+    for i, t in enumerate(toks):
+        if t.kind != "IDENT" or t.value in shadowed:
             continue
-        name = data.get("Имя")
-        module = modules.get(str(s.path.with_suffix(".xbsl")))
-        if not isinstance(name, str) or module is None:
-            continue
-        toks = code_tokens(module)
-        n = len(toks)
-        for i, t in enumerate(toks):
-            if (t.kind == "OP" and t.value == "@" and i + 1 < n
-                    and toks[i + 1].kind == "IDENT"
-                    and toks[i + 1].value in _CLIENT_SIDE_ANNS):
-                a = toks[i + 1]
-                diags.append(Diagnostic(
-                    module.rel, a.line, a.col, "code/client-annotation-in-server-module",
-                    Severity.WARNING,
-                    i18n.t("code/client-annotation-in-server-module.annotation",
-                           ann=a.value, module=name),
-                ))
-    return diags
+        if i > 0 and toks[i - 1].kind == "OP" and toks[i - 1].value == ".":
+            continue  # a member of another object, not the module
+        if not (i + 3 < n and toks[i + 1].kind == "OP" and toks[i + 1].value == "."
+                and toks[i + 2].kind == "IDENT"
+                and toks[i + 3].kind == "OP" and toks[i + 3].value == "("):
+            continue  # only `Модуль.Член(...)` accesses are checked
+        accesses.append((t.value, toks[i + 2].value, t.line, t.col))
+    if not decls and not accesses:
+        return None
+    return {
+        "k": "x",
+        "stem": _pair_stem(source.rel),
+        "server_bit": {name: "НаСервере" in anns for name, anns in decls.items()},
+        "accesses": accesses,
+    }
 
 
 @rule(
     "code/client-module-in-http-service",
     "code/client-module-in-http-service.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_client_http_mapper,
 )
-def client_module_in_http_service(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    if not _HAVE_YAML:
-        return []
-    modules = _paired_modules(sources)
-
-    client_decls: dict[str, dict[str, frozenset[str]]] = {}
-    http_modules: list[SourceFile] = []
-    for s, data in _yaml_objects(sources):
-        kind = data.get("ВидЭлемента")
-        module = modules.get(str(s.path.with_suffix(".xbsl")))
-        if module is None:
+def client_module_in_http_service(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    client_stems: dict[str, str] = {}   # stem -> module name
+    http_stems: set[str] = set()
+    for fact in facts.values():
+        if fact["k"] != "y":
             continue
-        if (kind == "ОбщийМодуль" and data.get("Окружение") == "Клиент"
-                and isinstance(data.get("Имя"), str)):
-            decls, _ = _module_decls(code_tokens(module))
-            client_decls[data["Имя"]] = decls
-        elif kind == "HttpСервис":
-            http_modules.append(module)
-    if not client_decls or not http_modules:
-        return []
-
-    diags: list[Diagnostic] = []
-    for module in http_modules:
-        toks = code_tokens(module)
-        shadowed = _shadowed_names(toks)
-        n = len(toks)
-        for i, t in enumerate(toks):
-            if t.kind != "IDENT" or t.value not in client_decls or t.value in shadowed:
+        if fact["role"] == "client":
+            client_stems[fact["stem"]] = fact["name"]
+        else:
+            http_stems.add(fact["stem"])
+    if not client_stems or not http_stems:
+        return
+    client_bits: dict[str, dict[str, bool]] = {}  # module name -> {member: НаСервере?}
+    for fact in facts.values():
+        if fact["k"] == "x" and fact["stem"] in client_stems:
+            client_bits[client_stems[fact["stem"]]] = fact["server_bit"]
+    if not client_bits:
+        return
+    for rel, fact in facts.items():
+        if fact["k"] != "x" or fact["stem"] not in http_stems:
+            continue
+        for root, member, line, col in fact["accesses"]:
+            bits = client_bits.get(root)
+            if bits is None:
                 continue
-            if i > 0 and toks[i - 1].kind == "OP" and toks[i - 1].value == ".":
-                continue  # a member of another object, not the module
-            if not (i + 3 < n and toks[i + 1].kind == "OP" and toks[i + 1].value == "."
-                    and toks[i + 2].kind == "IDENT"
-                    and toks[i + 3].kind == "OP" and toks[i + 3].value == "("):
-                continue  # only `Модуль.Член(...)` accesses are checked
-            member = toks[i + 2]
-            anns = client_decls[t.value].get(member.value)
-            if anns is None or "НаСервере" in anns:
+            on_server = bits.get(member)
+            if on_server is None or on_server:
                 continue  # unresolved member, or one that does exist on the server
-            diags.append(Diagnostic(
-                module.rel, t.line, t.col, "code/client-module-in-http-service",
+            yield Diagnostic(
+                rel, line, col, "code/client-module-in-http-service",
                 Severity.WARNING,
                 i18n.t("code/client-module-in-http-service.call",
-                       name=f"{t.value}.{member.value}", root=t.value),
-            ))
-    return diags
+                       name=f"{root}.{member}", root=root),
+            )

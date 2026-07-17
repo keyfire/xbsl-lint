@@ -75,43 +75,6 @@ _EXCLUDED_ROOTS = frozenset({
 })
 
 
-def _object_attributes(sources: list[SourceFile]) -> dict[str, list[str]]:
-    """Per Справочник/Документ object: the declared attribute names the row type requires.
-
-    Attributes whose type does not parse, or is rooted in a collection/binary type, are
-    left out (the safe direction – the rule requires less). Objects without a parsed
-    `Реквизиты` list are absent from the result, and lists over them are skipped.
-    """
-    out: dict[str, list[str]] = {}
-    for s in sources:
-        if s.kind != "yaml":
-            continue
-        data, err = _parsed(s)
-        if err is not None or not isinstance(data, dict):
-            continue
-        if data.get("ВидЭлемента") not in _OBJECT_KINDS:
-            continue
-        name = data.get("Имя")
-        parts = data.get("Реквизиты")
-        if not isinstance(name, str) or not isinstance(parts, list):
-            continue
-        attrs: list[str] = []
-        for p in parts:
-            if not isinstance(p, dict):
-                continue
-            attr = p.get("Имя")
-            if not isinstance(attr, str) or not _NAME_RE.fullmatch(attr):
-                continue
-            typ = p.get("Тип")
-            if isinstance(typ, str):
-                chains = _parse_type_string(typ)
-                if chains is None or any(c[0] in _EXCLUDED_ROOTS for c in chains):
-                    continue
-            attrs.append(attr)
-        out[name] = attrs
-    return out
-
-
 def _source_nodes(node) -> Iterator[dict]:
     """Mapping nodes of the parsed yaml tree that carry both `Тип` and a mapping `Источник`."""
     if isinstance(node, dict):
@@ -147,24 +110,21 @@ def _declared_names(fields: list) -> set[str] | None:
     return names
 
 
-@rule(
-    "yaml/dynlist-missing-field", "yaml/dynlist-missing-field.title", "D",
-    scope="project", severity=Severity.WARNING,
-)
-def dynlist_missing_field(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    if not _HAVE_YAML:
-        return []
-    objects = _object_attributes(sources)
-    if not objects:
-        return []
-
-    diags: list[Diagnostic] = []
-    for s in sources:
-        if s.kind != "yaml":
-            continue
-        data, err = _parsed(s)
-        if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
-            continue
+def _dynlist_mapper(source: SourceFile) -> dict | None:
+    """The map phase: an object yaml contributes its attribute list, any yaml its
+    dynamic-list nodes - (object, declared field names, position). The required-versus-
+    present check runs in the reduce, where the object attributes are known."""
+    if not _HAVE_YAML or source.kind != "yaml":
+        return None
+    data, err = _parsed(source)
+    if err is not None or not isinstance(data, dict):
+        return None
+    fact: dict = {}
+    attrs = _own_attributes(data)
+    if attrs is not None:
+        fact["attrs"] = attrs
+    if data.get("ВидЭлемента"):
+        lists: list[tuple[str, list[str], int, int]] = []
         seen: dict[str, int] = {}  # pairing of repeated `Тип` values with their text positions
         for node in _source_nodes(data):
             typ = node.get("Тип")
@@ -179,9 +139,6 @@ def dynlist_missing_field(sources: list[SourceFile]) -> Iterable[Diagnostic]:
             if len(autos) != 1:
                 continue
             obj = autos[0][0]
-            required = objects.get(obj)
-            if not required:
-                continue
             src = node["Источник"]
             main = src.get("ОсновнаяТаблица")
             if not isinstance(main, dict) or main.get("Таблица") != obj:
@@ -192,21 +149,66 @@ def dynlist_missing_field(sources: list[SourceFile]) -> Iterable[Diagnostic]:
             present = _declared_names(fields)
             if present is None:
                 continue
-            missing = [a for a in required if a not in present]
-            if not missing:
-                continue
-            positions = _value_positions(s, typ)
+            positions = _value_positions(source, typ)
             if occurrence < len(positions):
                 line, col = positions[occurrence]
             elif positions:
                 line, col = positions[0]
             else:
                 line, col = 1, 1
-            diags.extend(
-                Diagnostic(
-                    s.rel, line, col, "yaml/dynlist-missing-field", Severity.WARNING,
-                    i18n.t("yaml/dynlist-missing-field.missing", attr=attr, obj=obj),
-                )
-                for attr in missing
-            )
-    return diags
+            lists.append((obj, sorted(present), line, col))
+        if lists:
+            fact["lists"] = lists
+    return fact or None
+
+
+def _own_attributes(data: dict) -> tuple[str, list[str]] | None:
+    """(object name, required attribute names) of an object yaml, else None."""
+    if data.get("ВидЭлемента") not in _OBJECT_KINDS:
+        return None
+    name = data.get("Имя")
+    parts = data.get("Реквизиты")
+    if not isinstance(name, str) or not isinstance(parts, list):
+        return None
+    attrs: list[str] = []
+    for p in parts:
+        if not isinstance(p, dict):
+            continue
+        attr = p.get("Имя")
+        if not isinstance(attr, str) or not _NAME_RE.fullmatch(attr):
+            continue
+        typ = p.get("Тип")
+        if isinstance(typ, str):
+            chains = _parse_type_string(typ)
+            if chains is None or any(c[0] in _EXCLUDED_ROOTS for c in chains):
+                continue
+        attrs.append(attr)
+    return name, attrs
+
+
+@rule(
+    "yaml/dynlist-missing-field", "yaml/dynlist-missing-field.title", "D",
+    scope="project", severity=Severity.WARNING, mapper=_dynlist_mapper,
+)
+def dynlist_missing_field(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    # Object -> its required attribute names, from the yaml facts.
+    objects: dict[str, list[str]] = {}
+    for fact in facts.values():
+        if "attrs" in fact:
+            name, attrs = fact["attrs"]
+            objects[name] = attrs
+    if not objects:
+        return
+    for rel, fact in facts.items():
+        for obj, present, line, col in fact.get("lists", ()):
+            required = objects.get(obj)
+            if not required:
+                continue
+            for attr in required:
+                if attr not in present:
+                    yield Diagnostic(
+                        rel, line, col, "yaml/dynlist-missing-field", Severity.WARNING,
+                        i18n.t("yaml/dynlist-missing-field.missing", attr=attr, obj=obj),
+                    )
+
+

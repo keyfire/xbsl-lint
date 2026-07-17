@@ -42,8 +42,8 @@ from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
 from xbsl.lexer import tokens
 from xbsl.rules.semantics import (
+    _file_local_types,
     _member_family,
-    _project_object_info,
     _stdlib_names,
     _type_chains,
     _type_ref_starts,
@@ -83,19 +83,15 @@ _NS_KINDS = frozenset({
 
 
 def _chain_problem(
-    segs: list[str], objects: dict[str, dict], stdlib: frozenset[str],
+    segs: list[str], objects: dict[str, dict],
 ) -> tuple[int, str] | None:
     """(index of the offending segment, message) for a namespace chain, or None when fine.
 
-    A chain outside the namespace form – a root that is not a kind name, or a single
-    segment – is not this rule's concern and yields None.
+    The stdlib guard (Справочник.Ссылка is a dotted generic, not an object reference)
+    runs in the map phase - here the chain is already known to name an object.
     """
     kind = segs[0]
-    if kind not in _NS_KINDS or len(segs) < 2:
-        return None
     name = segs[1]
-    if f"{kind}.{name}" in stdlib:
-        return None  # a dotted stdlib generic (Справочник.Ссылка), not an object reference
     rec = objects.get(name)
     if rec is None:
         return 1, i18n.t(
@@ -132,62 +128,105 @@ def _ns_tokens(s: SourceFile) -> list:
     ]
 
 
-def _code_diags(
-    s: SourceFile, objects: dict[str, dict], stdlib: frozenset[str],
-) -> Iterable[Diagnostic]:
-    toks = _ns_tokens(s)
+def _ns_candidate(segs: list[str], stdlib: frozenset[str]) -> list[str] | None:
+    """The namespace-form chain trimmed to its meaningful head, or None.
+
+    A chain qualifies when its root is a kind name and the second segment is present;
+    a dotted stdlib generic (Справочник.Ссылка) is settled right here."""
+    if len(segs) < 2 or segs[0] not in _NS_KINDS:
+        return None
+    if f"{segs[0]}.{segs[1]}" in stdlib:
+        return None
+    return segs[:3]
+
+
+def _ns_mapper(source: SourceFile) -> dict | None:
+    """The map phase: a yaml contributes its object record (for the namespace model) and
+    its candidate chains; a module contributes its local types (object members) and its
+    candidate chains with per-segment positions. The object model lives in the reduce."""
+    stdlib = _stdlib_names()
+    if not stdlib:
+        return None  # the catalog is not generated – the dotted-generic guard needs it
+    if source.kind == "yaml":
+        data, err = _parsed(source)
+        if err is not None or not isinstance(data, dict):
+            return None
+        fact: dict = {}
+        nm = data.get("Имя")
+        if data.get("ВидЭлемента") and isinstance(nm, str):
+            members = [
+                p["Имя"] for p in (data.get("ТабличныеЧасти") or ())
+                if isinstance(p, dict) and isinstance(p.get("Имя"), str)
+            ] if isinstance(data.get("ТабличныеЧасти"), list) else []
+            fact["obj"] = (nm, data["ВидЭлемента"], members)
+        if data.get("ВидЭлемента"):
+            cands = []
+            for value in dict.fromkeys(_type_values(data)):  # unique, in document order
+                chains = _parse_type_string(value)
+                if not chains:
+                    continue
+                positions: list[tuple[int, int]] | None = None
+                for chain in chains:
+                    segs = _ns_candidate(chain, stdlib)
+                    if segs is None:
+                        continue
+                    if positions is None:
+                        positions = _value_positions(source, value) or [(1, 1)]
+                    # a yaml value has one textual position for every segment
+                    cands.append((segs, positions, positions))
+            if cands:
+                fact["cands"] = cands
+        if not fact:
+            return None
+        fact["k"] = "y"
+        return fact
+    if source.kind != "xbsl":
+        return None
+    toks = _ns_tokens(source)
+    cands = []
     for start in _type_ref_starts(toks):
         chains, _ = _type_chains(toks, start)
         for chain in chains:
-            problem = _chain_problem([t.value for t in chain], objects, stdlib)
-            if problem is None:
+            segs = _ns_candidate([t.value for t in chain], stdlib)
+            if segs is None:
                 continue
-            idx, message = problem
-            seg = chain[idx]
-            yield Diagnostic(
-                s.rel, seg.line, seg.col, "code/unknown-ns-object",
-                Severity.WARNING, message,
-            )
-
-
-def _yaml_diags(
-    s: SourceFile, objects: dict[str, dict], stdlib: frozenset[str],
-) -> Iterable[Diagnostic]:
-    data, err = _parsed(s)
-    if err is not None or not isinstance(data, dict) or not data.get("ВидЭлемента"):
-        return
-    for value in dict.fromkeys(_type_values(data)):  # unique, in document order
-        chains = _parse_type_string(value)
-        if not chains:
-            continue
-        for chain in chains:
-            problem = _chain_problem(chain, objects, stdlib)
-            if problem is None:
-                continue
-            positions = _value_positions(s, value) or [(1, 1)]
-            for line, col in positions:
-                yield Diagnostic(
-                    s.rel, line, col, "code/unknown-ns-object",
-                    Severity.WARNING, problem[1],
-                )
+            pos = [(t.line, t.col) for t in chain[:3]]
+            pos1 = [pos[1]] if len(pos) > 1 else [(chain[0].line, chain[0].col)]
+            pos2 = [pos[2]] if len(pos) > 2 else pos1
+            cands.append((segs, pos1, pos2))
+    local = _file_local_types(source)
+    if not cands and not local:
+        return None
+    owner = source.path.name[: -len(".xbsl")].split(".", 1)[0]
+    return {"k": "x", "owner": owner, "local_types": sorted(local), "cands": cands}
 
 
 @rule(
     "code/unknown-ns-object", "code/unknown-ns-object.title", "D",
-    scope="project", severity=Severity.WARNING,
+    scope="project", severity=Severity.WARNING, mapper=_ns_mapper,
 )
-def unknown_ns_object(sources: list[SourceFile]) -> Iterable[Diagnostic]:
-    stdlib = _stdlib_names()
-    if not stdlib:
-        return []  # the catalog is not generated – the dotted-generic guard needs it
-    objects = _project_object_info(sources)
+def unknown_ns_object(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    # The object model: yaml records plus the local types of the objects' modules.
+    objects: dict[str, dict] = {}
+    for fact in facts.values():
+        if fact["k"] == "y" and "obj" in fact:
+            name, kind, members = fact["obj"]
+            objects[name] = {"kind": kind, "members": set(members)}
+    for fact in facts.values():
+        if fact["k"] == "x":
+            rec = objects.get(fact["owner"])
+            if rec is not None:
+                rec["members"].update(fact["local_types"])
     if not objects:
-        return []
-
-    diags: list[Diagnostic] = []
-    for s in sources:
-        if s.kind == "xbsl":
-            diags.extend(_code_diags(s, objects, stdlib))
-        elif s.kind == "yaml":
-            diags.extend(_yaml_diags(s, objects, stdlib))
-    return diags
+        return
+    for rel, fact in facts.items():
+        for segs, pos1, pos2 in fact.get("cands", ()):
+            problem = _chain_problem(segs, objects)
+            if problem is None:
+                continue
+            idx, message = problem
+            for line, col in (pos1 if idx == 1 else pos2):
+                yield Diagnostic(
+                    rel, line, col, "code/unknown-ns-object",
+                    Severity.WARNING, message,
+                )
