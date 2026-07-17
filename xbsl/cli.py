@@ -77,6 +77,14 @@ def build_parser() -> argparse.ArgumentParser:
              "символы, переводы строк) и вывести оставшиеся; правит только однозначно",
     )
     parser.add_argument(
+        "--jobs",
+        type=int,
+        default=0,
+        metavar="N",
+        help="процессов для файловых правил: 0 – авто (включается на больших прогонах), "
+             "1 – последовательно, N – явное число воркеров",
+    )
+    parser.add_argument(
         "--list-rules", action="store_true", help="вывести список правил и выйти"
     )
     parser.add_argument(
@@ -517,10 +525,17 @@ def main(argv: list[str] | None = None) -> int:
         files = [Path(args.filename)]
     else:
         files = discover(args.paths or ["."])
-        sources = [load(p) for p in files]
-        diagnostics = run_sources(sources, select=select, ignore=ignore, enable=enable)
         if args.fix:
+            # --fix правит буферы на месте - ему нужны sources в этом процессе.
+            sources = [load(p) for p in files]
+            diagnostics = run_sources(sources, select=select, ignore=ignore, enable=enable)
             return _apply_fixes(sources, diagnostics, args)
+        from xbsl.engine import run_parallel
+
+        diagnostics = run_parallel(
+            files, select=select, ignore=ignore, enable=enable,
+            jobs=args.jobs, element_version=args.element_version or None,
+        )
 
     if args.write_baseline:
         # Freeze mode: the findings become the baseline instead of a report. Deliberate debt –

@@ -182,7 +182,14 @@ class NameRef:
 
 
 def _names(source: SourceFile) -> list[NameRef]:
-    """Все имена описания: имя элемента и имена в секциях (реквизиты, ТЧ, значения и т. д.)."""
+    """Все имена описания: имя элемента и имена в секциях (реквизиты, ТЧ, значения и т. д.).
+
+    Кэшируется: результат общий для всех правил группы naming/, а их двенадцать –
+    без кэша разбор одного файла повторялся на каждое правило (виден в профиле).
+    """
+    cached = source.cache.get("naming_names")
+    if cached is not None:
+        return cached
     lm = linemap(source)
     sections: list[tuple[int, int, str]] = [
         (m.start(), len(m.group(1)), m.group(2)) for m in _SECTION_RE.finditer(source.text)
@@ -201,6 +208,7 @@ def _names(source: SourceFile) -> list[NameRef]:
                     section = name
                     break
         out.append(NameRef(m.group(3), line, col, section))
+    source.cache["naming_names"] = out
     return out
 
 

@@ -419,6 +419,10 @@ class _Parser:
     # --- cursor helpers ---
 
     def peek(self, ahead: int = 0) -> Token:
+        # Горячая точка (миллионы вызовов на проект): advance() не уводит pos за EOF,
+        # так что для ahead=0 индекс всегда в границах - без min().
+        if ahead == 0:
+            return self.toks[self.pos]
         i = min(self.pos + ahead, len(self.toks) - 1)
         return self.toks[i]
 

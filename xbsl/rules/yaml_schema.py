@@ -88,13 +88,18 @@ _NAME_LINE_RE = re.compile(
 )
 
 
+# libyaml (CSafeLoader) parses 5-10x faster than the pure-Python loader and dominates the
+# whole-project run time; the pure loader stays as the fallback for builds without it.
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
 def _parsed(source: SourceFile):
     """The parsed YAML (or None) and the parse error (or None), cached."""
     if "yaml" not in source.cache:
         data = None
         err = None
         try:
-            data = yaml.safe_load(source.text)
+            data = yaml.load(source.text, Loader=_LOADER)
         except yaml.YAMLError as exc:  # noqa: BLE001
             err = exc
         source.cache["yaml"] = data

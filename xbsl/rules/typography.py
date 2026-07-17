@@ -69,6 +69,12 @@ _STRAIGHT = {"“": '"', "”": '"', "‘": "'", "’": "'", "«": '"', "»": '"
 
 
 def _hits(source: SourceFile, kinds: tuple[str, ...], chars: str):
+    # В подавляющем большинстве файлов искомых символов нет вовсе: проверка по всему
+    # тексту на C-скорости снимает посимвольный проход по токенам (он был заметен в
+    # профиле целопроектного прогона).
+    text = source.text
+    if not any(ch in text for ch in chars):
+        return
     lm = linemap(source)
     for tok in tokens(source):
         if tok.kind not in kinds:

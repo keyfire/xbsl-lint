@@ -101,6 +101,9 @@ def _file_local_type_decls(s: SourceFile) -> list[tuple[str, int]]:
     The position side of _file_local_types – kept separate so the rules keep their set-based
     signature while the project index (xbsl.indexer) gets the declaration lines.
     """
+    cached = s.cache.get("local_type_decls")
+    if cached is not None:
+        return cached
     decls: list[tuple[str, int]] = []
     toks = tokens(s)
     for i, t in enumerate(toks):
@@ -109,6 +112,9 @@ def _file_local_type_decls(s: SourceFile) -> list[tuple[str, int]]:
                 if toks[j].kind == "IDENT":
                     decls.append((toks[j].value, toks[j].line))
                     break
+    # Кэш: объявления нужны нескольким проектным правилам, без него цикл по токенам
+    # повторялся на каждое (заметно на целопроектном прогоне).
+    s.cache["local_type_decls"] = decls
     return decls
 
 

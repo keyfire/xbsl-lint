@@ -264,6 +264,79 @@ def run(
     return run_sources(sources, select=select, ignore=ignore, enable=enable)
 
 
+# --- parallel run ------------------------------------------------------------------------
+#
+# The file-scope rules are independent per file, so they shard across processes; the
+# project-scope rules need every source at once and stay in the parent. Worth it only on
+# big projects: on Windows every worker pays a spawn (a fresh interpreter + imports), so
+# small runs are faster sequentially - the auto mode picks based on the file count.
+
+_PARALLEL_MIN_FILES = 120
+
+
+def _worker_lint(payload: tuple) -> list[Diagnostic]:
+    paths, select, ignore, enable, lang, element_version = payload
+    from xbsl import dataset, i18n
+
+    i18n.set_lang(lang)
+    if element_version:
+        dataset.set_version(element_version)
+    sources = [load(Path(p)) for p in paths]
+    return run_sources(sources, select=select, ignore=ignore, enable=enable, scopes=("file",))
+
+
+def resolve_jobs(jobs: int, file_count: int) -> int:
+    """Число воркеров: 0 – авто (по размеру прогона и ядрам), 1 – последовательно."""
+    import os
+
+    cpus = os.cpu_count() or 1
+    if jobs == 0:
+        if file_count < _PARALLEL_MIN_FILES or cpus < 4:
+            return 1
+        return max(2, cpus - 1)
+    return max(1, min(jobs, cpus))
+
+
+def run_parallel(
+    paths: list[Path],
+    *,
+    select: set[str] | None = None,
+    ignore: set[str] | None = None,
+    enable: set[str] | None = None,
+    jobs: int = 0,
+    lang: str | None = None,
+    element_version: str | None = None,
+) -> list[Diagnostic]:
+    """run() с шардированием файловых правил по процессам; проектные – в родителе.
+
+    Диагностики сортируются по (файл, строка, колонка) – параллельный и
+    последовательный прогоны дают одинаковый отчёт.
+    """
+    workers = resolve_jobs(jobs, len(paths))
+    if workers <= 1:
+        diags = run(paths, select=select, ignore=ignore, enable=enable)
+        return sorted(diags, key=lambda d: (d.path, d.line, d.col, d.rule_id))
+
+    from concurrent.futures import ProcessPoolExecutor
+
+    from xbsl import i18n
+
+    chunks = [[str(p) for p in paths[i::workers]] for i in range(workers)]
+    payloads = [
+        (chunk, select, ignore, enable, lang or i18n.current_lang(), element_version)
+        for chunk in chunks if chunk
+    ]
+    diags: list[Diagnostic] = []
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        for part in pool.map(_worker_lint, payloads):
+            diags.extend(part)
+    # Проектные правила – по всем файлам сразу, в родителе.
+    sources = [load(p) for p in paths]
+    diags.extend(run_sources(sources, select=select, ignore=ignore, enable=enable,
+                             scopes=("project",)))
+    return sorted(diags, key=lambda d: (d.path, d.line, d.col, d.rule_id))
+
+
 # Importing the rules package registers them (the decorators run on module import).
 from xbsl import rules as _rules  # noqa: E402,F401
 from xbsl import plugins as _plugins  # noqa: E402

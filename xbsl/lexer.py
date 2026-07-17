@@ -47,7 +47,15 @@ def _operators() -> list[str]:
     return sorted(_language()["operators"], key=lambda s: (-len(s), s))
 
 
-@dataclass
+@lru_cache(maxsize=1)
+def _operator_re() -> re.Pattern:
+    # One compiled alternation instead of a startswith() loop per punctuation char –
+    # the loop was visible in the whole-project profile. Alternatives keep the
+    # longest-match order of _operators().
+    return re.compile("|".join(re.escape(op) for op in _operators()))
+
+
+@dataclass(slots=True)  # миллионы экземпляров на проект - без __dict__ заметно быстрее и легче
 class Token:
     kind: str  # KEYWORD | IDENT | NUMBER | STRING | COMMENT | OP | BOM | UNKNOWN | EOF
     value: str
@@ -130,10 +138,15 @@ def _skip_interpolation(text: str, start: int) -> int:
     return n
 
 
-def tokenize(text: str) -> list[Token]:
-    """Parse source text into a list of tokens (whitespace and line breaks omitted)."""
-    lm = _LineMap(text)
-    ops = _operators()
+def tokenize(text: str, lm: "_LineMap | None" = None) -> list[Token]:
+    """Parse source text into a list of tokens (whitespace and line breaks omitted).
+
+    lm – готовая карта строк файла, если она уже построена (tokens() передаёт кэшированную,
+    чтобы не считать переводы строк дважды).
+    """
+    if lm is None:
+        lm = _LineMap(text)
+    op_re = _operator_re()
     kwforms = _keyword_forms()
     tokens: list[Token] = []
     i, n = 0, len(text)
@@ -227,15 +240,11 @@ def tokenize(text: str) -> list[Token]:
             i = m.end()
             continue
 
-        # Operators and punctuation (longest match by length)
-        matched = None
-        for op in ops:
-            if text.startswith(op, i):
-                matched = op
-                break
-        if matched is not None:
-            emit("OP", i, i + len(matched))
-            i += len(matched)
+        # Operators and punctuation (longest match by alternation order)
+        m = op_re.match(text, i)
+        if m is not None:
+            emit("OP", i, m.end())
+            i = m.end()
             continue
 
         # An unknown character – a single token (let a rule flag it)
@@ -251,7 +260,7 @@ def tokens(source) -> list[Token]:
     """Tokens of a source file, cached in source.cache."""
     cached = source.cache.get("tokens")
     if cached is None:
-        cached = tokenize(source.text)
+        cached = tokenize(source.text, linemap(source))
         source.cache["tokens"] = cached
     return cached
 
