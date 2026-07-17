@@ -36,6 +36,7 @@ _DATA_DEPENDENT = {
     "test_statement_no_effect",  # правило разбирает код парсером
     "test_return_mismatch",  # правило разбирает код парсером
     "test_catch_exceptions",  # правилу нужен каталог stdlib
+    "test_call_arity",  # правило разбирает код парсером
 }
 
 

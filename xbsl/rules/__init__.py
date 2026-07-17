@@ -13,6 +13,7 @@ from . import typography, whitespace  # noqa: F401
 
 # Tier C – code structure, basic syntax and local variables:
 from . import (  # noqa: F401
+    call_arity,
     code_structure,
     code_syntax,
     locals_usage,

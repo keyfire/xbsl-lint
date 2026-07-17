@@ -3,7 +3,7 @@
 **English** · [Русский](https://github.com/keyfire/xbsl/blob/main/docs/RULES.ru.md)
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 83 rules.
+runtime is `xbsl list-rules` (or the MCP `list_rules`). Currently there are 84 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -74,6 +74,7 @@ are off by default (accumulated debt, `info`): enable them with `--select style`
 | `code/parse-error` | error | on | file | Syntax error (a full parse against the platform grammar) | [docs](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/statement-no-effect` | warning | on | file | Expression statement with no effect: the value is dropped (often a keyword typo like `возрат 5`) | – |
 | `code/return-mismatch` | error | on | file | Return does not match the method signature (a value in a void method, a bare `возврат` in a typed one) - the compiler rejects such code | [docs](https://1cmycloud.com/docs/help/topics/methods-in-built-in-script-language/) |
+| `code/call-arity` | error | on | file | Argument count of a local call outside the method's [required, total] range | [docs](https://1cmycloud.com/docs/help/topics/methods-in-built-in-script-language/) |
 | `code/brackets` | error | on | file | Unbalanced brackets () [] {} | – |
 | `code/blocks` | error | on | file | Unbalanced blocks and ';' | [docs](https://1cmycloud.com/docs/help/topics/general-design/) |
 | `code/ternary-and-or` | error | on | file | Compound ternary condition without parentheses | [docs](https://1cmycloud.com/docs/help/topics/question-mark-operation/) |
