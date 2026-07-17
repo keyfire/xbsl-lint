@@ -89,3 +89,9 @@ the whole xbsl/ tree was brought to this canon). Russian remains in: the bilingu
 MESSAGES, argparse help texts, user-facing string literals (ScaffoldError, notes),
 generated-code templates, quotes of the platform documentation inside comments, and XBSL
 citations in backticks. Tests may keep Russian docstrings.
+
+Never leave mypyc build artifacts (`xbsl/*.pyd`, the top-level `*__mypyc.pyd`) in this
+editable checkout: the shared mypyc runtime lands in the repo ROOT, outside the package,
+so any process started from another cwd (the VS Code LSP server, the MCP server) dies on
+import with ModuleNotFoundError - the whole engine goes down. Native builds are for the
+CI wheels; after a local `build_ext --inplace` experiment, delete the .pyd files.
