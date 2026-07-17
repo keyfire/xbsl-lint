@@ -1,4 +1,4 @@
-"""Проверки семейства правил окружения (xbsl/rules/environment.py)."""
+"""Checks of the environment rule family (xbsl/rules/environment.py)."""
 
 from xbsl import engine
 from xbsl.cli import discover
@@ -40,7 +40,7 @@ def test_server_call_from_handler_flagged(tmp_path):
 
 
 def test_handler_with_trailing_comment_flagged(tmp_path):
-    # комментарий после имени обработчика в yaml не выводит его из-под проверки
+    # a comment after the handler name in yaml does not take it out of the check
     d = _форма(
         tmp_path,
         "метод ПриНажатии()\n"
@@ -70,7 +70,7 @@ def test_server_call_with_client_access_ok(tmp_path):
 
 
 def test_server_handler_itself_ok(tmp_path):
-    # обработчик сам исполняется на сервере – вызов серверного метода корректен
+    # the handler itself runs on the server - calling a server method is correct
     d = _форма(
         tmp_path,
         "@НаСервере\n"
@@ -86,7 +86,7 @@ def test_server_handler_itself_ok(tmp_path):
 
 
 def test_annotation_handler_flagged(tmp_path):
-    # обработчик задан аннотацией @Обработчик, а не в yaml
+    # the handler is declared via the @Обработчик annotation, not in yaml
     d = _форма(
         tmp_path,
         "@Обработчик\n"
@@ -103,7 +103,7 @@ def test_annotation_handler_flagged(tmp_path):
 
 
 def test_member_call_not_flagged(tmp_path):
-    # 'Объект.Сохранить()' – метод другого объекта, не голое имя модуля
+    # 'Объект.Сохранить()' is another object's method, not a bare module-level name
     d = _форма(
         tmp_path,
         "метод ПриНажатии(Объект: Структура)\n"
@@ -118,7 +118,7 @@ def test_member_call_not_flagged(tmp_path):
 
 
 def test_shadowed_name_not_flagged(tmp_path):
-    # локальная переменная затеняет имя серверного метода
+    # a local variable shadows the server method name
     d = _форма(
         tmp_path,
         "метод ПриНажатии(Данные: Структура)\n"
@@ -134,7 +134,7 @@ def test_shadowed_name_not_flagged(tmp_path):
 
 
 def test_call_outside_handler_not_flagged(tmp_path):
-    # вызов из обычного (не обработчик) клиентского метода правило не трогает
+    # the rule does not touch a call from an ordinary (non-handler) client method
     d = _форма(
         tmp_path,
         "метод Вспомогательный()\n"
@@ -150,7 +150,7 @@ def test_call_outside_handler_not_flagged(tmp_path):
 
 
 def test_call_in_next_method_not_attributed_to_handler(tmp_path):
-    # вызов в следующем за обработчиком методе не приписывается телу обработчика
+    # a call in the method following the handler is not attributed to the handler body
     d = _форма(
         tmp_path,
         "метод ПриНажатии()\n"
@@ -287,7 +287,7 @@ def test_mixed_module_call_in_http_service_ok(tmp_path):
 
 
 def test_server_annotated_member_ok(tmp_path):
-    # член клиентского модуля с @НаСервере существует на сервере
+    # a member of a client module with @НаСервере does exist on the server
     d = _сервис(
         tmp_path, "Клиент",
         "@НаСервере\nстатический метод Хелпер(): Строка\n    возврат \"х\"\n;\n",
@@ -297,7 +297,7 @@ def test_server_annotated_member_ok(tmp_path):
 
 
 def test_unresolved_member_skipped(tmp_path):
-    # член не найден в модуле – не гадаем
+    # the member is not found in the module - do not guess
     d = _сервис(
         tmp_path, "Клиент", _КЛИЕНТСКИЙ_ХЕЛПЕР,
         "метод Обработать()\n    знч Х = МодульКлиент.Неизвестный()\n;\n",
@@ -317,7 +317,7 @@ def test_shadowed_module_name_skipped(tmp_path):
 
 
 def test_member_root_not_flagged(tmp_path):
-    # 'Данные.МодульКлиент.Хелпер()' – корень не имя модуля
+    # 'Данные.МодульКлиент.Хелпер()' - the root is not a module name
     d = _сервис(
         tmp_path, "Клиент", _КЛИЕНТСКИЙ_ХЕЛПЕР,
         "метод Обработать(Данные: Структура)\n"
@@ -328,7 +328,7 @@ def test_member_root_not_flagged(tmp_path):
 
 
 def test_call_from_ordinary_module_not_checked(tmp_path):
-    # вызов из обычного общего модуля (не HttpСервис) правило не трогает
+    # the rule does not touch a call from an ordinary common module (not an HttpСервис)
     (tmp_path / "МодульКлиент.yaml").write_text(
         "ВидЭлемента: ОбщийМодуль\nИмя: МодульКлиент\nОкружение: Клиент\n",
         encoding="utf-8",

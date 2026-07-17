@@ -1,4 +1,4 @@
-"""Тесты правила code/return-mismatch: возврат обязан согласоваться с сигнатурой метода."""
+"""Tests of the code/return-mismatch rule: a return must agree with the method signature."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def test_matching_returns_are_fine():
 
 
 def test_lambda_is_its_own_context():
-    # возврат значения в теле лямбды не относится к объемлющему методу-ничто
+    # returning a value inside a lambda body does not belong to the enclosing void method
     diags = _lint(
         "метод Тест()\n"
         "    знч Ф = метод () ->\n"

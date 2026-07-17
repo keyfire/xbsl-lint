@@ -1,7 +1,7 @@
-"""Формат GitLab Code Quality (report.codeclimate + CLI --format codeclimate).
+"""GitLab Code Quality format (report.codeclimate + CLI --format codeclimate).
 
-Не зависит от данных Элемента: сама функция работает на готовых Diagnostic, а CLI-тест
-опирается на правило тира B (whitespace/trailing), которому данные не нужны.
+Does not depend on the Element data: the function itself works on ready-made Diagnostic
+objects, and the CLI test relies on a tier-B rule (whitespace/trailing) that needs no data.
 """
 
 import json
@@ -41,7 +41,7 @@ def test_issue_fields_and_severity_mapping(tmp_path):
     assert by_rule["code/brackets"]["description"] == "скобка"
     assert by_rule["code/brackets"]["location"]["lines"]["begin"] == 3
 
-    # Сериализуется в валидный JSON без потерь (включая кириллицу)
+    # Serializes to valid JSON without loss (including Cyrillic)
     assert json.loads(json.dumps(issues, ensure_ascii=False)) == issues
 
 
@@ -54,7 +54,7 @@ def test_paths_are_posix_relative(tmp_path):
     assert "\\" not in path
     assert not path.startswith("./")
 
-    # Путь вне корня прогона не роняет отчёт – остаётся целиком, но в POSIX-виде
+    # A path outside the run root does not break the report - it stays whole, but in POSIX form
     outside = report.codeclimate([_d(path=abs_path)], base=tmp_path / "другой")
     assert "\\" not in outside[0]["location"]["path"]
 
@@ -62,18 +62,18 @@ def test_paths_are_posix_relative(tmp_path):
 def test_fingerprint_stable_and_unique():
     diags = [
         _d(line=1, message="а"),
-        _d(line=2, message="а"),                       # другая строка
-        _d(line=1, message="б"),                       # другое сообщение
-        _d(line=1, rule="typography/em-dash", message="а"),  # другое правило
-        _d(path="Y.xbsl", line=1, message="а"),        # другой файл
+        _d(line=2, message="а"),                       # different line
+        _d(line=1, message="б"),                       # different message
+        _d(line=1, rule="typography/em-dash", message="а"),  # different rule
+        _d(path="Y.xbsl", line=1, message="а"),        # different file
     ]
     base = Path("К")
 
     first = [i["fingerprint"] for i in report.codeclimate(diags, base=base)]
     second = [i["fingerprint"] for i in report.codeclimate(list(diags), base=base)]
 
-    assert first == second                 # стабильны между прогонами
-    assert len(set(first)) == len(first)   # различны для разных находок
+    assert first == second                 # stable across runs
+    assert len(set(first)) == len(first)   # distinct for distinct findings
     assert all(len(f) == 32 for f in first)  # hex md5
 
 
@@ -84,7 +84,7 @@ def test_fingerprint_disambiguates_exact_duplicates():
     prints = [i["fingerprint"] for i in issues]
     assert len(set(prints)) == 3
 
-    # Счётчик вхождений детерминирован: повторный прогон даёт те же отпечатки в том же порядке
+    # The occurrence counter is deterministic: a repeat run yields the same prints in the same order
     again = [i["fingerprint"] for i in report.codeclimate([dup, dup, dup], base=Path("К"))]
     assert prints == again
 
@@ -96,19 +96,19 @@ def test_empty_report():
 def test_cli_codeclimate_output(tmp_path, monkeypatch, capsys):
     from xbsl import cli
 
-    # Правилам тира B данные не нужны, но main() резолвит версию данных до прогона
+    # Tier-B rules need no data, but main() resolves the data version before the run
     if not dataset.available_versions():
         pytest.skip("нет данных Элемента – main() не пройдёт резолв версии")
 
     f = tmp_path / "Ч.xbsl"
-    f.write_text("метод Ф()\n    возврат 1  \n;\n", encoding="utf-8")  # хвостовой пробел
+    f.write_text("метод Ф()\n    возврат 1  \n;\n", encoding="utf-8")  # trailing whitespace
     monkeypatch.chdir(tmp_path)
 
-    # Правило тира B – данные Элемента не нужны; выбираем только его
+    # A tier-B rule - no Element data needed; select only it
     code = cli.main(["--format", "codeclimate", "--select", "whitespace/trailing", "Ч.xbsl"])
 
     issues = json.loads(capsys.readouterr().out)
-    assert code == 0  # только warning
+    assert code == 0  # warnings only
     assert isinstance(issues, list) and issues
     issue = next(i for i in issues if i["check_name"] == "whitespace/trailing")
     assert issue["severity"] == "minor"

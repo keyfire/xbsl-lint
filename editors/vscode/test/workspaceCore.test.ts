@@ -55,23 +55,23 @@ test("groupReportByFile: выключенные правила выпадают,
   assert.deepStrictEqual(grouped.get(path.join(folder, "Форма.yaml"))!.map((d) => d.rule), ["a"]);
 });
 
-// --- регрессия: правки для файла, открытого ПОСЛЕ воркспейс-прогона ------------------------
-// UX-щель: файл закрыт во время прогона (его диагностика построена без текста строки,
-// makeDiagnostic(d, undefined)), позже открыт чистым – `--stdin` не гоняется, и снапшот
-// Quick Fix обязан восстанавливаться из сохранённого сырого отчёта. Правка должна
-// находиться по якорю показанной диагностики.
+// --- regression: fixes for a file opened AFTER a workspace run -----------------------------
+// UX gap: the file is closed during the run (its diagnostic is built without the line text,
+// makeDiagnostic(d, undefined)), later opened clean - `--stdin` is not run, and the Quick Fix
+// snapshot must be restored from the saved raw report. The fix must be found by the anchor
+// of the displayed diagnostic.
 
 test("регрессия: сохранённый raw воркспейс-прогона даёт правку по якорю диагностики закрытого файла", () => {
   const fix: FixEdit = { start: 20, end: 23, newText: "" };
   const d = diag("Модуль.xbsl", 2, 14, "whitespace/trailing", fix);
   const grouped = groupReportByFile([d, diag("Модуль.xbsl", 5, 1, "code/unused-loop-var")], folder, () => false);
 
-  // То, что хранится в workspaceResults и на открытии кладётся в fixStore.
+  // What is stored in workspaceResults and put into fixStore on open.
   const raw = grouped.get(path.join(folder, "Модуль.xbsl"))!;
 
-  // Диагностика файла, закрытого при прогоне, строится без текста строки.
+  // A diagnostic of a file closed during the run is built without the line text.
   const span = computeRange(undefined, d.line, d.col);
-  // Открытие файла: провайдер ищет правку по якорю range.start показанной диагностики.
+  // Opening the file: the provider looks up the fix by the shown diagnostic's range.start anchor.
   const providerKey = anchorKey(span.sl + 1, span.sc + 1, d.rule);
   assert.deepStrictEqual(fixIndex(raw).get(providerKey), fix);
 });

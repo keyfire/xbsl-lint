@@ -1,7 +1,7 @@
-"""Индекс проекта (--index): схема полей, позиции, пустой проект, интеграция с CLI.
+"""The project index (--index): the field schema, positions, an empty project, CLI integration.
 
-Зависит от данных Элемента: индексу нужны лексер (language.json) и семейства порождаемых
-типов (stdlib.json object_members) – см. conftest, модуль пропускается без данных.
+Depends on the Element data: the index needs the lexer (language.json) and the families of
+derived types (stdlib.json object_members) - see conftest, the module is skipped without data.
 """
 
 import json
@@ -12,7 +12,7 @@ import pytest
 from xbsl import __version__, cli
 from xbsl.indexer import build_index
 
-# Fixture-проект: номера строк в проверках ниже – 1-based позиции в этих литералах.
+# The fixture project: line numbers in the checks below are 1-based positions in these literals.
 _CATALOG_YAML = "\n".join([
     "ВидЭлемента: Справочник",                       # 1
     "Ид: 5d3f0a1b-2c4d-4e5f-8a9b-0c1d2e3f4a5b",      # 2
@@ -26,7 +26,7 @@ _CATALOG_YAML = "\n".join([
     "        Имя: Состав",                           # 10
     "        Реквизиты:",                            # 11
     "            -",                                 # 12
-    "                Имя: Наименование",             # 13 – глубже уровня ТЧ, не должно засчитаться
+    "                Имя: Наименование",             # 13 - deeper than the tabular section level, must not be counted
     "                Тип: Строка",                   # 14
     "",
 ])
@@ -45,7 +45,7 @@ _CATALOG_XBSL = "\n".join([
     "    возврат новый Сводка()",                    # 11
     ";",                                             # 12
     "",                                              # 13
-    "@Обработчик(\"Событие\")",                      # 14 – аннотация с аргументами
+    "@Обработчик(\"Событие\")",                      # 14 - an annotation with arguments
     "метод Обработать()",                            # 15
     ";",                                             # 16
     "",                                              # 17
@@ -85,10 +85,10 @@ _FORM_YAML = "\n".join([
 
 _USAGE_XBSL = "\n".join([
     "метод Точка()",                              # 1
-    "    ПодготовитьДанные()",                    # 2 – голый вызов в своём модуле
-    "    возврат Товары.ДанныеСтраницы(\"x\")",   # 3 – объект-корень + вызов метода модуля Товары
+    "    ПодготовитьДанные()",                    # 2 - a bare call in its own module
+    "    возврат Товары.ДанныеСтраницы(\"x\")",   # 3 - the root object + a call of a method of module Товары
     ";",                                          # 4
-    "метод ПодготовитьДанные()",                  # 5 – объявление, не использование
+    "метод ПодготовитьДанные()",                  # 5 - a declaration, not a usage
     ";",                                          # 6
     "",
 ])
@@ -99,7 +99,7 @@ _USAGE_YAML = "\n".join([
     "Имя: Использование",                         # 3
     "Наследует:",                                 # 4
     "    Тип: ПроизвольныйКомпонент",             # 5
-    "    Обработчик: ПодготовитьДанные",          # 6 – ссылка на метод парного модуля
+    "    Обработчик: ПодготовитьДанные",          # 6 - a reference to a method of the pair module
     "",
 ])
 
@@ -122,11 +122,11 @@ def test_meta_and_schema(project):
     assert idx["meta"]["root"] == project.resolve().as_posix()
     assert "\\" not in idx["meta"]["root"]
     assert idx["meta"]["version"] == __version__
-    json.dumps(idx, ensure_ascii=False)  # сериализуется без потерь
+    json.dumps(idx, ensure_ascii=False)  # serializes losslessly
 
     for obj in idx["objects"]:
         assert set(obj) >= {"name", "kind", "path", "line", "tabular", "local_types", "family"}
-        assert "\\" not in obj["path"]  # пути – POSIX, относительные к meta.root
+        assert "\\" not in obj["path"]  # paths are POSIX, relative to meta.root
     for m in idx["methods"]:
         assert set(m) == {"module", "name", "path", "line", "annotations"}
     for c in idx["components"]:
@@ -139,15 +139,15 @@ def test_object_tabular_and_local_types(project):
 
     assert obj["kind"] == "Справочник"
     assert obj["path"] == "Основное/Товары.yaml"
-    assert obj["line"] == 3  # строка ключа Имя
+    assert obj["line"] == 3  # the line of the Имя key
     assert obj["tabular"] == [{"name": "Состав", "line": 10}]
     assert obj["local_types"] == [
         {"name": "Сводка", "path": "Основное/Товары.xbsl", "line": 4},
     ]
-    # family – готовый список для автодополнения после точки: порождаемые типы + ТЧ + структуры
+    # family - a ready-made after-dot completion list: derived types + tabular sections + structures
     for member in ("Ссылка", "Объект", "Состав", "Сводка"):
         assert member in obj["family"]
-    assert "values" not in obj  # values – только у перечислений
+    assert "values" not in obj  # values - enumerations only
 
 
 def test_enum_values(project):
@@ -172,7 +172,7 @@ def test_methods_with_annotations(project):
     assert m["line"] == 10
     assert m["annotations"] == ["ВПроекте", "НаСервере", "ДоступноСКлиента"]
 
-    assert methods["Обработать"]["annotations"] == ["Обработчик"]  # аргументы отброшены
+    assert methods["Обработать"]["annotations"] == ["Обработчик"]  # the arguments are dropped
     assert methods["БезАннотаций"]["annotations"] == []
 
 
@@ -204,16 +204,16 @@ def test_references(project):
     def has(name, qualifier, module):
         return any(r["name"] == name and r["qualifier"] == qualifier and r["module"] == module for r in refs)
 
-    assert has("ПодготовитьДанные", "", "Использование")  # голый вызов и/или yaml-обработчик
+    assert has("ПодготовитьДанные", "", "Использование")  # a bare call and/or the yaml handler
     assert has("ДанныеСтраницы", "Товары", "Использование")  # Товары.ДанныеСтраницы(...)
-    assert has("Товары", "", "Использование")  # объект как корень цепочки
-    # обработчик в yaml – тоже использование метода
+    assert has("Товары", "", "Использование")  # the object as a chain root
+    # a handler in yaml is a method usage too
     assert any(r["name"] == "ПодготовитьДанные" and r["path"].endswith("Использование.yaml") for r in refs)
-    # объявление метода использованием не считается (нет записи на строке 5 в .xbsl)
+    # a method declaration does not count as a usage (no record for line 5 in the .xbsl)
     assert not any(
         r["name"] == "ПодготовитьДанные" and r["path"].endswith("Использование.xbsl") and r["line"] == 5 for r in refs
     )
-    # позиция вызова ДанныеСтраницы: строка 3, col 0-based
+    # the call site of ДанныеСтраницы: line 3, col 0-based
     site = next(r for r in refs if r["name"] == "ДанныеСтраницы")
     assert site["line"] == 3 and site["path"] == "Основное/Использование.xbsl"
     assert isinstance(site["col"], int) and site["col"] >= 0
@@ -221,8 +221,8 @@ def test_references(project):
 
 
 def test_trailing_comments_in_yaml(tmp_path):
-    # Комментарий после значения или ключа секции по YAML не является их частью:
-    # имя объекта и строки табличных частей находятся как обычно.
+    # Per YAML, a comment after a value or a section key is not a part of them:
+    # the object name and the tabular section lines are found as usual.
     (tmp_path / "Товары.yaml").write_text("\n".join([
         "ВидЭлемента: Справочник",                    # 1
         "Ид: 5d3f0a1b-2c4d-4e5f-8a9b-0c1d2e3f4a5b",   # 2

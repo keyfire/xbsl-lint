@@ -1,8 +1,8 @@
-"""Тесты правила code/statement-no-effect: оператор-выражение обязан иметь эффект.
+"""Tests of the code/statement-no-effect rule: an expression statement must have an effect.
 
-Ловим опечатки, которые парсер принимает как валидные выражения-операторы
-(`возрат 5`, `Х == 5` вместо `Х = 5`); эффектом считаются вызов, создание и бросок,
-а также непрозрачные литералы (богатая строка с интерполяцией, Запрос{}, Ресурс{}).
+We catch typos the parser accepts as valid expression statements (`возрат 5`, `Х == 5`
+instead of `Х = 5`); a call, a creation and a throw count as effects, as do opaque
+literals (a rich string with interpolation, Запрос{}, Ресурс{}).
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ def test_catches_keyword_typo():
         "    возрат 5\n"
         ";\n"
     )
-    assert len(diags) == 2  # имя `возрат` и отброшенное `5`
+    assert len(diags) == 2  # the name `возрат` and the discarded `5`
     assert all(d.rule_id == "code/statement-no-effect" for d in diags)
 
 
@@ -60,7 +60,7 @@ def test_calls_creations_throws_are_effects():
 
 
 def test_interpolated_string_is_an_effect():
-    # вызов может прятаться в %{...} - лексер держит богатую строку одним токеном
+    # a call may hide inside %{...} - the lexer keeps a rich string as a single token
     diags = _lint(
         "метод Тест(Журнал: Массив<Строка>)\n"
         "    \"%{Журнал.Очистить()}\"\n"
@@ -84,4 +84,4 @@ def test_broken_file_is_left_to_parse_error():
         "    Ф(1, 2\n"
         ";\n"
     )
-    assert diags == []  # там уже работает code/parse-error
+    assert diags == []  # code/parse-error already handles that

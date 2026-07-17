@@ -15,17 +15,17 @@ import {
   validateDraft,
 } from "./templatesCore";
 
-// Панель управления шаблонами кода - аналог диалога "Параметры - Шаблоны" в 1С:EDT:
-// список слева, редактор справа, кнопки добавления/правки/удаления и импорта/экспорта.
+// Code templates management panel - an analog of the "Параметры - Шаблоны" dialog in 1C:EDT:
+// the list on the left, the editor on the right, add/edit/delete and import/export buttons.
 //
-// Данные и запись - через движок (`xbsl templates ...`), чтобы панель работала одинаково
-// в обоих режимах расширения (LSP и CLI) и не заводила своей логики записи.
+// Data and writing go through the engine (`xbsl templates ...`) so the panel works the same
+// in both extension modes (LSP and CLI) and keeps no writing logic of its own.
 
 const DEFAULT_TEMPLATES_FILE = ".xbsl-templates.json";
 
-// Перечитывание набора работающим LSP-сервером. Панель регистрируется до выбора режима,
-// а клиент появляется позже - поэтому хук, а не прямой вызов. В CLI-режиме перечитывать
-// нечего: там дополнение шаблонами не работает (см. README).
+// Re-reading of the set by the running LSP server. The panel is registered before the mode
+// is chosen, and the client appears later - hence a hook, not a direct call. In CLI mode
+// there is nothing to re-read: template completion does not work there (see README).
 let reloadEngine: () => Promise<void> = async () => undefined;
 
 export function setTemplatesReload(fn: () => Promise<void>): void {
@@ -104,8 +104,8 @@ async function loadTemplates(): Promise<{ rows: TemplateRow[]; file: string } | 
   }
 }
 
-// Правки пишет движок; после записи LSP-сервер перечитывает файл, иначе Ctrl+Space
-// предлагал бы прежний набор до перезапуска.
+// Edits are written by the engine; after the write the LSP server re-reads the file,
+// otherwise Ctrl+Space would offer the previous set until a restart.
 async function saveTemplates(rows: Array<TemplateRow | TemplateDraft>): Promise<boolean> {
   const res = await run(templatesArgs("save", engineConfig()), toEnvelope(rows));
   if (res.error) {
@@ -202,8 +202,8 @@ class TemplatesPanel {
     if (!row) {
       return;
     }
-    // Встроенный шаблон не удаляется - он приезжает с движком. Замещённый правкой можно
-    // вернуть к исходному виду, сняв запись из файла пользователя.
+    // A builtin template cannot be deleted - it ships with the engine. One overridden by an
+    // edit can be restored to its original form by removing the record from the user's file.
     const question = row.builtin
       ? vscode.l10n.t("'{0}' is a builtin template and cannot be deleted.", row.title)
       : vscode.l10n.t("Delete the template '{0}'?", row.title);
@@ -340,8 +340,8 @@ class TemplatesPanel {
 <script nonce="${nonce}">
 const vsapi = acquireVsCodeApi();
 const DATA = ${data};
-let selected = null;      // имя выбранного шаблона
-let original = null;      // имя до правки: по нему движок заменяет запись
+let selected = null;      // name of the selected template
+let original = null;      // name before the edit: the engine replaces the record by it
 
 const $ = (id) => document.getElementById(id);
 

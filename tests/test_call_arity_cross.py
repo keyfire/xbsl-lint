@@ -1,5 +1,5 @@
-"""Тесты правила code/call-arity-cross: арность вызова Модуль.Метод(...) по сигнатуре
-модуля-адресата (project-область)."""
+"""Tests of the code/call-arity-cross rule: arity of a Модуль.Метод(...) call against the
+target module's signature (project scope)."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def test_unknown_method_is_silent():
 
 
 def test_twin_module_names_are_silent():
-    # два модуля с одним именем в разных каталогах - адресат не доказать
+    # two modules with the same name in different directories - the target cannot be proven
     diags = _lint(
         "метод Тест()\n    Служебный.Сумма(1, 2, 3)\n;\n",
         ("Другое/Служебный.xbsl", "метод Сумма(А: Число, Б: Число, В: Число): Число\n    возврат А\n;\n"),
@@ -56,7 +56,7 @@ def test_shadowed_base_is_silent():
 
 
 def test_stdlib_shadow_is_silent():
-    # имя модуля совпадает со stdlib-именем - вызов может уходить в платформу
+    # the module name coincides with a stdlib name - the call may be going to the platform
     sources = [
         load_text("Пользователи.xbsl", _TARGET),
         load_text("Вызывающий.xbsl", "метод Тест()\n    Пользователи.Сумма(1, 2, 3)\n;\n"),

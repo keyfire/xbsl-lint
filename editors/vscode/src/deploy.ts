@@ -1,9 +1,9 @@
-// Деплой проекта на стенд платформы 1С:Элемент командой `elemctl deploy`: сборка из
-// исходников, загрузка, применение, перезапуск и честная проверка применения – всё в
-// терминальной задаче VS Code, чтобы ход и итоговый отчёт были на виду (elemctl при сбое
-// применения возвращает ненулевой код – платформенный статус Running успеху не верит).
-// Расширение лишь собирает командную строку и спрашивает подтверждение: целевой стенд
-// определяют .env рабочей папки либо настройки xbsl.deploy.*.
+// Project deploy to a 1C:Element platform stand via `elemctl deploy`: build from sources,
+// upload, apply, restart and an honest verification of the apply - all in a VS Code terminal
+// task so the progress and the final report stay in sight (on an apply failure elemctl
+// returns a non-zero code - the platform's Running status is not trusted as success).
+// The extension only assembles the command line and asks for confirmation: the target stand
+// is defined by the working folder's .env or the xbsl.deploy.* settings.
 
 import { spawn } from "child_process";
 import * as fs from "fs";
@@ -30,7 +30,7 @@ function readDeploySettings(resource: vscode.Uri): DeploySettings {
   };
 }
 
-// Папка деплоя: папка активного редактора, единственная папка воркспейса или выбор пользователя.
+// Deploy folder: the active editor's folder, the only workspace folder, or the user's pick.
 async function pickFolder(): Promise<vscode.WorkspaceFolder | undefined> {
   const active = vscode.window.activeTextEditor?.document.uri;
   if (active) {
@@ -46,8 +46,8 @@ async function pickFolder(): Promise<vscode.WorkspaceFolder | undefined> {
   return vscode.window.showWorkspaceFolderPick();
 }
 
-// Быстрая проверка наличия elemctl: только ENOENT ведёт к предложению установки,
-// остальные проблемы покажет терминал самой задачи.
+// Quick check that elemctl exists: only ENOENT leads to the install offer,
+// other problems will be shown by the task's own terminal.
 function elemctlMissing(bin: string, cwd: string): Promise<boolean> {
   return new Promise((resolve) => {
     let child;
@@ -62,9 +62,9 @@ function elemctlMissing(bin: string, cwd: string): Promise<boolean> {
   });
 }
 
-// Аргументы `elemctl deploy`. --env-file – глобальный флаг elemctl, идёт строго ДО подкоманды.
-// --project-dir передаётся только когда xbsl.projectRoot сузил корень: без него elemctl сам
-// ищет проект вглубь от рабочей папки.
+// Arguments of `elemctl deploy`. --env-file is a global elemctl flag, it goes strictly BEFORE
+// the subcommand. --project-dir is passed only when xbsl.projectRoot narrowed the root:
+// without it elemctl searches for the project downward from the working folder itself.
 function buildDeployArgs(s: DeploySettings, folder: vscode.WorkspaceFolder, projectRoot: string): string[] {
   const args: string[] = [];
   if (s.envFile) {
@@ -84,8 +84,8 @@ function buildDeployArgs(s: DeploySettings, folder: vscode.WorkspaceFolder, proj
   return args;
 }
 
-// Командная строка для показа пользователю; исполнение идёт через ShellExecution(command, args),
-// где кавычки расставляет сам VS Code по правилам конкретной оболочки.
+// Command line for showing to the user; execution goes through ShellExecution(command, args),
+// where VS Code itself places the quotes by the rules of the specific shell.
 function displayCommand(bin: string, args: string[]): string {
   return [bin, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ");
 }

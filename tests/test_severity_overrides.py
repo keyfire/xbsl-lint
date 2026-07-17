@@ -1,7 +1,7 @@
-"""Переопределение уровней правил точкой расширения "xbsl.severity".
+"""Overriding rule severities via the "xbsl.severity" entry point.
 
-Реестр правил и карта переопределений – глобальное состояние движка; фикстура
-восстанавливает их после каждого теста, чтобы прогоны не влияли друг на друга.
+The rule registry and the override map are the engine's global state; a fixture
+restores them after each test so the runs do not affect one another.
 """
 
 from importlib.metadata import EntryPoint
@@ -13,7 +13,7 @@ from xbsl.diagnostics import Diagnostic, Severity
 
 
 class _StubEP:
-    """Точка расширения с готовым объектом – без установки настоящего пакета."""
+    """An entry point with a pre-built object - no real package installation needed."""
 
     value = "стаб"
 
@@ -56,7 +56,7 @@ def _info_by_id(rule_id):
     return next(r for r in engine.RULES if r.id == rule_id)
 
 
-# --- Сбор словаря из точек расширения --------------------------------------------------
+# --- Assembling the dictionary from entry points ---------------------------------------
 
 def test_overrides_merge_by_name_order(monkeypatch):
     first = _StubEP("а-первый", plugins.SEVERITY_GROUP, {"x/one": "warning"})
@@ -79,7 +79,7 @@ def test_overrides_disabled_by_env(monkeypatch):
     assert plugins.severity_overrides() == {}
 
 
-# --- Применение к реестру и диагностикам -----------------------------------------------
+# --- Application to the registry and diagnostics ---------------------------------------
 
 def test_override_recolors_rule_and_diagnostics(monkeypatch):
     _register_probe()
@@ -104,7 +104,7 @@ def test_override_off_removes_from_default_set(monkeypatch):
     info = _info_by_id("probe/off-target")
     assert info.enabled_by_default is False
     assert "probe/off-target" not in engine.SEVERITY_OVERRIDES
-    # Явный select всё ещё включает правило – с его базовым уровнем.
+    # An explicit select still enables the rule - at its base severity.
     src = engine.load_text("проба.xbsl", "// пусто")
     diags = engine.run_sources([src], select={"probe/off-target"})
     assert [d.severity for d in diags] == [Severity.INFO]

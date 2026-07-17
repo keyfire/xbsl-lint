@@ -1,4 +1,4 @@
-"""Смоук-тесты, не зависящие от сгенерированных данных Элемента (выполняются всегда)."""
+"""Smoke tests independent of the generated Element data (always executed)."""
 
 import xbsl
 from xbsl import dataset
@@ -16,5 +16,5 @@ def test_rules_registered():
 
 
 def test_available_versions_is_list():
-    # Без сгенерированных данных список версий пуст, но вызов не должен падать.
+    # Without the generated data the version list is empty, but the call must not crash.
     assert isinstance(dataset.available_versions(), list)

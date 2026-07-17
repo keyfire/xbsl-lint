@@ -1,33 +1,34 @@
 #!/usr/bin/env python3
-"""Извлечь каталог типов stdlib 1С:Элемент из документации дистрибутива.
+"""Extract the 1C:Element stdlib type catalog from the distribution documentation.
 
-Доки (Docusaurus HTML) лежат в дистрибутиве-.car под
-`data/docs/help/ru/stdlib/element/xbsl/Std/**/index.html`. У каждого символа русское имя –
-в <title> ("Имя | 1С:Предприятие.Элемент"), английское – в сегменте пути ("<Имя>_ru").
-Типы двуязычны (как ключевые слова), поэтому в каталог кладём обе формы.
+The docs (Docusaurus HTML) live in the distribution .car under
+`data/docs/help/ru/stdlib/element/xbsl/Std/**/index.html`. Each symbol's Russian name is in
+<title> ("Имя | 1С:Предприятие.Элемент"), the English one is in the path segment ("<Имя>_ru").
+Types are bilingual (like keywords), so the catalog keeps both forms.
 
-Рядом, под `.../xbsl/DeveloperName/ProjectName/SubsystemName/**`, лежат шаблонные страницы
-типов, порождаемых объектами проекта: "{ИмяСправочника}.Ссылка",
-"{ИмяРегистраСведений}.КлючЗаписи", "{ИмяДокумента}.АвтоматическаяФормаСписка..." Из них
-собирается словарь object_members: вид объекта (по английскому имени шаблона в пути) ->
-имена порождаемых членов (второй сегмент русского заголовка). Члены-плейсхолдеры
-("{ИмяМетрики}", латинские шаблоны SOAP) пропускаются, виды вне известной карты – тоже.
+Nearby, under `.../xbsl/DeveloperName/ProjectName/SubsystemName/**`, sit the template pages of
+types spawned by project objects: "{ИмяСправочника}.Ссылка",
+"{ИмяРегистраСведений}.КлючЗаписи", "{ИмяДокумента}.АвтоматическаяФормаСписка..." From them
+the object_members dictionary is built: object kind (by the English template name in the path) ->
+names of the spawned members (the second segment of the Russian title). Placeholder members
+("{ИмяМетрики}", Latin SOAP templates) are skipped, and so are kinds outside the known map.
 
-Со страниц компонентов интерфейса (тип – компонент, если в секции "Иерархия типа" среди
-базовых есть Стд::Интерфейс::Компонент; плюс страница самого Компонента) дополнительно
-собирается словарь component_props: русское имя типа -> полный набор встроенных свойств
-(свои – заголовки H3 секции "Свойства", унаследованные – тексты ссылок секций "Список
-унаследованных свойств"). Одноимённые типы с разными наборами схлопываются в пересечение –
-по голому имени в yaml их не различить, оставляем только бесспорное.
+From interface component pages (a type is a component when the "Иерархия типа" section lists
+Стд::Интерфейс::Компонент among the bases; plus the page of Компонент itself) the
+component_props dictionary is additionally built: Russian type name -> the full set of built-in
+properties (own ones - the H3 headings of the "Свойства" section, inherited ones - the link
+texts of the "Список унаследованных свойств" sections). Same-named types with differing sets
+collapse into the intersection - a bare yaml name cannot tell them apart, so only the
+indisputable part is kept.
 
-Со всех страниц Std собирается type_members: имя типа -> его члены для дополнения через точку,
-свойства и методы РАЗДЕЛЬНО (разные значки в списке дополнения, у методов – скобки).
+From all Std pages type_members is built: type name -> its members for dot completion,
+properties and methods SEPARATELY (different icons in the completion list, methods get parens).
 
-Результат – xbsl/data/element/<версия>/stdlib.json:
+The result is xbsl/data/element/<version>/stdlib.json:
 { "names": [...], "object_members": {"Справочник": [...], ...},
   "component_props": {"СтандартнаяКарточка": [...], ...},
   "type_members": {"Массив": {"methods": [...]}, "СтандартнаяКарточка": {"properties": [...]}} }.
-Версия определяется из дистрибутива автоматически (или задаётся --element-version).
+The version is detected from the distribution automatically (or set with --element-version).
 """
 
 from __future__ import annotations
@@ -47,8 +48,8 @@ TEMPLATE_BASE = "data/docs/help/ru/stdlib/element/xbsl/DeveloperName/ProjectName
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.S)
 _CYRILLIC_NAME_RE = re.compile(r"^[А-ЯЁ][А-Яа-яЁё0-9]*$")
 
-# Разбор страницы компонента: контент в <article>, секции – заголовки H2, свои свойства –
-# заголовки H3, унаследованные – ссылки на свойства базового типа.
+# Parsing a component page: content is in <article>, sections are H2 headings, own properties
+# are H3 headings, inherited ones are links to the base type's properties.
 COMPONENT_BASE = "Стд::Интерфейс::Компонент"
 COMPONENT_PAGE = STD_BASE + "Interface/Component_ru/index.html"
 _ARTICLE_RE = re.compile(r"<article[^>]*>(.*?)</article>", re.S)
@@ -56,13 +57,13 @@ _H2_OPEN_RE = re.compile(r"<h2[^>]*>")
 _H3_RE = re.compile(r"<h3[^>]*>(.*?)</h3>", re.S)
 _LINK_RE = re.compile(r"<a[^>]*>(.*?)</a>", re.S)
 _TAG_RE = re.compile(r"<[^>]+>")
-_JUNK_RE = re.compile(r"[\x00-\x1f​﻿]")  # управляющие символы и якоря Docusaurus
+_JUNK_RE = re.compile(r"[\x00-\x1f​﻿]")  # control characters and Docusaurus anchors
 _PROP_NAME_RE = re.compile(r"^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z0-9]*$")
-# Фасет сущностного типа: "Пользователи.Объект", "ДвоичныйОбъект.Ссылка" – члены записи
-# и ссылки живут на этих страницах, а не на странице самого типа (менеджерской).
+# An entity type facet: "Пользователи.Объект", "ДвоичныйОбъект.Ссылка" - the record and
+# reference members live on these pages, not on the type's own (manager) page.
 _FACET_TITLE_RE = re.compile(r"^[А-ЯЁA-Z][А-Яа-яЁёA-Za-z0-9]*\.[А-ЯЁA-Z][А-Яа-яЁёA-Za-z0-9]*$")
 
-# Английское имя шаблона в пути -> русское имя вида (значение ВидЭлемента в yaml).
+# English template name in the path -> Russian kind name (the ВидЭлемента value in yaml).
 _TEMPLATE_KINDS = {
     "CatalogName": "Справочник",
     "DocumentName": "Документ",
@@ -81,23 +82,23 @@ _TEMPLATE_KINDS = {
 
 
 def _plain_text(html: str) -> str:
-    """Текст без тегов, символов-якорей Docusaurus и управляющих символов.
+    """Text without tags, Docusaurus anchor characters and control characters.
 
-    В части страниц доков заголовки и имена членов приходят с управляющими символами
-    внутри слова ("Св\x00ойства", "Список унаследованных \x00методов") – без чистки секция
-    не опознаётся, а имя члена не проходит проверку, и члены таких типов теряются молча.
+    On some docs pages headings and member names arrive with control characters inside a
+    word ("Св\x00ойства", "Список унаследованных \x00методов") - without cleaning, the section
+    goes unrecognized, the member name fails validation, and such types' members are lost silently.
     """
     return _JUNK_RE.sub("", _TAG_RE.sub("", html)).strip()
 
 
 def component_props(entry: str, raw: str) -> tuple[str, set[str]] | None:
-    """(русское имя типа компонента, его встроенные свойства) или None – не компонент.
+    """(Russian component type name, its built-in properties), or None - not a component.
 
-    Компонент – тип, в секции "Иерархия типа" которого среди базовых есть
-    Стд::Интерфейс::Компонент, плюс страница самого Компонента (у него в базовых
-    только Объект). Набор свойств полный: свои (H3 секции "Свойства") вместе с
-    унаследованными (тексты ссылок секций "Список унаследованных свойств") –
-    цепочку наследования разрешать не нужно.
+    A component is a type whose "Иерархия типа" section lists Стд::Интерфейс::Компонент
+    among the bases, plus the page of Компонент itself (its only base is Объект). The
+    property set is complete: own ones (H3s of the "Свойства" section) together with the
+    inherited ones (link texts of the "Список унаследованных свойств" sections) - no need
+    to resolve the inheritance chain.
     """
     mt = _TITLE_RE.search(raw)
     ma = _ARTICLE_RE.search(raw)
@@ -128,14 +129,15 @@ def component_props(entry: str, raw: str) -> tuple[str, set[str]] | None:
 
 
 def page_members(raw: str) -> tuple[set[str], set[str]]:
-    """Члены типа для дополнения через точку: (свойства, методы).
+    """Type members for dot completion: (properties, methods).
 
-    Свои члены – заголовки H3 секций "Свойства" / "Методы", унаследованные – тексты ссылок
-    секций "Список унаследованных свойств" / "Список унаследованных методов" (там H3 – имена
-    базовых типов, а не члены). Конструкторы, литералы и иерархия не в счёт.
+    Own members are the H3 headings of the "Свойства" / "Методы" sections, inherited ones are
+    the link texts of the "Список унаследованных свойств" / "Список унаследованных методов"
+    sections (H3s there are base type names, not members). Constructors, literals and the
+    hierarchy do not count.
 
-    Свойств у большинства типов stdlib нет вовсе (в Элементе даже Длина() – метод); секция
-    "Свойства" – в основном у компонентов интерфейса и у типов-записей.
+    Most stdlib types have no properties at all (in Element even Длина() is a method); the
+    "Свойства" section mostly belongs to interface components and record types.
     """
     ma = _ARTICLE_RE.search(raw)
     if not ma:
@@ -156,20 +158,20 @@ def page_members(raw: str) -> tuple[set[str], set[str]]:
     return props, methods
 
 
-# Сигнатура в блоке кода после H3-заголовка метода: `Имя(Параметры): ТипВозврата`.
+# The signature in the code block after a method's H3 heading: `Имя(Параметры): ТипВозврата`.
 _SIG_CODE_RE = re.compile(r"<pre class=\"highlight\"><code>(.*?)</code></pre>", re.S)
-# Корень типа возврата: голова до generic-скобки/альтернативы/nullable; допускает
-# фасетное имя с точкой (Пользователи.Объект).
+# The return type root: the head before a generic bracket/alternative/nullable; allows
+# a dotted facet name (Пользователи.Объект).
 _RETURN_HEAD_RE = re.compile(r"^\s*([A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*(?:\.[A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*)?)")
 
 
 def page_member_types(raw: str) -> dict[str, str]:
-    """Член страницы -> корень типа результата (для вывода типа цепочек обращений).
+    """Page member -> the root of its result type (to infer the type of access chains).
 
-    Сигнатуры лежат в блоках кода после H3-заголовков секций "Методы" (`Имя(...): Тип` –
-    тип возврата) и "Свойства" (`Имя: Тип` – тип свойства); у перегрузок с разными
-    возвратами член пропускается (вывести общий тип нельзя). Унаследованные члены
-    сигнатур на странице не имеют и не собираются.
+    Signatures sit in code blocks after the H3 headings of the "Методы" (`Имя(...): Тип` -
+    the return type) and "Свойства" (`Имя: Тип` - the property type) sections; a member
+    whose overloads differ in return is dropped (no common type can be inferred). Inherited
+    members carry no signatures on the page and are not collected.
     """
     ma = _ARTICLE_RE.search(raw)
     if not ma:
@@ -181,9 +183,9 @@ def page_member_types(raw: str) -> dict[str, str]:
         is_method = head.startswith("Методы")
         if not is_method and not head.startswith("Свойства"):
             continue
-        # Куски между H3: первый – заголовок секции, дальше по члену на кусок.
+        # Chunks between H3s: the first is the section heading, then one member per chunk.
         parts = _H3_RE.split(section)
-        # _H3_RE captures the heading text: parts = [до, имя1, тело1, имя2, тело2...]
+        # _H3_RE captures the heading text: parts = [before, name1, body1, name2, body2...]
         for k in range(1, len(parts) - 1, 2):
             name = _plain_text(parts[k])
             if not _PROP_NAME_RE.match(name):
@@ -208,7 +210,7 @@ def page_member_types(raw: str) -> dict[str, str]:
                     continue
                 if name in out and out[name] != root:
                     del out[name]
-                    dropped.add(name)  # перегрузки с разными возвратами
+                    dropped.add(name)  # overloads with differing returns
                 elif name not in dropped:
                     out[name] = root
     return out
@@ -219,11 +221,11 @@ _H2_RE = re.compile(r"<h2[^>]*>(.*?)</h2>", re.S)
 
 
 def package_members(raw: str) -> set[str]:
-    """Члены страницы ПАКЕТА Стд (глобальный контекст): свойства и методы вместе.
+    """Members of a Стд PACKAGE page (the global context): properties and methods together.
 
-    У страниц пакетов (Стд, Стд::Интерфейс...) секции – заголовки H1 ("Свойства",
-    "Методы"), а сами члены – заголовки H2/H3; у страниц типов секции – H2 (их разбирает
-    page_members). Первая H1-секция – шапка страницы, она пропускается.
+    On package pages (Стд, Стд::Интерфейс...) the sections are H1 headings ("Свойства",
+    "Методы") and the members themselves are H2/H3 headings; on type pages the sections are
+    H2 (page_members handles those). The first H1 section is the page header and is skipped.
     """
     ma = _ARTICLE_RE.search(raw)
     if not ma:
@@ -241,13 +243,13 @@ def package_members(raw: str) -> set[str]:
 
 
 def _english_from_path(entry: str) -> str | None:
-    """Английское имя типа из сегмента пути `.../<Имя>_ru/index.html` (без точек)."""
+    """The English type name from the `.../<Имя>_ru/index.html` path segment (no dots)."""
     name = _path_name(entry)
     return name if name and "." not in name else None
 
 
 def _english_facet_from_path(entry: str) -> str | None:
-    """Английское имя фасета из пути (`BinaryObject.Reference_ru` -> с точкой)."""
+    """The English facet name from the path (`BinaryObject.Reference_ru` -> with a dot)."""
     name = _path_name(entry)
     return name if name and name.count(".") == 1 else None
 
@@ -268,7 +270,7 @@ def extract(
     set[str], dict[str, set[str]], dict[str, set[str]], dict[str, dict[str, set[str]]],
     set[str], dict[str, set[str]], dict[str, dict[str, set[str]]],
 ]:
-    """Имена stdlib (двуязычно), порождаемые члены по видам, свойства компонентов, члены типов."""
+    """Stdlib names (bilingual), spawned members by kind, component properties, type members."""
     car = _distro.find_car(dist)
     names: set[str] = set()
     members: dict[str, set[str]] = {}
@@ -291,14 +293,14 @@ def extract(
             eng = _english_from_path(n)
             if eng:
                 names.add(eng)
-            # Члены типа (доступ через точку) под ОБЕИМИ формами имени – для дополнения глобалей и типов
-            # (напр. КонтекстДоступа./AccessContext., Массив./Array.). Имена с "::" (namespaced) не берём.
+            # Type members (dot access) under BOTH name forms - to complete globals and types
+            # (e.g. КонтекстДоступа./AccessContext., Массив./Array.). "::" (namespaced) names are skipped.
             props, methods = page_members(raw)
-            # Глобальный контекст: свойства и методы страницы самого Стд и страниц его
-            # ПАКЕТОВ (Стд::Интерфейс, Стд::Данные... – каталог верхнего уровня без
-            # суффикса _ru) доступны в коде голым именем (ПерейтиПоСсылке, Сообщить,
-            # ЗагрузкаФайлов) – пакеты авто-импортированы. У страниц пакетов своя
-            # структура секций – их разбирает package_members.
+            # Global context: the properties and methods of the Стд page itself and of its
+            # PACKAGE pages (Стд::Интерфейс, Стд::Данные... - a top-level directory without
+            # the _ru suffix) are available in code by bare name (ПерейтиПоСсылке, Сообщить,
+            # ЗагрузкаФайлов) - the packages are auto-imported. Package pages have a section
+            # structure of their own - package_members parses them.
             rest = n[len(STD_BASE):]
             top = rest.split("/", 1)[0]
             if rest == "index.html" or (rest.count("/") == 1 and not top.endswith("_ru")):
@@ -313,8 +315,8 @@ def extract(
                     slot["methods"] |= methods
                     if rets:
                         returns.setdefault(key, {}).update(rets)
-                # Фасеты сущностных типов (Пользователи.Объект, ДвоичныйОбъект.Ссылка):
-                # члены записи и ссылки – отдельным словарём, под обеими формами имени.
+                # Entity type facets (Пользователи.Объект, ДвоичныйОбъект.Ссылка): the record
+                # and reference members go into a separate dictionary, under both name forms.
                 eng_facet = _english_facet_from_path(n)
                 for key in (title if _FACET_TITLE_RE.match(title) else "", eng_facet or ""):
                     if not key:
@@ -328,18 +330,18 @@ def extract(
             if got is not None:
                 comp, props = got
                 if comp in components and components[comp] != props:
-                    components[comp] &= props  # одноимённые типы: только бесспорное
+                    components[comp] &= props  # same-named types: only the indisputable
                 else:
                     components[comp] = props
         for n in (e for e in entries if e.startswith(TEMPLATE_BASE) and e.endswith("/index.html")):
             dirname = n[len(TEMPLATE_BASE):].split("/")[0]
             kind = _TEMPLATE_KINDS.get(dirname.split(".")[0].removesuffix("_ru"))
             if kind is None:
-                continue  # вид вне карты
+                continue  # a kind outside the map
             if "." not in dirname:
-                # Страница самого шаблона (<Kind>Name_ru) – это МЕНЕДЖЕР вида: его методы
-                # (Записать, Заблокировать, НайтиПоКоду...) доступны голым именем в
-                # менеджерном модуле объекта.
+                # The template's own page (<Kind>Name_ru) is the kind's MANAGER: its methods
+                # (Записать, Заблокировать, НайтиПоКоду...) are available by bare name in
+                # the object's manager module.
                 raw = z.read(n).decode("utf-8", "replace")
                 props, methods = page_members(raw)
                 if props or methods:
@@ -351,13 +353,13 @@ def extract(
                 continue
             segs = mt.group(1).split("|")[0].strip().split(".")
             if len(segs) < 2 or not _CYRILLIC_NAME_RE.match(segs[1]):
-                continue  # член-плейсхолдер или латинский шаблон
+                continue  # a placeholder member or a Latin template
             members.setdefault(kind, set()).add(segs[1])
     return names, members, components, types, globals_, managers, facets, returns
 
 
 def _members_json(members: dict[str, set[str]]) -> dict[str, list[str]]:
-    """Члены типа в JSON: свойства и методы раздельно, пустой раздел опускаем."""
+    """Type members as JSON: properties and methods separately, an empty section is omitted."""
     return {kind: sorted(members[kind]) for kind in ("properties", "methods") if members.get(kind)}
 
 
@@ -392,14 +394,14 @@ def main() -> int:
         "object_members": {k: sorted(v) for k, v in sorted(members.items())},
         "component_props": {k: sorted(v) for k, v in sorted(components.items())},
         "type_members": {k: _members_json(v) for k, v in sorted(types.items())},
-        # Глобальный контекст: члены Стд и его пакетов первого уровня, доступные голым именем.
+        # Global context: members of Стд and its first-level packages, available by bare name.
         "globals": sorted(globals_),
-        # Методы менеджеров видов (страница шаблона <Kind>Name_ru): голые имена в модуле менеджера.
+        # Kind manager methods (the <Kind>Name_ru template page): bare names in the manager module.
         "manager_members": {k: sorted(v) for k, v in sorted(managers.items())},
-        # Фасеты сущностных типов (Пользователи.Объект, ДвоичныйОбъект.Ссылка): члены записи
-        # и ссылки, не попадающие на страницу самого типа.
+        # Entity type facets (Пользователи.Объект, ДвоичныйОбъект.Ссылка): the record and
+        # reference members that do not land on the type's own page.
         "facet_members": {k: _members_json(v) for k, v in sorted(facets.items())},
-        # Корни типов результатов членов (сигнатуры со страниц: возвраты методов и типы свойств).
+        # Result type roots of members (page signatures: method returns and property types).
         "member_types": {k: dict(sorted(v.items())) for k, v in sorted(returns.items())},
     }
 

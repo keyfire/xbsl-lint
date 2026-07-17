@@ -47,7 +47,7 @@ function row(over: Partial<TemplateRow> = {}): TemplateRow {
   };
 }
 
-// ------------------------------------------------------------------ аргументы движка
+// ------------------------------------------------------------------ engine arguments
 
 test("--file goes after the action, not before it", () => {
   const args = templatesArgs("list", { command: "xbsl", usePython: false, templatesFile: "т.json" }, ["--format", "json"]);
@@ -64,7 +64,7 @@ test("without a configured file the engine picks its own default", () => {
     ["templates", "export", "--output", "о.json"]);
 });
 
-// ------------------------------------------------------------------- разбор ответа
+// ---------------------------------------------------------------- response parsing
 
 test("the list is parsed into rows and the file path", () => {
   const list = parseTemplatesList(JSON.stringify({ templates: [row()], file: ".xbsl-templates.json" }));
@@ -81,7 +81,7 @@ test("output without a templates list is rejected", () => {
   assert.throws(() => parseTemplatesList(JSON.stringify({ иное: 1 })));
 });
 
-// ------------------------------------------------------------------------ список
+// -------------------------------------------------------------------------- list
 
 test("templates are grouped by category and sorted inside it", () => {
   const groups = groupByCategory([
@@ -97,7 +97,7 @@ test("a template without a category still lands in the list", () => {
   assert.strictEqual(groupByCategory([row({ category: "" })])[0].category, "/");
 });
 
-// ------------------------------------------------------------------- аббревиатура
+// ------------------------------------------------------------------- abbreviation
 
 test("the trigger drops the optional-tail brackets", () => {
   assert.strictEqual(triggerOf("мет[од] - Метод"), "метод");
@@ -105,7 +105,7 @@ test("the trigger drops the optional-tail brackets", () => {
   assert.strictEqual(triggerOf("зпр[с] - Запрос - с параметром"), "зпрс");
 });
 
-// ---------------------------------------------------------------- проверка черновика
+// ------------------------------------------------------------------ draft validation
 
 function draft(over: Record<string, unknown> = {}) {
   return {
@@ -135,11 +135,11 @@ test("a name taken by another template is rejected", () => {
 });
 
 test("editing a template keeps its own name available", () => {
-  // Правка без переименования не должна ловиться как дубль самой себя.
+  // An edit without a rename must not be caught as a duplicate of itself.
   assert.strictEqual(validateDraft(draft({ name: "есл[и] - Если" }), [row()], "есл[и] - Если"), undefined);
 });
 
-// ------------------------------------------------------------------------ конверт
+// ----------------------------------------------------------------------- envelope
 
 test("the envelope repeats the shape the engine reads", () => {
   const data = JSON.parse(toEnvelope([row()]));

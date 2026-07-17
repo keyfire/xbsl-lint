@@ -1,9 +1,9 @@
-"""Совместимость после переименования пакета xbsllint -> xbsl.
+"""Compatibility after the xbsllint -> xbsl package rename.
 
-Старое имя обязано остаться рабочим псевдонимом: импорт xbsllint (и подмодулей) отдаёт
-те же объекты модулей, что и xbsl, старые переменные окружения читаются как запасные,
-старые группы entry-points сканируются наравне с новыми. Отдельная копия модулей была бы
-ошибкой – продублировала бы реестр правил, поэтому проверяем именно тождество объектов.
+The old name must keep working as an alias: importing xbsllint (and its submodules) yields
+the very same module objects as xbsl, the old environment variables are read as fallbacks,
+and the old entry-point groups are scanned alongside the new ones. A separate copy of the
+modules would be a bug - it would duplicate the rule registry - so we assert object identity.
 """
 
 import sys
@@ -24,7 +24,7 @@ def test_alias_submodule_identity():
     import xbsllint.engine
 
     assert xbsllint.engine is xbsl.engine
-    # И привычная форма from-import тоже отдаёт те же объекты.
+    # The familiar from-import form yields the same objects too.
     from xbsllint.engine import RULES as legacy_rules
 
     assert legacy_rules is xbsl.engine.RULES
@@ -38,7 +38,7 @@ def test_legacy_lang_env(monkeypatch):
     try:
         assert i18n.current_lang() == "en"
     finally:
-        i18n.set_lang("ru")  # тесты других модулей сверяют русский текст
+        i18n.set_lang("ru")  # tests in other modules assert against Russian text
 
 
 def test_new_lang_env_wins(monkeypatch):
@@ -62,7 +62,7 @@ def test_legacy_no_plugins_env(monkeypatch):
     monkeypatch.delenv("XBSL_NO_PLUGINS", raising=False)
     monkeypatch.setenv("XBSLLINT_NO_PLUGINS", "1")
     assert plugins.disabled()
-    # Новое имя приоритетнее: явное "0" в нём отменяет легаси-единицу.
+    # The new name takes precedence: an explicit "0" in it overrides the legacy "1".
     monkeypatch.setenv("XBSL_NO_PLUGINS", "0")
     assert not plugins.disabled()
 
@@ -89,7 +89,7 @@ def test_legacy_entry_point_group_scanned(monkeypatch):
 
 
 def test_legacy_group_deduplicated(monkeypatch):
-    # Пакет переходного периода объявляет одну и ту же цель в обеих группах – грузим один раз.
+    # A transition-period package declares the same target in both groups - load it once.
     monkeypatch.delenv("XBSL_NO_PLUGINS", raising=False)
     monkeypatch.delenv("XBSLLINT_NO_PLUGINS", raising=False)
     new_ep = _StubEP("пакет", "xbsl.rules", value="pkg.rules")

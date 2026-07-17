@@ -1,4 +1,4 @@
-"""query/unknown-table: таблицы блоков Запрос{...} против объектов проекта."""
+"""query/unknown-table: tables of Запрос{...} blocks against the project objects."""
 
 from xbsl import engine
 from xbsl.cli import discover
@@ -65,7 +65,7 @@ def test_join_with_unknown_section(tmp_path):
 
 
 def test_unknown_root_of_dotted_table_is_skipped(tmp_path):
-    # корень не из проекта: возможно, объект внешней библиотеки - молчание
+    # the root is not from the project: possibly an external library object - silence
     diags = _project(tmp_path, _query("        ВЫБРАТЬ 1 ИЗ Библиотека.Таблица КАК Т"))
     assert diags == []
 
@@ -119,7 +119,7 @@ def _project_with_descriptor(tmp_path, body):
 
 
 def test_qualified_own_table_resolved(tmp_path):
-    # квалифицированное имя своего проекта: судим по последнему сегменту
+    # a qualified name of our own project: judge by the last segment
     diags = _project_with_descriptor(tmp_path, _query(
         "        ВЫБРАТЬ 1 ИЗ acme::Сайт::Основное::Товар КАК Т"
     ))
@@ -134,7 +134,7 @@ def test_qualified_own_typo_flagged(tmp_path):
 
 
 def test_qualified_foreign_namespace_silent(tmp_path):
-    # чужое пространство имён - объект библиотеки, его в каталоге проекта нет
+    # a foreign namespace - a library object, absent from the project catalog
     diags = _project_with_descriptor(tmp_path, _query(
         "        ВЫБРАТЬ 1 ИЗ globex::ОчередьЛиб::Ядро::Сообщения КАК С"
     ))
@@ -142,7 +142,7 @@ def test_qualified_foreign_namespace_silent(tmp_path):
 
 
 def test_platform_entity_table_silent(tmp_path):
-    # Пользователи - сущность платформы, а не объект проекта
+    # Пользователи is a platform entity, not a project object
     diags = _project(tmp_path, _query(
         "        ВЫБРАТЬ 1 ИЗ Пользователи КАК П"
     ))

@@ -32,13 +32,13 @@ _DATA_DEPENDENT = {
     "test_baseline",
     "test_rule_query_tables",
     "test_rule_query_in_composite",
-    "test_parser",  # парсер сидит на лексере, а тот – на language.json
-    "test_statement_no_effect",  # правило разбирает код парсером
-    "test_return_mismatch",  # правило разбирает код парсером
-    "test_catch_exceptions",  # правилу нужен каталог stdlib
-    "test_call_arity",  # правило разбирает код парсером
-    "test_call_arity_cross",  # правилу нужен каталог stdlib
-    "test_unknown_members",  # правилу нужен каталог stdlib
+    "test_parser",  # the parser sits on the lexer, which sits on language.json
+    "test_statement_no_effect",  # the rule parses code with the parser
+    "test_return_mismatch",  # the rule parses code with the parser
+    "test_catch_exceptions",  # the rule needs the stdlib catalog
+    "test_call_arity",  # the rule parses code with the parser
+    "test_call_arity_cross",  # the rule needs the stdlib catalog
+    "test_unknown_members",  # the rule needs the stdlib catalog
 }
 
 

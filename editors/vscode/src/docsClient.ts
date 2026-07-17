@@ -1,7 +1,7 @@
-// Тонкий клиент к документации линтера: обёртки над кастомными LSP-запросами xbsl/docs*.
-// Сервер держит базу docs.sqlite в памяти; расширение только спрашивает и показывает.
-// Если LSP-сервер не поднят или запрос упал, обёртки возвращают пусто – панель показывает
-// "документация недоступна", а не падает.
+// Thin client to the linter's documentation: wrappers over the custom xbsl/docs* LSP requests.
+// The server keeps the docs.sqlite database in memory; the extension only asks and displays.
+// When the LSP server is not up or a request failed, the wrappers return emptiness - the panel
+// shows "documentation unavailable" instead of crashing.
 
 import { lspRequest } from "./lspClient";
 
@@ -25,8 +25,8 @@ export interface DocPage {
   html: string;
 }
 
-// Узел курируемого дерева "Содержание": раздел-вкладка / категория / ссылка на страницу / заголовок
-// раздела внутри страницы (kind "heading" – несёт page + anchor).
+// Node of the curated "Contents" tree: a tab section / a category / a page link / a section
+// heading inside a page (kind "heading" - carries page + anchor).
 export interface DocNode {
   node: number;
   parent: number | null;
@@ -62,7 +62,7 @@ export async function docsTree(): Promise<DocNode[]> {
   return r?.nodes ?? [];
 }
 
-// Результат "документация по символу": уверенная страница (page) либо кандидаты на выбор.
+// Result of "documentation for a symbol": a confident page (page) or candidates to choose from.
 export interface DocForSymbol {
   name: string;
   page: DocPage | null;

@@ -35,8 +35,9 @@ export interface LinterConfig {
   baseline?: string; // an EXISTING baseline file: excluded findings are suppressed
 }
 
-// Наша ли диагностика: новый движок подписывает их source "xbsl", движок до переименования –
-// "xbsllint"; принимаем оба, чтобы действия работали и со старым установленным движком.
+// Whether the diagnostic is ours: the new engine signs them with source "xbsl", the engine
+// before the rename - "xbsllint"; both are accepted so actions work with an old installed
+// engine too.
 export function isXbslSource(diag: { source?: string }): boolean {
   return diag.source === "xbsl" || diag.source === "xbsllint";
 }

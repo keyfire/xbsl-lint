@@ -1,16 +1,16 @@
-"""Базлайн (--write-baseline / --baseline) и включение правил поверх дефолта (--enable).
+"""Baseline (--write-baseline / --baseline) and enabling rules on top of defaults (--enable).
 
-Зависит от данных Элемента (main() резолвит версию данных) – модуль в списке
-пропускаемых conftest, если данные не сгенерированы.
+Depends on the Element data (main() resolves the data version) - the module is in the
+conftest skip list when the data has not been generated.
 """
 
 import json
 
 from xbsl import cli
 
-_ХВОСТ = "метод Ф(): Число\n    возврат 1  \n;\n"  # хвостовой пробел на строке 2
+_ХВОСТ = "метод Ф(): Число\n    возврат 1  \n;\n"  # trailing whitespace on line 2
 
-# у временных файлов нет парного yaml – это не предмет модуля
+# temporary files have no paired yaml - that is not what this module is about
 _БЕЗ_ПАРЫ = ["--ignore", "structure/xbsl-pair"]
 
 
@@ -43,8 +43,8 @@ def test_new_same_kind_finding_surfaces(tmp_path, capsys):
     cli.main(["--write-baseline", str(bl), *_БЕЗ_ПАРЫ, str(f)])
     capsys.readouterr()
 
-    # второе нарушение того же правила с тем же сообщением: бюджет 1 – гасится первое
-    # по порядку строк, новое всплывает
+    # a second violation of the same rule with the same message: the budget is 1 - the first
+    # one in line order is suppressed, the new one surfaces
     f.write_text("метод Ф(): Число\n    пер А = 1  \n    возврат А  \n;\n", encoding="utf-8")
     code, payload = _run_json(["--baseline", str(bl), str(f)], capsys)
     diags = payload["diagnostics"]
@@ -59,7 +59,7 @@ def test_line_shift_keeps_finding_suppressed(tmp_path, capsys):
     cli.main(["--write-baseline", str(bl), *_БЕЗ_ПАРЫ, str(f)])
     capsys.readouterr()
 
-    f.write_text("// комментарий сверху\n" + _ХВОСТ, encoding="utf-8")  # находка съехала вниз
+    f.write_text("// комментарий сверху\n" + _ХВОСТ, encoding="utf-8")  # the finding shifted down
     code, payload = _run_json(["--baseline", str(bl), str(f)], capsys)
     assert payload["diagnostics"] == []
     assert payload["summary"]["baselined"] == 1
@@ -73,7 +73,7 @@ def test_fixed_finding_counts_as_unused(tmp_path, capsys):
     cli.main(["--write-baseline", str(bl), *_БЕЗ_ПАРЫ, str(f)])
     capsys.readouterr()
 
-    f.write_text("метод Ф(): Число\n    возврат 1\n;\n", encoding="utf-8")  # долг починен
+    f.write_text("метод Ф(): Число\n    возврат 1\n;\n", encoding="utf-8")  # the debt is fixed
     code, payload = _run_json(["--baseline", str(bl), str(f)], capsys)
     assert payload["diagnostics"] == []
     assert payload["summary"]["baselined"] == 0
@@ -82,7 +82,7 @@ def test_fixed_finding_counts_as_unused(tmp_path, capsys):
 
 def test_baselined_error_does_not_fail_the_run(tmp_path, capsys):
     f = tmp_path / "Ч.xbsl"
-    f.write_text("метод Ф()\n    пер Икс = (1 + 2\n;\n", encoding="utf-8")  # ошибка скобок
+    f.write_text("метод Ф()\n    пер Икс = (1 + 2\n;\n", encoding="utf-8")  # parenthesis error
     bl = tmp_path / "baseline.json"
     cli.main(["--write-baseline", str(bl), *_БЕЗ_ПАРЫ, str(f)])
     capsys.readouterr()
@@ -90,7 +90,7 @@ def test_baselined_error_does_not_fail_the_run(tmp_path, capsys):
     code, payload = _run_json(["--baseline", str(bl), str(f)], capsys)
     assert code == 0 and payload["diagnostics"] == []
 
-    # без базлайна та же ошибка валит прогон
+    # without the baseline the same error fails the run
     code, payload = _run_json([str(f)], capsys)
     assert code == 1 and payload["summary"]["errors"] >= 1
 
@@ -140,11 +140,11 @@ def test_enable_respects_ignore(tmp_path, capsys):
     assert all(d["rule"] != "style/line-length" for d in payload["diagnostics"])
 
 
-# --- Причины исключений ({count, reason}) ------------------------------------------------
+# --- Suppression reasons ({count, reason}) -----------------------------------------------
 
 
 def test_reason_entry_suppresses(tmp_path, capsys):
-    """Запись вида {"count": N, "reason": ...} гасит находку так же, как голое число."""
+    """An entry of the form {"count": N, "reason": ...} suppresses a finding just like a bare number."""
     f = tmp_path / "Ч.xbsl"
     f.write_text(_ХВОСТ, encoding="utf-8")
     bl = tmp_path / "baseline.json"
@@ -164,7 +164,7 @@ def test_reason_entry_suppresses(tmp_path, capsys):
 
 
 def test_rewrite_keeps_reasons(tmp_path, capsys):
-    """--write-baseline переносит причины выживших записей из прежнего файла."""
+    """--write-baseline carries over the reasons of surviving entries from the previous file."""
     from xbsl import baseline
 
     f = tmp_path / "Ч.xbsl"
@@ -184,7 +184,7 @@ def test_rewrite_keeps_reasons(tmp_path, capsys):
     rewritten = baseline.load(bl)
     entry = rewritten["files"]["Ч.xbsl"]["whitespace/trailing"][message]
     assert entry == {"count": 1, "reason": "так надо"}
-    # причины исчезнувших находок не переносятся: чистый файл - пустой базлайн
+    # reasons of vanished findings are not carried over: a clean file - an empty baseline
     f.write_text("метод Ф(): Число\n    возврат 1\n;\n", encoding="utf-8")
     cli.main(["--write-baseline", str(bl), *_БЕЗ_ПАРЫ, str(f)])
     capsys.readouterr()
@@ -192,7 +192,7 @@ def test_rewrite_keeps_reasons(tmp_path, capsys):
 
 
 def test_lsp_apply_baseline_file(tmp_path):
-    """Фильтр LSP: нет файла - без изменений, битый - проблема, валидный - гасит."""
+    """LSP filter: no file - unchanged, broken file - a problem, valid file - suppresses."""
     from xbsl import baseline
     from xbsl.diagnostics import Diagnostic, Severity
     from xbsl.lsp import apply_baseline_file

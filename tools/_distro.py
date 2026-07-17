@@ -1,12 +1,12 @@
-"""Общие помощники для экстракторов: поиск .car, определение версии, индекс версий данных.
+"""Shared helpers for the extractors: .car lookup, version detection, index of data versions.
 
-Экстракторы (extract_grammar.py, extract_stdlib.py) сами определяют версию Элемента из
-дистрибутива и кладут производные данные в <корень>/<версия>/, обновляя индекс.
-Сам линтер работает от этих данных и дистрибутив в рантайме не требует.
+The extractors (extract_grammar.py, extract_stdlib.py) detect the Element version from the
+distribution themselves and put the derived data under <root>/<version>/, updating the index.
+The linter itself works off that data and does not need the distribution at runtime.
 
-Корень по умолчанию – xbsl/data/element этого клона. Тот, кто держит данные отдельно
-(не может их публиковать), направляет вывод в свой каталог: --data-dir или env
-XBSL_DATA_DIR – та же переменная, по которой линтер потом эти данные читает.
+The default root is xbsl/data/element of this clone. Whoever keeps the data separately
+(cannot publish it) points the output to a directory of their own: --data-dir or the env
+XBSL_DATA_DIR - the same variable the linter later reads that data by.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def find_car(dist: Path) -> Path:
 
 
 def detect_version(dist: Path, override: str | None = None) -> str:
-    """Версия Элемента: из --element-version или из имени .car (напр. 9.2.8+11)."""
+    """The Element version: from --element-version or from the .car name (e.g. 9.2.8+11)."""
     if override:
         return override
     car = find_car(dist)
@@ -43,7 +43,7 @@ def detect_version(dist: Path, override: str | None = None) -> str:
 
 
 def add_data_dir_arg(ap) -> None:
-    """Общий ключ экстракторов: куда класть данные и индекс."""
+    """The extractors' shared option: where to put the data and the index."""
     ap.add_argument(
         "--data-dir",
         help=f"корень данных (по умолчанию xbsl/data/element клона; также env {_ENV_DATA_DIR})",
@@ -71,7 +71,7 @@ def version_dir(version: str) -> Path:
 
 
 def update_index(version: str, make_default: bool = True) -> None:
-    """Добавить версию в индекс (data/element/index.json) и при необходимости сделать default."""
+    """Add the version to the index (data/element/index.json) and make it the default if needed."""
     root = data_root()
     root.mkdir(parents=True, exist_ok=True)
     idx = root / "index.json"

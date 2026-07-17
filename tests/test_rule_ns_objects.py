@@ -1,4 +1,4 @@
-"""Проверки правила code/unknown-ns-object – квалификация объекта через пространство имён вида."""
+"""Checks of the code/unknown-ns-object rule - object qualification via the kind namespace."""
 
 import pytest
 
@@ -7,7 +7,7 @@ from xbsl.cli import discover
 
 _ПРАВИЛО = "code/unknown-ns-object"
 
-# Проект с объектом каждого проверяемого вида; у справочника – табличная часть и структура модуля.
+# A project with one object of every checked kind; the catalog has a tabular section and a module structure.
 _ОБЪЕКТЫ = {
     "Программа.yaml": (
         "ВидЭлемента: Справочник\nИмя: Программа\nТабличныеЧасти:\n    -\n        Имя: Состав\n"
@@ -39,10 +39,10 @@ def _has(diags):
     return any(d.rule_id == _ПРАВИЛО for d in diags)
 
 
-# --- Код: позитив --------------------------------------------------------------------
+# --- Code: positive ------------------------------------------------------------------
 
 def test_ns_valid_all_kinds_code(tmp_path):
-    # верная NS-квалификация каждого вида в сигнатуре не флагается
+    # a correct NS qualification of every kind in a signature is not flagged
     d = _проект(
         tmp_path,
         "метод Ф(\n"
@@ -66,7 +66,7 @@ def test_ns_var_declaration_nullable_ok(tmp_path):
 
 
 def test_ns_generic_nesting_ok(tmp_path):
-    # вложенность в дженерики: и аргумент, и второй аргумент соответствия
+    # nesting inside generics: both the argument and the map's second argument
     d = _проект(
         tmp_path,
         "метод Ф(Списки: Массив<Справочник.Программа.Ссылка>,\n"
@@ -76,7 +76,7 @@ def test_ns_generic_nesting_ok(tmp_path):
 
 
 def test_ns_tabular_and_module_structure_ok(tmp_path):
-    # третий сегмент – табличная часть из yaml и структура из модуля объекта
+    # the third segment - a tabular section from yaml and a structure from the object module
     d = _проект(
         tmp_path,
         "метод Ф(Т: Справочник.Программа.Состав, С: Справочник.Программа.Сводка)\n;\n",
@@ -85,7 +85,7 @@ def test_ns_tabular_and_module_structure_ok(tmp_path):
 
 
 def test_ns_dotted_stdlib_generic_not_flagged(tmp_path):
-    # 'Справочник.Ссылка' / 'Документ.Объект' – обобщённые типы stdlib, а не объекты проекта
+    # 'Справочник.Ссылка' / 'Документ.Объект' are generic stdlib types, not project objects
     d = _проект(
         tmp_path,
         "метод Ф(А: Справочник.Ссылка, Б: Документ.Объект)\n;\n",
@@ -94,13 +94,13 @@ def test_ns_dotted_stdlib_generic_not_flagged(tmp_path):
 
 
 def test_ns_bare_kind_not_flagged(tmp_path):
-    # одиночное имя вида – корневой тип stdlib, не квалификация
+    # a lone kind name is a root stdlib type, not a qualification
     d = _проект(tmp_path, "метод Ф(Х: Справочник)\n;\n")
     assert not _has(d)
 
 
 def test_ns_plain_object_chain_untouched(tmp_path):
-    # обычная квалификация от объекта (без namespace) – зона code/unknown-object-type
+    # a plain object qualification (no namespace) is code/unknown-object-type territory
     d = _проект(tmp_path, "метод Ф(Т: Программа.Ссылка, О: Программа.Ерунда)\n;\n")
     assert not _has(d)
 
@@ -116,7 +116,7 @@ def test_ns_cast_ok(tmp_path):
     assert not _has(d)
 
 
-# --- Код: негатив ---------------------------------------------------------------------
+# --- Code: negative -------------------------------------------------------------------
 
 @pytest.mark.parametrize("тип", [
     "Справочник.Программма.Ссылка",
@@ -133,7 +133,7 @@ def test_ns_unknown_object_flagged_code(tmp_path, тип):
 
 
 def test_ns_kind_mismatch_flagged_code(tmp_path):
-    # объект есть, но вид не тот: Программа – Справочник, а не Документ
+    # the object exists but the kind is wrong: Программа is a Справочник, not a Документ
     d = _проект(tmp_path, "метод Ф(Х: Документ.Программа.Ссылка)\n;\n")
     сообщения = [x.message for x in d if x.rule_id == _ПРАВИЛО]
     assert len(сообщения) == 1 and "Справочник" in сообщения[0] and "Документ" in сообщения[0]
@@ -156,7 +156,7 @@ def test_ns_new_unknown_flagged(tmp_path):
     assert any(x.rule_id == _ПРАВИЛО and "Программма" in x.message for x in d)
 
 
-# --- YAML: позитив --------------------------------------------------------------------
+# --- YAML: positive -------------------------------------------------------------------
 
 def test_ns_yaml_valid_all_kinds(tmp_path):
     d = _проект(
@@ -184,7 +184,7 @@ def test_ns_yaml_non_element_file_skipped(tmp_path):
     assert not _has(d)
 
 
-# --- YAML: негатив --------------------------------------------------------------------
+# --- YAML: negative -------------------------------------------------------------------
 
 def test_ns_yaml_unknown_object_flagged(tmp_path):
     d = _проект(
@@ -196,7 +196,7 @@ def test_ns_yaml_unknown_object_flagged(tmp_path):
     )
     находка = next((x for x in d if x.rule_id == _ПРАВИЛО), None)
     assert находка is not None and "Программма" in находка.message
-    assert находка.line == 5  # позиция строки со значением
+    assert находка.line == 5  # the position of the line holding the value
 
 
 def test_ns_yaml_kind_mismatch_flagged(tmp_path):
@@ -224,10 +224,10 @@ def test_ns_yaml_bad_member_flagged_in_generic(tmp_path):
     )
 
 
-# --- Гейты ----------------------------------------------------------------------------
+# --- Gates ----------------------------------------------------------------------------
 
 def test_ns_no_project_objects_skipped(tmp_path):
-    # без объектов проекта правило молчит: судить о NS-ссылках не по чему
+    # without project objects the rule stays silent: nothing to judge NS references by
     (tmp_path / "м.xbsl").write_text(
         "метод Ф(Х: Справочник.ЧегоНет.Ссылка)\n;\n", encoding="utf-8",
     )
@@ -237,8 +237,8 @@ def test_ns_no_project_objects_skipped(tmp_path):
 
 @pytest.mark.needs_data
 def test_row_type_named_by_the_form_is_known():
-    # форма именует порождаемый тип строки динсписка свойством ИмяТипаДанныхСтроки
-    # (доки topics/virtual-table): тип ФормаX.ДанныеСтрокиСписка существует, ругаться не на что
+    # the form names the generated dynamic list row type via the ИмяТипаДанныхСтроки property
+    # (docs topics/virtual-table): the type ФормаX.ДанныеСтрокиСписка exists, nothing to complain about
     yaml_text = (
         "ВидЭлемента: КомпонентИнтерфейса\n"
         "Ид: 6c964b22-6612-43df-aca9-588e385bd2a5\n"

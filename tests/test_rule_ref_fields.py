@@ -1,11 +1,11 @@
-"""Правило code/ref-field-needs-req: поле-ссылка структуры без 'обз', '?' и инициализатора.
+"""The code/ref-field-needs-req rule: a structure ref field without 'обз', '?' or an initializer.
 
-Проверяются и срабатывание на "плохих" примерах (реальная грабля: apply падает с
-"cannot be initialized with a default value"), и молчание на всех правильных формах и
-осознанных сужениях (союзы, дженерики, локальные переменные методов).
+Covered are both firing on the "bad" examples (a real pitfall: apply fails with
+"cannot be initialized with a default value") and silence on all the correct forms and
+deliberate narrowings (unions, generics, local method variables).
 
-Правило токеновое, но лексеру нужны данные языка (language.json) – без сгенерированных
-данных модуль пропускается, как и остальные токеновые тесты (см. conftest.py).
+The rule is token-based, but the lexer needs the language data (language.json) - without
+the generated data the module is skipped, like the other token-based tests (see conftest.py).
 """
 
 import pytest
@@ -28,7 +28,7 @@ def _clean(content, name="М.xbsl"):
     return _lint(content, name) == []
 
 
-# --- Срабатывания ----------------------------------------------------------------------
+# --- Findings --------------------------------------------------------------------------
 
 def test_ref_field_without_req_flagged():
     d = _lint("структура Шапка\n    пер Ссылка: Программа.Ссылка\n;\n")
@@ -44,7 +44,7 @@ def test_val_ref_field_flagged():
 
 
 def test_ns_qualified_ref_flagged():
-    # тип с NS-префиксом – тоже прямое поле-ссылка
+    # a type with an NS prefix is also a direct ref field
     d = _lint("структура Шапка\n    пер Товар: Справочник.Товары.Ссылка\n;\n")
     assert len(d) == 1 and "Справочник.Товары.Ссылка" in d[0].message
 
@@ -55,7 +55,7 @@ def test_two_names_shared_type_flagged_each():
 
 
 def test_second_structure_after_method_with_query_flagged():
-    # ';' внутри Запрос{} не ломает баланс блоков – поле после метода находится
+    # a ';' inside Запрос{} does not break the block balance - the field after the method is found
     content = (
         "структура А\n"
         "    пер Имя: Строка\n"
@@ -79,7 +79,7 @@ def test_second_structure_after_method_with_query_flagged():
     assert len(d) == 1 and d[0].line == 16
 
 
-# --- Правильные формы – молчание -------------------------------------------------------
+# --- Correct forms - silence -----------------------------------------------------------
 
 def test_req_field_ok():
     assert _clean("структура Шапка\n    обз пер Ссылка: Программа.Ссылка\n;\n")
@@ -110,7 +110,7 @@ def test_non_ref_fields_ok():
     )
 
 
-# --- Сужения и не-поля – молчание ------------------------------------------------------
+# --- Narrowings and non-fields - silence -----------------------------------------------
 
 def test_union_type_skipped():
     assert _clean("структура Шапка\n    пер Ссылка: Программа.Ссылка|Акция.Ссылка\n;\n")
@@ -125,12 +125,12 @@ def test_generic_skipped():
 
 
 def test_bare_link_name_skipped():
-    # односегментная 'Ссылка' – локальное имя типа, не ссылка объекта проекта
+    # a single-segment 'Ссылка' is a local type name, not a project object reference
     assert _clean("структура Шапка\n    пер Ссылка: Ссылка\n;\n")
 
 
 def test_local_variable_in_method_ok():
-    # переменная метода – не поле структуры, даже с тем же типом
+    # a method variable is not a structure field, even with the same type
     assert _clean(
         "метод Ф()\n"
         "    пер Ссылка: Программа.Ссылка = НайтиПрограмму()\n"
@@ -140,7 +140,7 @@ def test_local_variable_in_method_ok():
 
 
 def test_field_in_structure_method_ok():
-    # переменная внутри метода структуры – тоже не поле
+    # a variable inside a structure method is not a field either
     assert _clean(
         "структура Шапка\n"
         "    пер Имя: Строка\n"

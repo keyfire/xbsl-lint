@@ -1,7 +1,7 @@
-"""CLI: машиночитаемый вывод (--format json) и режим редактора (--stdin).
+"""CLI: machine-readable output (--format json) and editor mode (--stdin).
 
-Зависит от данных Элемента: main() резолвит версию данных до разбора буфера (см. conftest –
-модуль в списке пропускаемых, если данные не сгенерированы).
+Depends on the Element data: main() resolves the data version before parsing the buffer
+(see conftest - the module is in the skip list when the data has not been generated).
 """
 
 import io
@@ -11,7 +11,7 @@ from xbsl import cli
 
 
 def _feed_stdin(monkeypatch, data: bytes):
-    # main() читает sys.stdin.buffer.read(); TextIOWrapper.buffer отдаёт исходные байты.
+    # main() reads sys.stdin.buffer.read(); TextIOWrapper.buffer yields the raw bytes.
     monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(data), encoding="utf-8"))
 
 
@@ -23,9 +23,9 @@ def test_stdin_json_reports_buffer_diagnostics(monkeypatch, capsys):
 
     payload = json.loads(capsys.readouterr().out)
     rules = {d["rule"] for d in payload["diagnostics"]}
-    assert "code/brackets" in rules            # незакрытая скобка
+    assert "code/brackets" in rules            # unclosed bracket
     assert payload["summary"]["errors"] >= 1
-    assert code == 1                           # есть ошибка – ненулевой код
+    assert code == 1                           # there is an error - non-zero exit code
 
 
 def test_stdin_requires_filename(monkeypatch, capsys):
@@ -38,8 +38,8 @@ def test_stdin_requires_filename(monkeypatch, capsys):
 
 
 def test_select_flags_accumulate(tmp_path, capsys):
-    # Повторённые --select суммируются (а не затирают друг друга последним значением);
-    # форма со списком через запятую продолжает работать.
+    # Repeated --select flags accumulate (rather than the last value clobbering the others);
+    # the comma-separated list form keeps working.
     f = tmp_path / "Ч.xbsl"
     f.write_text("метод Ф(): Число\n    возврат 1  \n;\n// хвост…\n", encoding="utf-8")
 
@@ -57,15 +57,15 @@ def test_select_flags_accumulate(tmp_path, capsys):
 
 def test_json_and_text_on_disk(tmp_path, capsys):
     f = tmp_path / "Ч.xbsl"
-    f.write_text("метод Ф(): Число\n    возврат 1  \n;\n", encoding="utf-8")  # хвостовой пробел
+    f.write_text("метод Ф(): Число\n    возврат 1  \n;\n", encoding="utf-8")  # trailing whitespace
 
-    # json: замечание есть, только warning – код 0
+    # json: there is a finding, warnings only - exit code 0
     code = cli.main(["--format", "json", str(f)])
     payload = json.loads(capsys.readouterr().out)
     assert any(d["rule"] == "whitespace/trailing" for d in payload["diagnostics"])
     assert code == 0
 
-    # text: замечания в stdout, сводка в stderr
+    # text: findings go to stdout, the summary to stderr
     cli.main([str(f)])
     cap = capsys.readouterr()
     assert "whitespace/trailing" in cap.out
@@ -73,8 +73,8 @@ def test_json_and_text_on_disk(tmp_path, capsys):
 
 
 def test_discover_skips_hidden_directories(tmp_path):
-    # Скрытые каталоги (git worktree в .claude, .git) держат копии исходников: их файлы
-    # не должны попадать в обход, иначе межфайловые правила видят дубли.
+    # Hidden directories (a git worktree under .claude, .git) hold copies of the sources: their
+    # files must not be picked up by discovery, or cross-file rules would see duplicates.
     visible = tmp_path / "acme" / "app" / "А.yaml"
     visible.parent.mkdir(parents=True)
     visible.write_text("Ид: 1\n", encoding="utf-8")
@@ -92,8 +92,8 @@ def test_discover_skips_hidden_directories(tmp_path):
 
 
 def test_discover_scans_root_inside_hidden_directory(tmp_path):
-    # Сам корень может лежать в скрытом каталоге (открытый worktree) – это нормально,
-    # фильтр действует только на компоненты НИЖЕ корня.
+    # The root itself may live inside a hidden directory (an opened worktree) - that is fine,
+    # the filter only applies to components BELOW the root.
     root = tmp_path / ".claude" / "worktrees" / "T-1"
     f = root / "acme" / "app" / "А.yaml"
     f.parent.mkdir(parents=True)

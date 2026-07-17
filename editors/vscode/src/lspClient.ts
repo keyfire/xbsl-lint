@@ -1,8 +1,8 @@
-// Экспериментальный LSP-режим (xbsl.lsp.enabled): вместо вызовов CLI на каждое событие
-// расширение поднимает долгоживущий сервер xbsl-lsp (extra [lsp] пакета xbsl) и
-// отдаёт ему диагностику, навигацию, автодополнение, hover и quick-fix. Данные Элемента и
-// индекс проекта живут в памяти сервера - отклик на набор текста не платит за старт
-// интерпретатора.
+// Experimental LSP mode (xbsl.lsp.enabled): instead of CLI calls on every event the
+// extension starts a long-lived xbsl-lsp server (the [lsp] extra of the xbsl package) and
+// hands diagnostics, navigation, completion, hover and quick fixes over to it. Element data
+// and the project index live in the server's memory - typing feedback does not pay for
+// interpreter startup.
 
 import * as vscode from "vscode";
 import {
@@ -18,19 +18,20 @@ import { docCode } from "./ruleDocs";
 let client: LanguageClient | undefined;
 let baselineArg: string | undefined;
 
-// Активен ли LSP-режим (сервер поднят). Панель документации – тонкий клиент к серверу.
+// Whether LSP mode is active (the server is up). The docs panel is a thin client to the server.
 export function lspActive(): boolean {
   return client !== undefined;
 }
 
-// Передан ли серверу --baseline при старте. Если базлайна ещё не было (первое исключение
-// только создаёт файл), серверу нужен перезапуск с новыми аргументами, а не xbsl/relint.
+// Whether --baseline was passed to the server at startup. If there was no baseline yet (the
+// first exclusion just creates the file), the server needs a restart with new arguments, not
+// an xbsl/relint.
 export function lspBaselinePassed(): boolean {
   return baselineArg !== undefined;
 }
 
-// Кастомный запрос к серверу (методы xbsl/docs*). Возвращает undefined, если сервер не поднят
-// или запрос упал – потребитель показывает это как "данные недоступны", а не падает.
+// Custom request to the server (xbsl/docs* methods). Returns undefined when the server is not
+// up or the request failed - the consumer shows this as "data unavailable" instead of crashing.
 export async function lspRequest<T>(method: string, params: unknown): Promise<T | undefined> {
   if (!client) {
     return undefined;
@@ -47,8 +48,8 @@ interface SpawnPlan {
   args: string[];
 }
 
-// Чем запускать сервер: явная команда из настройки, иначе интерпретатор из
-// xbsl.linter.pythonPath (модулем), иначе xbsl-lsp из PATH.
+// What to launch the server with: the explicit command from the setting, otherwise the
+// interpreter from xbsl.linter.pythonPath (as a module), otherwise xbsl-lsp from PATH.
 function spawnPlan(cfg: vscode.WorkspaceConfiguration): SpawnPlan {
   const explicit = (cfg.get<string>("lsp.command") || "").trim();
   if (explicit) {
@@ -61,9 +62,9 @@ function spawnPlan(cfg: vscode.WorkspaceConfiguration): SpawnPlan {
   return { command: "xbsl-lsp", args: [] };
 }
 
-// Собирает клиента по ТЕКУЩИМ настройкам и состоянию диска: перезапуск линтера создаёт
-// клиента заново, поэтому подхватывает изменившиеся наборы правил и появившийся файл
-// базлайна (аргументы старого процесса пересобрать нельзя).
+// Builds a client from the CURRENT settings and disk state: a linter restart creates the
+// client anew, so it picks up changed rule sets and a newly appeared baseline file
+// (the old process's arguments cannot be rebuilt).
 function buildClient(output: vscode.OutputChannel): { client: LanguageClient; plan: SpawnPlan; args: string[] } {
   const cfg = vscode.workspace.getConfiguration("xbsl");
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -87,13 +88,13 @@ function buildClient(output: vscode.OutputChannel): { client: LanguageClient; pl
       args.push(flag, value);
     }
   }
-  // Выключенные в настройках правила и группы дополняют --ignore: сервер их не запускает.
+  // Rules and groups disabled in the settings extend --ignore: the server does not run them.
   const ignore = mergeOffRules((cfg.get<string>("linter.ignore") || "").trim() || undefined);
   if (ignore) {
     args.push("--ignore", ignore);
   }
-  // Существующий файл базлайна: исключённые находки гасит сервер. Отсутствующий не
-  // передаём - у сервера старой версии (< 0.15) неизвестный ключ сорвал бы запуск.
+  // An existing baseline file: excluded findings are muted by the server. A missing one is
+  // not passed - on an older server (< 0.15) an unknown key would break the startup.
   baselineArg = folder ? baselineForLint(folder.uri) : undefined;
   if (baselineArg) {
     args.push("--baseline", baselineArg);
@@ -104,15 +105,15 @@ function buildClient(output: vscode.OutputChannel): { client: LanguageClient; pl
     args,
     options: { cwd: folder?.uri.fsPath },
   };
-  // yaml ограничиваем корнем исходников, чтобы не линтить посторонние yaml репозитория.
+  // yaml is limited to the sources root so unrelated repository yamls are not linted.
   const yamlPattern = projectRoot ? `**/${projectRoot}/**/*.yaml` : "**/*.yaml";
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ language: "xbsl" }, { language: "yaml", pattern: yamlPattern }],
     outputChannel: output,
     diagnosticCollectionName: "xbsl-lsp",
     middleware: {
-      // Пер-правило переопределения xbsl.rules поверх диагностик сервера: скрыть off,
-      // заменить уровень; у правила-стандарта значок правила становится ссылкой на документ.
+      // Per-rule xbsl.rules overrides on top of server diagnostics: hide off, replace
+      // the severity; for a standard-backed rule the rule badge becomes a document link.
       handleDiagnostics: (uri, diagnostics, next) => {
         next(
           uri,
@@ -147,7 +148,7 @@ export async function activateLsp(
     output.appendLine(vscode.l10n.t('XBSL LSP: the server failed to start ({0}): {1}', built.plan.command, msg));
     client = undefined;
     if (!chosenExplicitly) {
-      return false;  // режим не выбирали - молча работаем как раньше (CLI), подробности в панели вывода
+      return false;  // mode not chosen explicitly - keep working as before (CLI), details in the output panel
     }
     const install = vscode.l10n.t("Install xbsl[lsp]");
     void vscode.window
@@ -168,8 +169,8 @@ export async function activateLsp(
 
   context.subscriptions.push(
     { dispose: () => void client?.stop() },
-    // Команды сохраняют привычные идентификаторы и в LSP-режиме. Перезапуск пересоздаёт
-    // клиента, а не дёргает restart(): аргументы сервера собираются заново.
+    // Commands keep their familiar identifiers in LSP mode too. A restart re-creates the
+    // client instead of calling restart(): the server arguments are rebuilt from scratch.
     vscode.commands.registerCommand("xbsl.restartLinter", async () => {
       const old = client;
       client = undefined;

@@ -59,17 +59,17 @@ INDEX = {
         {"form": "ГлавнаяФорма", "name": "Кнопка", "type": "Кнопка", "path": "Каталог/ГлавнаяФорма.yaml", "line": 33},
     ],
     "references": [
-        # метод Загрузить (модуль Товар): объявление, свой-модульный вызов, вызов Товар.Загрузить(), шум
+        # method Загрузить (module Товар): declaration, own-module call, a Товар.Загрузить() call, noise
         {"name": "Загрузить", "qualifier": "", "module": "Товар", "path": "Каталог/Товар.xbsl", "line": 20, "col": 4},
         {"name": "Загрузить", "qualifier": "", "module": "Товар", "path": "Каталог/Товар.xbsl", "line": 25, "col": 8},
         {"name": "Загрузить", "qualifier": "Товар", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 6, "col": 10},
         {"name": "Загрузить", "qualifier": "Прочее", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 50, "col": 4},
-        # метод Обновить (модуль ГлавнаяФорма): вызов в коде и yaml-обработчик
+        # method Обновить (module ГлавнаяФорма): a call in code and a yaml handler
         {"name": "Обновить", "qualifier": "", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 12, "col": 4},
         {"name": "Обновить", "qualifier": "", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.yaml", "line": 33, "col": 20},
-        # объект Товар как корень цепочки
+        # the object Товар as a chain root
         {"name": "Товар", "qualifier": "", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 6, "col": 0},
-        # компонент Кнопка формы ГлавнаяФорма (использование в коде) и метод Нажать её модуля
+        # component Кнопка of form ГлавнаяФорма (a usage in code) and method Нажать of its module
         {"name": "Кнопка", "qualifier": "Компоненты", "module": "ГлавнаяФорма", "path": "Каталог/ГлавнаяФорма.xbsl", "line": 8, "col": 4},
         {"name": "Нажать", "qualifier": "Кнопка", "module": "ГлавнаяФорма", "path": "Каталог/Кнопка.xbsl", "line": 9, "col": 4},
     ],
@@ -106,7 +106,7 @@ def test_definition_object_and_members():
 
 def test_definition_methods_and_components():
     assert d("Товар.Загрузить()", 8) == ("Каталог/Товар.xbsl", 20)
-    assert d("Обновить()", 2) == ("Каталог/ГлавнаяФорма.xbsl", 5)  # свой модуль по file_stem
+    assert d("Обновить()", 2) == ("Каталог/ГлавнаяФорма.xbsl", 5)  # own module via file_stem
     assert d("Компоненты.Кнопка.Видимость", 12) == ("Каталог/ГлавнаяФорма.yaml", 33)
     assert d("Компоненты.Кнопка.Нажать()", 20) == ("Каталог/Кнопка.xbsl", 7)
 
@@ -114,19 +114,19 @@ def test_definition_methods_and_components():
 def test_definition_yaml_handler():
     assert d("    Обработчик: Обновить", 20, language_id="yaml",
              file_path="Каталог/ГлавнаяФорма.yaml") == ("Каталог/ГлавнаяФорма.xbsl", 5)
-    # вне значения обработчика – молчание
+    # outside the handler value - silence
     assert d("    Обработчик: Обновить", 3, language_id="yaml") is None
 
 
 def test_definition_yaml_handler_with_comment():
-    # хвостовой комментарий после имени обработчика не мешает переходу
+    # a trailing comment after the handler name does not break the jump
     assert d("    Обработчик: Обновить # клик", 20, language_id="yaml",
              file_path="Каталог/ГлавнаяФорма.yaml") == ("Каталог/ГлавнаяФорма.xbsl", 5)
 
 
 def test_definition_unknown_contexts():
     assert d("Неведомое.Что", 3) is None
-    assert d("А.Б.В.Г", 6) is None  # глубокая цепочка без Компоненты – вне охвата
+    assert d("А.Б.В.Г", 6) is None  # a deep chain without Компоненты - out of scope
 
 
 def r(line_text, character, include_declaration=False, language_id="xbsl", file_stem="ГлавнаяФорма", file_path=None):
@@ -146,22 +146,22 @@ def _sites(refs):
 
 
 def test_references_method():
-    # курсор на Товар.Загрузить(): использования метода Загрузить модуля Товар
+    # cursor on Товар.Загрузить(): usages of method Загрузить of module Товар
     got = r("Товар.Загрузить()", 8)
     sites = _sites(got)
-    assert ("Каталог/ГлавнаяФорма.xbsl", 6) in sites  # Товар.Загрузить() в форме
-    assert ("Каталог/Товар.xbsl", 25) in sites  # голый вызов в своём модуле
-    assert ("Каталог/Товар.xbsl", 20) not in sites  # объявление исключено
-    assert ("Каталог/ГлавнаяФорма.xbsl", 50) not in sites  # чужой qualifier Прочее – не наш метод
+    assert ("Каталог/ГлавнаяФорма.xbsl", 6) in sites  # Товар.Загрузить() in the form
+    assert ("Каталог/Товар.xbsl", 25) in sites  # a bare call in its own module
+    assert ("Каталог/Товар.xbsl", 20) not in sites  # the declaration is excluded
+    assert ("Каталог/ГлавнаяФорма.xbsl", 50) not in sites  # a foreign qualifier Прочее - not our method
 
 
 def test_references_include_declaration():
     got = r("Товар.Загрузить()", 8, include_declaration=True)
-    assert ("Каталог/Товар.xbsl", 20) in _sites(got)  # объявление добавлено
+    assert ("Каталог/Товар.xbsl", 20) in _sites(got)  # the declaration is included
 
 
 def test_references_method_from_yaml_handler():
-    # обработчик в yaml -> использования метода Обновить (и сам сайт обработчика – тоже использование)
+    # a yaml handler -> usages of method Обновить (the handler site itself is a usage too)
     got = r("    Обработчик: Обновить", 20, language_id="yaml", file_path="Каталог/ГлавнаяФорма.yaml")
     sites = _sites(got)
     assert ("Каталог/ГлавнаяФорма.xbsl", 12) in sites
@@ -169,19 +169,19 @@ def test_references_method_from_yaml_handler():
 
 
 def test_references_object():
-    # объект Товар как корень цепочки
+    # the object Товар as a chain root
     got = r("знч Х = Товар.Ссылка", 11)
     assert _sites(got) == {("Каталог/ГлавнаяФорма.xbsl", 6)}
 
 
 def test_references_component():
-    # компонент Кнопка через Компоненты в форме ГлавнаяФорма (использование в коде, не строка yaml-узла)
+    # component Кнопка via Компоненты in form ГлавнаяФорма (a usage in code, not the yaml node line)
     got = r("Компоненты.Кнопка.Видимость", 13)
     assert _sites(got) == {("Каталог/ГлавнаяФорма.xbsl", 8)}
 
 
 def test_references_col_and_length():
-    # позиция несёт col (0-based) и длину имени для выделения
+    # a position carries col (0-based) and the name length for highlighting
     got = r("Компоненты.Кнопка.Видимость", 13)
     _path, _line, col, length = got[0]
     assert col == 4 and length == len("Кнопка")
@@ -210,12 +210,12 @@ def test_completion_query_table_fields():
     )
     labels = {e["label"] for e in entries}
     assert {"Ссылка", "Код", "Наименование", "Цена", "Артикул", "Цены"} <= labels
-    assert "Объект" not in labels  # член объекта/менеджера, не поле таблицы
+    assert "Объект" not in labels  # an object/manager member, not a table field
     assert all(e["kind"] == "field" for e in entries)
 
 
 def test_completion_query_table_alias():
-    # к таблицам в проекте обращаются через алиас (`ИЗ Товар КАК Т`) – после `Т.` те же поля
+    # project tables are addressed via an alias (`ИЗ Товар КАК Т`) - after `Т.` the same fields
     entries = resolve_completions(
         LOOKUP,
         language_id="xbsl",
@@ -229,14 +229,14 @@ def test_completion_query_table_alias():
 
 
 def test_completion_query_only_inside_query():
-    # Вне блока Запрос{...} после точки – прежнее поведение (члены объекта).
+    # Outside a Запрос{...} block, after a dot - the previous behavior (object members).
     labels = {e["label"] for e in c("знч Х = Товар.")}
     assert "Объект" in labels
 
 
 def test_completion_stdlib_type_members():
-    # не проект-объект, но stdlib-тип/глобаль – члены из type_members датасета: свойства и методы
-    # раздельно (у метода свой вид и скобки при вставке)
+    # not a project object but a stdlib type/global - members come from the type_members dataset:
+    # properties and methods separately (a method gets its own kind and parens on insertion)
     entries = resolve_completions(
         LOOKUP,
         language_id="xbsl",
@@ -254,7 +254,7 @@ def test_completion_stdlib_type_members():
 
 
 def test_completion_stdlib_flat_members_still_work():
-    # старый датасет (плоский список имён, свойства и методы вперемешку) – совместимость
+    # the old dataset (a flat list of names, properties and methods mixed) - compatibility
     entries = resolve_completions(
         LOOKUP,
         language_id="xbsl",
@@ -267,8 +267,8 @@ def test_completion_stdlib_flat_members_still_work():
 
 
 def test_completion_local_var_members():
-    # пер Список = новый Массив<Строка>() -> Список. даёт члены Массива (тип переменной считает
-    # вызывающий, лексером)
+    # пер Список = новый Массив<Строка>() -> Список. offers the members of Массив (the variable
+    # type is computed by the caller, with the lexer)
     entries = resolve_completions(
         LOOKUP,
         language_id="xbsl",
@@ -282,8 +282,8 @@ def test_completion_local_var_members():
 
 
 def test_completion_local_var_shadows_stdlib_type():
-    # переменная перекрывает одноимённый stdlib-тип: `пер Список = новый Массив<...>()` – это про
-    # члены Массива, а не про компонент Список
+    # a variable shadows the namesake stdlib type: `пер Список = новый Массив<...>()` is about
+    # the members of Массив, not about the component Список
     entries = resolve_completions(
         LOOKUP,
         language_id="xbsl",
@@ -299,7 +299,7 @@ def test_completion_local_var_shadows_stdlib_type():
 
 
 def test_completion_local_var_project_type_none():
-    # тип переменной – структура проекта, а не stdlib: подсказывать нечем, уступаем словарному
+    # the variable type is a project structure, not stdlib: nothing to offer, yield to word completion
     got = resolve_completions(
         LOOKUP,
         language_id="xbsl",
@@ -312,7 +312,7 @@ def test_completion_local_var_project_type_none():
 
 
 def test_completion_unknown_dot_none():
-    # неизвестный токен (не проект-объект и не stdlib) – None, уступаем словарному дополнению
+    # an unknown token (not a project object and not stdlib) - None, yield to word completion
     got = resolve_completions(
         LOOKUP, language_id="xbsl", line_prefix="Неведомо.", file_stem="Ф", stdlib_members={}
     )
@@ -333,7 +333,7 @@ def test_completion_components_and_methods():
 def test_completion_yaml_type():
     labels = [e["label"] for e in c("    Тип: ", language_id="yaml")]
     assert labels == ["Товар", "ВидТовара"]
-    # в yaml вне значения Тип контекст неизвестен (ветка голых имён - только для xbsl)
+    # in yaml outside a Тип value the context is unknown (the bare-name branch is xbsl-only)
     assert c("просто текст", language_id="yaml") is None
 
 
@@ -346,16 +346,16 @@ def _yaml_type(prefix):
 
 
 def test_completion_yaml_type_offers_platform_catalog():
-    # тип компонента живёт только в каталоге платформы, среди объектов проекта его нет
+    # the component type lives only in the platform catalog - it is not among the project objects
     labels = {e["label"] for e in _yaml_type("        Тип: С")}
     assert {"СтандартнаяКолонкаТаблицы", "АвтоматическаяГруппа", "Товар"} <= labels
-    # фасет - член своего агрегата, а не голое имя; не-имена каталога отброшены
+    # a facet is a member of its aggregate, not a bare name; catalog non-names are dropped
     assert "ДвоичныйОбъект.Ссылка" not in labels
     assert not [x for x in labels if x.startswith("~~")]
 
 
 def test_completion_yaml_type_inside_generics():
-    # значение Тип - выражение: курсор может стоять внутри скобок, а не только у корня
+    # a Тип value is an expression: the cursor may sit inside the brackets, not only at the root
     labels = {e["label"] for e in _yaml_type("    Тип: СтандартнаяКолонкаТаблицы<Табл")}
     assert "Таблица" in labels
 
@@ -399,19 +399,19 @@ def test_completion_yaml_type_inside_generics():
 
 @pytest.mark.needs_data
 def test_query_aliases_from_and_join():
-    # алиасы таблиц запроса – так к таблицам обращаются в реальном коде
+    # query table aliases - that is how real code addresses the tables
     src = engine.load_text("Модуль.xbsl", МОДУЛЬ_С_ЗАПРОСОМ)
     inside = МОДУЛЬ_С_ЗАПРОСОМ.index("А.Заголовок")
     assert query_aliases(src, inside) == {"А": "Акция", "П": "Программа"}
-    # вне блока запроса карты нет
+    # no map outside the query block
     outside = МОДУЛЬ_С_ЗАПРОСОМ.index("возврат 0")
     assert query_aliases(src, outside) == {}
 
 
 @pytest.mark.needs_data
 def test_query_row_columns_for_loop():
-    # `знч Результат = Запрос{...}` + `для С из Результат` -> у С колонки выборки: алиас КАК,
-    # поле без алиаса (последний сегмент), вычисляемое выражение только с алиасом
+    # `знч Результат = Запрос{...}` + `для С из Результат` -> С carries the selection columns:
+    # a КАК alias, an alias-free field (its last segment), a computed expression only with an alias
     src = engine.load_text("Модуль.xbsl", МОДУЛЬ_С_ЗАПРОСОМ)
     got = query_row_columns(src, МОДУЛЬ_С_ЗАПРОСОМ.index("С.Заголовок"))
     assert got == {"С": ["Заголовок", "Слаг", "Вес"]}
@@ -419,13 +419,13 @@ def test_query_row_columns_for_loop():
 
 @pytest.mark.needs_data
 def test_query_row_columns_only_above_cursor():
-    # цикл ниже курсора ещё не виден
+    # a loop below the cursor is not visible yet
     src = engine.load_text("Модуль.xbsl", МОДУЛЬ_С_ЗАПРОСОМ)
     assert query_row_columns(src, МОДУЛЬ_С_ЗАПРОСОМ.index("знч Результат")) == {}
 
 
 def test_completion_query_row_member():
-    # С. внутри `для С из Результат` -> колонки строки результата
+    # С. inside `для С из Результат` -> the result row columns
     entries = resolve_completions(
         LOOKUP,
         language_id="xbsl",
@@ -439,8 +439,8 @@ def test_completion_query_row_member():
 
 @pytest.mark.needs_data
 def test_local_var_types_declarations_and_params():
-    # тип берётся из инициализации (новый Массив<...>) и из аннотации; дженерик-параметр
-    # отбрасывается – члены типа от него не зависят; параметры метода тоже дают тип
+    # the type comes from the initializer (новый Массив<...>) and from the annotation; the generic
+    # argument is dropped - type members do not depend on it; method parameters yield a type too
     src = engine.load_text("Модуль.xbsl", МОДУЛЬ)
     got = local_var_types(src, МОДУЛЬ.index("возврат 0"))
     assert got == {
@@ -454,7 +454,7 @@ def test_local_var_types_declarations_and_params():
 
 @pytest.mark.needs_data
 def test_local_var_types_scoped_to_method():
-    # переменные соседнего метода в область видимости не затекают
+    # variables of the neighboring method do not leak into the scope
     src = engine.load_text("Модуль.xbsl", МОДУЛЬ)
     got = local_var_types(src, МОДУЛЬ.index("возврат Индекс"))
     assert got == {"Индекс": "Соответствие"}
@@ -462,7 +462,7 @@ def test_local_var_types_scoped_to_method():
 
 @pytest.mark.needs_data
 def test_local_var_types_only_above_cursor():
-    # объявления ниже курсора ещё не видны
+    # declarations below the cursor are not visible yet
     src = engine.load_text("Модуль.xbsl", МОДУЛЬ)
     got = local_var_types(src, МОДУЛЬ.index("пер Список"))
     assert got == {"Ключи": "Массив", "Лимит": "Число"}
@@ -484,8 +484,8 @@ def test_hover_object_method_component():
 
 @pytest.mark.needs_data
 def test_local_var_type_from_query_literal():
-    # `знч З = Запрос{...}` конструирует ТипизированныйЗапрос (topics/query-literal):
-    # после `З.` должны подсказываться Выполнить и компания
+    # `знч З = Запрос{...}` constructs a ТипизированныйЗапрос (topics/query-literal):
+    # after `З.` the completion must offer Выполнить and friends
     code = (
         "метод А()\n"
         "    знч ЗапросКБД = Запрос{\n"
@@ -500,8 +500,8 @@ def test_local_var_type_from_query_literal():
 
 
 def test_query_fields_include_register_sections():
-    # у регистров поля живут в Измерениях и Ресурсах - подсказка полей таблицы в
-    # Запрос{...} обязана их видеть (реквизитов у регистра может не быть вовсе)
+    # register fields live in Измерения and Ресурсы - the table field completion inside
+    # Запрос{...} must see them (a register may have no attributes at all)
     entries = _query_field_entries(
         "РегистрСведений", [], [],
         [{"name": "Настройка"}], [{"name": "Значение"}],
@@ -512,7 +512,7 @@ def test_query_fields_include_register_sections():
 
 @pytest.mark.needs_data
 def test_local_var_type_from_call_chain():
-    # тип из возврата метода: статическая фабрика и цепочка на переменной
+    # a type from a method return: a static factory and a chain on a variable
     code = (
         "метод А(Путь: Строка)\n"
         "    знч Клиент = КлиентHttp.СБазовымUrl(\"http://адрес\")\n"
@@ -534,7 +534,7 @@ def test_local_var_type_from_call_chain():
 
 @pytest.mark.needs_data
 def test_chain_type_at_dot_after_call():
-    # точка после вызова: `ЗапросКБД.Выполнить().` - тип цепочки слева от курсора
+    # a dot after a call: `ЗапросКБД.Выполнить().` - the type of the chain left of the cursor
     code = (
         "метод А()\n"
         "    знч ЗапросКБД = Запрос{ ВЫБРАТЬ Значение ИЗ Настройки }\n"
@@ -558,8 +558,8 @@ def test_chain_type_at_dot_after_call():
 
 @pytest.mark.needs_data
 def test_local_var_type_through_property_and_use():
-    # `исп` типизируется как обычная переменная; звено-свойство (Ответ.Тело) идёт
-    # через member_types так же, как вызов
+    # `исп` is typed like a regular variable; a property link (Ответ.Тело) goes through
+    # member_types the same way a call does
     code = (
         "метод А()\n"
         "    исп Ответ = КлиентHttp.ЗапросGet(\"адрес\").Выполнить()\n"
@@ -579,7 +579,7 @@ def test_local_var_type_through_property_and_use():
 
 
 def test_completion_project_struct_members():
-    # переменная проектного типа: члены структуры модуля - из индекса (struct_members)
+    # a variable of a project type: module structure members come from the index (struct_members)
     idx = dict(INDEX)
     idx["struct_members"] = {
         "ДанныеРасширения": {
@@ -601,7 +601,7 @@ def test_completion_project_struct_members():
 
 
 def test_completion_yaml_struct_attributes():
-    # переменная типа yaml-структуры: реквизиты объекта вида Структура/ХранимаяСтруктура
+    # a yaml-structure-typed variable: attributes of a Структура/ХранимаяСтруктура object
     idx = dict(INDEX)
     idx["objects"] = list(INDEX["objects"]) + [{
         "name": "ДанныеРасширения", "kind": "ХранимаяСтруктура",
@@ -618,8 +618,8 @@ def test_completion_yaml_struct_attributes():
 
 
 def test_completion_bare_name_top_level():
-    # голое имя (без точки): переменные, методы своего модуля, объекты проекта,
-    # типы модулей, глобальный контекст и типы stdlib
+    # a bare name (no dot): variables, own-module methods, project objects,
+    # module types, the global context and stdlib types
     idx = dict(INDEX)
     idx["struct_members"] = {"ДанныеРасширения": {"properties": ["Идентификатор"]}}
     lookup = IndexLookup(idx)
@@ -631,17 +631,17 @@ def test_completion_bare_name_top_level():
         local_vars={"Данные": "ДанныеРасширения"},
     )
     got = {e["label"]: e["kind"] for e in entries}
-    assert got["СериализацияJson"] == "object"      # тип stdlib
-    assert got["Сообщить"] == "method"              # глобальный контекст
-    assert got["Данные"] == "field"                 # видимая переменная
-    assert got["Обновить"] == "method"              # метод своего модуля
-    assert got["Товар"] == "object"                 # объект проекта
+    assert got["СериализацияJson"] == "object"      # stdlib type
+    assert got["Сообщить"] == "method"              # global context
+    assert got["Данные"] == "field"                 # a visible variable
+    assert got["Обновить"] == "method"              # own-module method
+    assert got["Товар"] == "object"                 # project object
     assert got["ВидТовара"] == "enum"
-    assert got["ДанныеРасширения"] == "localType"   # тип модуля
+    assert got["ДанныеРасширения"] == "localType"   # module type
 
 
 def test_completion_bare_name_not_after_dot():
-    # после точки ветка голых имён не срабатывает - там свои контексты
+    # after a dot the bare-name branch does not fire - those positions have contexts of their own
     entries = resolve_completions(
         LOOKUP, language_id="xbsl", line_prefix="    знч Х = Неведомое.Что",
         file_stem="ГлавнаяФорма", stdlib_members={"Массив": {}}, stdlib_globals=["Сообщить"],
@@ -649,7 +649,7 @@ def test_completion_bare_name_not_after_dot():
     assert entries is None
 
 
-# ------------------------------------------------------------------------- шаблоны кода
+# ------------------------------------------------------------------------- code templates
 
 def _tmpl(name, pattern, contexts=(tpl.STATEMENT_CONTEXT,)):
     return tpl.Template(name=name, pattern=pattern, contexts=contexts)
@@ -670,7 +670,7 @@ def test_completion_offers_templates_on_a_bare_name():
 
 
 def test_templates_come_before_the_other_completions():
-    # Ctrl+Space показывает шаблоны до имён - порядок задаёт сервер, ранг довершает sortText.
+    # Ctrl+Space shows templates before names - the server sets the order, sortText seals the rank.
     entries = ct("    ", [_tmpl("тов[ар] - Товар шаблоном", "товар")])
     kinds = [e["kind"] for e in entries]
     assert kinds[0] == "snippet"

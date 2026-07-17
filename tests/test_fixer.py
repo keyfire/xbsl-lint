@@ -1,8 +1,8 @@
-"""Аппликатор механических правок (--fix): fixer.py и его правила.
+"""Mechanical fix applier (--fix): fixer.py and its rules.
 
-Пробные части чинилки (fix_source/encode/is_fixable) работают над готовыми Diagnostic
-и данных Элемента не требуют. Тесты правил-источников правок (typography/whitespace)
-идут через лексер и данные, поэтому помечены skipif как в других файлах правил.
+The pure parts of the fixer (fix_source/encode/is_fixable) operate on ready-made Diagnostic
+objects and need no Element data. Tests of the fix-producing rules (typography/whitespace)
+go through the lexer and the data, so they are marked skipif like in the other rule files.
 """
 
 import pytest
@@ -20,13 +20,13 @@ def _diag(path, offset, end, new, rule="whitespace/trailing"):
     return Diagnostic(path, 1, 1, rule, Severity.WARNING, "x", fix=TextEdit(offset, end, new))
 
 
-# --- Чистая механика чинилки (без данных Элемента) -------------------------------------
+# --- Pure fixer mechanics (no Element data) --------------------------------------------
 
 def test_span_edits_applied_right_to_left():
     src = _src("М.xbsl", "абвгде")
     diags = [
         _diag("М.xbsl", 0, 1, "A"),   # а -> A
-        _diag("М.xbsl", 4, 6, ""),    # удалить "де"
+        _diag("М.xbsl", 4, 6, ""),    # delete "де"
     ]
     res = fixer.fix_source(src, diags)
     assert res.text == "Aбвг"
@@ -36,8 +36,8 @@ def test_span_edits_applied_right_to_left():
 def test_overlapping_edits_earliest_wins():
     src = _src("М.xbsl", "абвгде")
     diags = [
-        _diag("М.xbsl", 0, 3, "X"),   # покрывает абв
-        _diag("М.xbsl", 2, 4, "Y"),   # пересекается – отбрасывается
+        _diag("М.xbsl", 0, 3, "X"),   # covers абв
+        _diag("М.xbsl", 2, 4, "Y"),   # overlaps - dropped
     ]
     res = fixer.fix_source(src, diags)
     assert res.text == "Xгде"
@@ -51,7 +51,7 @@ def test_no_fix_no_change():
 
 
 def test_mixed_newline_normalized_to_dominant():
-    # CRLF ×2, LF ×1 -> преобладает CRLF
+    # CRLF ×2, LF ×1 -> CRLF dominates
     src = _src("М.xbsl", "а\r\nб\r\nв\n")
     diag = Diagnostic("М.xbsl", 1, 1, "whitespace/mixed-newline", Severity.WARNING, "x")
     res = fixer.fix_source(src, [diag])
@@ -60,10 +60,10 @@ def test_mixed_newline_normalized_to_dominant():
 
 
 def test_mixed_newline_after_trailing_edit():
-    # хвостовой пробел удаляется, затем переводы строк нормализуются
+    # the trailing whitespace is removed, then the newlines are normalized
     src = _src("М.xbsl", "а  \r\nб\n")
     diags = [
-        _diag("М.xbsl", 1, 3, ""),  # два пробела после "а"
+        _diag("М.xbsl", 1, 3, ""),  # two spaces after "а"
         Diagnostic("М.xbsl", 1, 1, "whitespace/mixed-newline", Severity.WARNING, "x"),
     ]
     res = fixer.fix_source(src, diags)
@@ -85,7 +85,7 @@ def test_is_fixable():
     assert not fixer.is_fixable(Diagnostic("М.xbsl", 1, 1, "structure/xbsl-pair", Severity.WARNING, "x"))
 
 
-# --- Правила-источники правок (нужны данные Элемента) ----------------------------------
+# --- Fix-producing rules (Element data required) ---------------------------------------
 
 _needs_data = pytest.mark.skipif(
     not dataset.available_versions(),
@@ -109,7 +109,7 @@ def test_typography_rules_carry_fixes():
     fixed = fixer.fix_source(src, diags).text
     assert '"цитата"' in fixed
     assert "многоточие..." in fixed
-    assert "тире –" in fixed  # среднее тире U+2013
+    assert "тире –" in fixed  # en dash U+2013
     assert "—" not in fixed and "“" not in fixed and "…" not in fixed
 
 

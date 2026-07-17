@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Типы подключённых библиотек: разбор Проект.yaml, поиск архива и чтение глобальных имён."""
+"""Types of attached libraries: parsing Проект.yaml, locating the archive, reading global names."""
 import zipfile
 from pathlib import Path
 
@@ -30,7 +30,7 @@ Libraries:
 
 
 def _архив(path, элементы):
-    """Синтетический .xlib: {путь внутри подсистемы: (имя, вид, областьВидимости)}."""
+    """A synthetic .xlib: {path inside the subsystem: (name, kind, visibility scope)}."""
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("Assembly.yaml", "ManifestVersion: 1.0\nVendor: acme\nName: ТаймерЛиб\n")
         z.writestr("acme/ТаймерЛиб/Проект.yaml", "Ид: 1\nИмя: ТаймерЛиб\n")
@@ -53,15 +53,15 @@ def _архив(path, элементы):
 def test_declared_libraries_ru_and_en():
     assert libs.declared_libraries(ПРОЕКТ) == [("acme", "ТаймерЛиб", "9.0.2")]
     assert libs.declared_libraries(PROJECT_EN) == [("acme", "QueueLib", "1.0.0")]
-    # обычный элемент проекта библиотек не объявляет – быстрый путь без разбора yaml
+    # a regular project element declares no libraries - the fast path with no yaml parsing
     assert libs.declared_libraries("ВидЭлемента: Справочник\nИмя: Товар\n") == []
 
 
 def test_archive_global_types_only(tmp_path):
     архив = _архив(tmp_path / "acme-ТаймерЛиб-9.0.2.xlib", ЭЛЕМЕНТЫ)
     имена = libs.archive_global_types(архив)
-    # видно только глобальное; ВПодсистеме – внутреннее дело библиотеки,
-    # подсистема описывает пространство имён и типом не является
+    # only the global scope is visible; ВПодсистеме is the library's internal business,
+    # and the subsystem describes a namespace and is not a type
     assert имена == {"ОписаниеАдресата", "Интерфейс"}
 
 
@@ -73,7 +73,7 @@ def test_archive_not_found_and_broken(tmp_path):
 
 
 def test_archive_found_above_sources(tmp_path):
-    # раскладка как у поставки: архив рядом с корнем исходников, дескриптор на два уровня глубже
+    # the delivery layout: the archive next to the source root, the descriptor two levels deeper
     _архив(tmp_path / "acme-ТаймерЛиб-9.0.2.xlib", ЭЛЕМЕНТЫ)
     описание = tmp_path / "acme" / "Сайт" / "Проект.yaml"
     описание.parent.mkdir(parents=True)
@@ -119,7 +119,7 @@ def test_library_type_known_when_archive_present(tmp_path):
 
 @pytest.mark.needs_data
 def test_library_type_unknown_without_archive(tmp_path):
-    # архива рядом нет – судить о типах библиотеки не по чему, поведение прежнее
+    # no archive nearby - nothing to judge the library types by, behavior stays as before
     корень = _проект(tmp_path)
     d = engine.run(discover([str(корень)]), select={"code/unknown-type"})
     assert [x for x in d if "ОписаниеАдресата" in x.message]

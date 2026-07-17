@@ -1,20 +1,22 @@
-// Разбор внутренней структуры объекта 1С:Элемент (реквизиты, измерения, ресурсы, табличные
-// части, значения перечисления, параметры работы клиента, шаблоны URL HTTP-сервиса) и
-// генерация точечной вставки нового элемента секции в yaml. Модуль чистый (без vscode), чтобы
-// проверяться обычными node-тестами; обвязка дерева/webview – в metadataTree.ts.
+// Parsing of the internal structure of a 1C:Element object (attributes, dimensions, resources,
+// tabular sections, enumeration values, client operation parameters, HTTP service URL templates)
+// and generation of a targeted insertion of a new section item into yaml. The module is pure
+// (no vscode) so it can be checked by plain node tests; the tree/webview wiring is in
+// metadataTree.ts.
 //
-// Секции – массивы однотипных описаний. Форма описания зависит от секции: реквизит/измерение/
-// ресурс – { Ид, Имя, Тип }; значение перечисления – { Ид, Имя }; параметр клиента – { Имя, Тип };
-// шаблон URL – { Имя, Шаблон, Методы }. Стандартные реквизиты (Наименование, Код) идут без Ид.
+// Sections are arrays of same-shaped descriptions. The shape depends on the section:
+// attribute/dimension/resource - { Ид, Имя, Тип }; enumeration value - { Ид, Имя }; client
+// parameter - { Имя, Тип }; URL template - { Имя, Шаблон, Методы }. Standard attributes
+// (Наименование, Код) come without Ид.
 
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import type { Node, YAMLMap } from "yaml";
 
 export interface MetaField {
   name: string;
-  type?: string; // Тип / Шаблон / Обработчик – показываем как подпись поля
-  offset?: number; // смещение map поля в тексте – для перехода и панели свойств
-  children?: MetaField[]; // вложенные (реквизиты табличной части, методы шаблона URL)
+  type?: string; // Тип / Шаблон / Обработчик - shown as the field caption
+  offset?: number; // offset of the field map in the text - for navigation and the properties panel
+  children?: MetaField[]; // nested (tabular section attributes, URL template methods)
 }
 
 export interface MetaInternals {
@@ -22,10 +24,10 @@ export interface MetaInternals {
   attributes: MetaField[]; // Реквизиты
   dimensions: MetaField[]; // Измерения
   resources: MetaField[]; // Ресурсы
-  tabulars: MetaField[]; // ТабличныеЧасти (children = реквизиты)
-  enumValues: MetaField[]; // Элементы (перечисление)
+  tabulars: MetaField[]; // ТабличныеЧасти (children = attributes)
+  enumValues: MetaField[]; // Элементы (enumeration)
   clientParams: MetaField[]; // Параметры (ПараметрыРаботыКлиента)
-  urlTemplates: MetaField[]; // ШаблоныUrl (children = методы)
+  urlTemplates: MetaField[]; // ШаблоныUrl (children = methods)
   structFields: MetaField[]; // Поля (Структура)
 }
 
@@ -35,7 +37,7 @@ export interface TextEdit {
   newText: string;
 }
 
-// -- доступ к yaml-узлам ------------------------------------------------------------------
+// -- access to yaml nodes -----------------------------------------------------------------
 
 function get(map: unknown, key: string): unknown {
   if (!isMap(map)) {
@@ -117,11 +119,11 @@ export function parseInternals(text: string): MetaInternals | undefined {
   };
 }
 
-// -- описание узла для панели свойств --------------------------------------------------------
+// -- node description for the properties panel -----------------------------------------------
 //
-// Строки-свойства выбранного узла yaml (объект целиком или его поле). Скалярные свойства
-// редактируются панелью через propertyEdit (formPreviewCore) по этому же смещению; Ид и
-// ВидЭлемента – только для чтения; сложные значения (Реквизиты, Интерфейс ...) не показываются.
+// Property rows of the selected yaml node (the whole object or one of its fields). Scalar
+// properties are edited by the panel via propertyEdit (formPreviewCore) at this same offset;
+// Ид and ВидЭлемента are read-only; complex values (Реквизиты, Интерфейс ...) are not shown.
 
 export interface MetaPropRow {
   key: string;
@@ -167,7 +169,7 @@ function findMapAt(node: unknown, offset: number): YAMLMap | undefined {
   return undefined;
 }
 
-// Варианты значений известных перечислимых свойств метаданных.
+// Value options of known enumerable metadata properties.
 function metaOptionsFor(key: string): string[] | undefined {
   if (key === "ОбластьВидимости") {
     return ["ВПроекте", "ВПодсистеме"];
@@ -180,13 +182,13 @@ function metaOptionsFor(key: string): string[] | undefined {
 
 const READONLY_KEYS = new Set(["Ид", "ВидЭлемента"]);
 
-// Ключи, значение которых – тип данных: показываем комбобоксом (input + datalist). Кандидатов
-// (примитивы + <Объект>.Ссылка? + <Перечисление>?) знает только провайдер дерева, он и подаёт
-// их в панель; список открытый – значение можно ввести вручную.
+// Keys whose value is a data type: shown as a combobox (input + datalist). The candidates
+// (primitives + <Объект>.Ссылка? + <Перечисление>?) are known only to the tree provider, which
+// feeds them into the panel; the list is open - the value can be typed in manually.
 const TYPE_KEYS = new Set(["Тип"]);
 
-// Строкоспецифичные свойства реквизита: показываем только когда Тип – Строка. При смене типа на
-// другой панель их убирает из yaml (см. applyProp в metadataProps).
+// String-specific attribute properties: shown only when Тип is Строка. When the type changes
+// to another one the panel removes them from yaml (see applyProp in metadataProps).
 const STRING_ONLY_KEYS = new Set(["Многострочная"]);
 
 export function describeMetaNode(text: string, offset: number): MetaNodeDescription | undefined {
@@ -201,8 +203,8 @@ export function describeMetaNode(text: string, offset: number): MetaNodeDescript
     return undefined;
   }
   const title = prop(map, "ВидЭлемента") ?? prop(map, "Имя") ?? "?";
-  // Строкоспецифичные свойства показываем только для типа Строка (нет Тип у стандартного реквизита –
-  // он строковый по умолчанию).
+  // String-specific properties are shown only for the Строка type (a standard attribute has no
+  // Тип - it is a string by default).
   const fieldType = prop(map, "Тип");
   const isStringField = fieldType === undefined || fieldType === "Строка" || fieldType === "Строка?";
   const rows: MetaPropRow[] = [];
@@ -212,9 +214,9 @@ export function describeMetaNode(text: string, offset: number): MetaNodeDescript
       continue;
     }
     if (STRING_ONLY_KEYS.has(key) && !isStringField) {
-      continue; // напр. Многострочная у не-строкового типа не показываем
+      continue; // e.g. Многострочная is not shown for a non-string type
     }
-    // Только скалярные свойства; коллекции (Реквизиты, Интерфейс ...) правятся через дерево.
+    // Scalar properties only; collections (Реквизиты, Интерфейс ...) are edited via the tree.
     if (!(isScalar(item.value) || item.value === null || item.value === undefined)) {
       continue;
     }
@@ -241,13 +243,13 @@ export function describeMetaNode(text: string, offset: number): MetaNodeDescript
   return { title, offset: map.range ? map.range[0] : offset, rows };
 }
 
-// -- стандартные реквизиты ------------------------------------------------------------------
+// -- standard attributes --------------------------------------------------------------------
 //
-// Стандартные (предопределённые платформой) реквизиты по видам: показываются в дереве всегда, даже
-// если в yaml их нет. Набор редактируемых скалярных свойств подтверждён по данным проекта (Наименование:
-// Длина/Многострочная; Код: Тип/Длина/Уникальность; Автонумерация вложенная – правится прямо в yaml).
-// Пустое (синтетическое) свойство при правке материализуется: в Реквизиты дописывается запись
-// { Имя: <стандартное имя>, <ключ>: <значение> } (без Ид – как у стандартного реквизита).
+// Standard (platform-predefined) attributes per kind: always shown in the tree, even when absent
+// from yaml. The set of editable scalar properties is confirmed against project data (Наименование:
+// Длина/Многострочная; Код: Тип/Длина/Уникальность; nested Автонумерация - edited directly in yaml).
+// An empty (synthetic) property materializes on edit: a record { Имя: <standard name>,
+// <key>: <value> } is appended to Реквизиты (without Ид - like a standard attribute).
 
 export interface StandardAttrSpec {
   name: string;
@@ -281,19 +283,19 @@ export const STANDARD_ATTRS: Record<string, StandardAttrSpec[]> = {
   ],
 };
 
-// Имена стандартных реквизитов вида (для дерева).
+// Standard attribute names of a kind (for the tree).
 export function standardAttrNames(kind: string): string[] {
   return (STANDARD_ATTRS[kind] ?? []).map((s) => s.name);
 }
 
-// Смещение записи реквизита по Имени в секции Реквизиты (материализованный стандартный реквизит),
-// иначе undefined (значения по умолчанию, в yaml нет).
+// Offset of the attribute record by Имя in the Реквизиты section (a materialized standard
+// attribute), otherwise undefined (default values, absent from yaml).
 export function findAttrOffset(text: string, name: string): number | undefined {
   return parseInternals(text)?.attributes.find((a) => a.name === name)?.offset;
 }
 
-// Описание стандартного реквизита для панели: материализован (есть в Реквизиты) – как обычный узел;
-// иначе синтетические строки по спецификации (пустые значения; при правке – материализация).
+// Standard attribute description for the panel: materialized (present in Реквизиты) - like a
+// regular node; otherwise synthetic rows from the spec (empty values; editing materializes it).
 export function describeStandardAttr(text: string, kind: string, name: string): MetaNodeDescription | undefined {
   const spec = (STANDARD_ATTRS[kind] ?? []).find((s) => s.name === name);
   if (!spec) {
@@ -305,23 +307,24 @@ export function describeStandardAttr(text: string, kind: string, name: string): 
   }
   return {
     title: name,
-    offset: -1, // синтетический – узла в yaml нет
+    offset: -1, // synthetic - no node in yaml
     rows: spec.rows.map((r) => ({ key: r.key, value: "", control: r.control, options: r.options })),
   };
 }
 
-// -- вставка нового элемента секции ---------------------------------------------------------
+// -- insertion of a new section item --------------------------------------------------------
 //
-// Шаблоны новых объектов/подсистем и вставки дерева живут в движке (xbsl.scaffold) – дерево
-// зовёт его через LSP/CLI (engineMeta.ts). Здесь осталась только точечная вставка для панели
-// свойств: материализация стандартного реквизита правится по открытому буферу локально.
+// Templates of new objects/subsystems and tree insertions live in the engine (xbsl.scaffold) -
+// the tree calls it via LSP/CLI (engineMeta.ts). Only the targeted insertion for the properties
+// panel is left here: materialization of a standard attribute is applied to the open buffer
+// locally.
 
 function lineEndOf(text: string, offset: number): number {
   const nl = text.indexOf("\n", offset);
   return nl === -1 ? text.length : nl;
 }
 
-// Отступы элемента секции по первому существующему "-" в теле; иначе – по отступу заголовка.
+// Section item indentation from the first existing "-" in the body; otherwise from the header indent.
 function detectIndent(bodySlice: string, headerIndentLen: number): { item: string; field: string } {
   const m = /^([ \t]*)-[ \t]*\r?\n([ \t]*)\S/m.exec(bodySlice);
   if (m) {
@@ -332,10 +335,10 @@ function detectIndent(bodySlice: string, headerIndentLen: number): { item: strin
 
 const LINE_INDENT = /^([ \t]*)/;
 
-// Точечная вставка нового элемента (набор строк-полей itemLines, напр. ["Ид: ...","Имя: ...",
-// "Тип: Строка"]) в конец секции. Разбор чисто текстовый (надёжнее range-ов yaml для блочных
-// списков): по заголовку секции и отступам находим конец её тела. Нет секции – дописываем в
-// конец файла. undo-безопасно применяется поверх.
+// Targeted insertion of a new item (a set of field lines itemLines, e.g. ["Ид: ...","Имя: ...",
+// "Тип: Строка"]) at the end of a section. Parsing is purely textual (more reliable than yaml
+// ranges for block lists): the section header and indentation locate the end of its body. No
+// section - append at the end of the file. Applied on top undo-safely.
 export function insertItemEdit(text: string, section: string, itemLines: string[]): TextEdit {
   const body = (item: string, field: string): string =>
     `${item}-\n` + itemLines.map((l) => `${field}${l}`).join("\n");

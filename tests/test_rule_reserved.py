@@ -1,4 +1,4 @@
-"""Проверки правил code/reserved-name и yaml/builtin-property-name."""
+"""Checks of the code/reserved-name and yaml/builtin-property-name rules."""
 
 import pytest
 
@@ -15,7 +15,7 @@ def _lint(name, content, rule_id):
     ]
 
 
-# --- code/reserved-name: поля структур -------------------------------------------------
+# --- code/reserved-name: structure fields ----------------------------------------------
 
 def test_structure_field_tip_flagged():
     d = _lint(
@@ -65,7 +65,7 @@ def test_structure_ordinary_fields_not_flagged():
 
 
 def test_tip_as_type_annotation_not_flagged():
-    # Тип в позиции ТИПА (а не имени) – не нарушение
+    # Тип in the TYPE position (not the name) is not a violation
     d = _lint(
         "М.xbsl",
         "структура С\n    пер ВидЗначения: Тип\n;\n",
@@ -74,7 +74,7 @@ def test_tip_as_type_annotation_not_flagged():
     assert d == []
 
 
-# --- code/reserved-name: параметры методов ---------------------------------------------
+# --- code/reserved-name: method parameters ---------------------------------------------
 
 def test_method_param_tip_flagged():
     d = _lint(
@@ -97,7 +97,7 @@ def test_method_second_param_type_flagged():
 
 
 def test_local_var_tip_not_flagged():
-    # локальная переменная Тип в теле метода легальна (есть в живом корпусе)
+    # a local variable Тип in a method body is legal (present in the live corpus)
     d = _lint(
         "М.xbsl",
         'метод Ф()\n    пер Тип = ""\n    Тип = "х"\n;\n',
@@ -107,7 +107,7 @@ def test_local_var_tip_not_flagged():
 
 
 def test_method_after_structure_not_treated_as_field():
-    # блок структуры закрыт `;` – объявления в методе после неё не считаются полями
+    # the structure block is closed by `;` - declarations in a method after it do not count as fields
     d = _lint(
         "М.xbsl",
         "структура С\n    пер Имя: Строка\n;\n"
@@ -142,7 +142,7 @@ def test_builtin_property_zagolovok_flagged():
 
 
 def test_builtin_property_commented_section_key_positioned():
-    # комментарий после `Свойства:` не ломает поиск блока - позиция остаётся на имени
+    # a comment after `Свойства:` does not break the block search - the position stays on the name
     content = _КАРТОЧКА.format(prop="Заголовок").replace("Свойства:", "Свойства: # собственные")
     d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
     assert len(d) == 1
@@ -150,7 +150,7 @@ def test_builtin_property_commented_section_key_positioned():
 
 
 def test_builtin_inherited_property_flagged():
-    # Видимость унаследована от Компонент – тоже встроенное имя
+    # Видимость is inherited from Компонент - a built-in name as well
     d = _lint(
         "Карточка1.yaml", _КАРТОЧКА.format(prop="Видимость"), "yaml/builtin-property-name",
     )
@@ -165,16 +165,16 @@ def test_custom_property_not_flagged():
 
 
 def test_container_html_zagolovok_not_flagged():
-    # у КонтейнерHtml в документированном наборе нет свойства Заголовок; в живом корпусе
-    # наследник КонтейнерHtml легально объявляет такое свойство – проверка строго по типу
+    # КонтейнерHtml's documented set has no Заголовок property; in the live corpus a descendant
+    # of КонтейнерHtml legally declares such a property - the check is strictly per type
     content = _КАРТОЧКА.replace("СтандартнаяКарточка", "КонтейнерHtml").format(prop="Заголовок")
     d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
     assert d == []
 
 
 def test_unknown_base_type_skipped():
-    # база, которой нет ни в метамодели, ни в каталоге, ни в страховочной таблице
-    # (например, собственный компонент проекта) – пропуск, не гадаем
+    # a base absent from the metamodel, the catalog and the fallback table
+    # (e.g. the project's own component) - skip, do not guess
     content = _КАРТОЧКА.replace(
         "СтандартнаяКарточка", "НикакойБазовыйКомпонент",
     ).format(prop="Заголовок")
@@ -190,7 +190,7 @@ def _catalog_or_skip() -> dict:
 
 
 def test_catalog_base_group_flagged():
-    # база из каталога дистрибутива (за пределами страховочной таблицы)
+    # a base from the distribution catalog (beyond the fallback table)
     assert "Группа" in _catalog_or_skip()
     content = _КАРТОЧКА.replace("СтандартнаяКарточка", "Группа").format(prop="Компоновка")
     d = _lint("Карточка1.yaml", content, "yaml/builtin-property-name")
@@ -199,7 +199,7 @@ def test_catalog_base_group_flagged():
 
 
 def test_generic_base_root_resolved_via_catalog():
-    # корень дженерик-базы (ФормаОбъекта<...>) резолвится по каталогу свойств компонентов
+    # the root of a generic base (ФормаОбъекта<...>) is resolved via the component props catalog
     assert "ФормаОбъекта" in _catalog_or_skip()
     content = _КАРТОЧКА.replace(
         "СтандартнаяКарточка", "ФормаОбъекта<Товары.Объект>",
@@ -209,7 +209,7 @@ def test_generic_base_root_resolved_via_catalog():
 
 
 def test_catalog_wiring_reads_component_props(monkeypatch):
-    # каталог доезжает до правила через dataset.load_json("stdlib.json").component_props
+    # the catalog reaches the rule via dataset.load_json("stdlib.json").component_props
     fake = {"component_props": {"ОсобаяБаза": ["Заголовок", "Видимость"]}}
     monkeypatch.setattr(dataset, "load_json", lambda name, version=None: fake)
     reserved_names._catalog_component_props.cache_clear()
@@ -222,7 +222,7 @@ def test_catalog_wiring_reads_component_props(monkeypatch):
 
 
 def test_event_with_builtin_name_not_flagged():
-    # Имя вне блока Свойства (событие) не проверяется и не даёт ложной позиции
+    # an Имя outside the Свойства block (an event) is not checked and yields no false position
     content = (
         "ВидЭлемента: КомпонентИнтерфейса\n"
         "Ид: 33333333-3333-3333-3333-333333333333\n"

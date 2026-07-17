@@ -1,9 +1,9 @@
-"""Упаковка: версия пакета берётся ровно из одного места.
+"""Packaging: the package version comes from exactly one place.
 
-Грабля 17.07.2026: версия дублировалась в pyproject.toml и в xbsl/__init__.py; бампы
-правили только pyproject, и релизы 0.20/0.21 внутри представлялись как 0.19.0 – это
-видели `xbsl --version`, LSP и статус-бар расширения. Теперь версия динамическая
-(attr = xbsl.__version__), а тест держит это свойство.
+Pitfall of 2026-07-17: the version was duplicated in pyproject.toml and in xbsl/__init__.py;
+bumps only touched pyproject, and the 0.20/0.21 releases identified themselves as 0.19.0 -
+seen by `xbsl --version`, the LSP and the extension status bar. The version is now dynamic
+(attr = xbsl.__version__), and this test keeps that property.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ import pytest
 
 import xbsl
 
-# tomllib есть с Python 3.11, а пакет поддерживает 3.10 (requires-python) – на ней тест
-# пропускается, а не роняет прогон. Тянуть ради него tomli в зависимости незачем: свойство
-# проверяется на остальных версиях матрицы.
+# tomllib exists since Python 3.11, while the package supports 3.10 (requires-python) - there
+# the test is skipped rather than failing the run. No point pulling tomli into dependencies
+# just for this: the property is checked on the other versions of the matrix.
 tomllib = pytest.importorskip("tomllib", reason="tomllib появился в Python 3.11")
 
 _PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"

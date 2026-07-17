@@ -1,7 +1,7 @@
-"""Разбор страниц доков дистрибутива в tools/extract_stdlib.py (component_props).
+"""Parsing of distribution docs pages in tools/extract_stdlib.py (component_props).
 
-Инструмент – скрипт вне пакета, поэтому грузится по пути через importlib; сеть и
-дистрибутив не нужны – страницы синтетические, по образцу реальной разметки Docusaurus.
+The tool is a script outside the package, so it is loaded by path via importlib; no network
+or distribution needed - the pages are synthetic, modeled on the real Docusaurus markup.
 """
 
 import importlib.util
@@ -74,17 +74,18 @@ _СТРАНИЦА_С_МУСОРОМ = (
 
 
 def test_page_members_props_and_methods():
-    # члены типа = свойства (H3) и методы (H3) раздельно + унаследованные (ссылки своей секции),
-    # без конструкторов и иерархии
+    # type members = properties (H3) and methods (H3) separately + inherited ones (links of their
+    # own section), without constructors and the hierarchy
     props, methods = _МОДУЛЬ.page_members(_СТРАНИЦА_ТИПА)
     assert props == {"ТекущийПользователь"}
     assert methods == {"Привилегированный", "ВыполнитьСПравами", "ТипЗначения"}
-    assert "Объект" not in props | methods  # базовый тип из иерархии – не член
+    assert "Объект" not in props | methods  # a base type from the hierarchy is not a member
 
 
 def test_page_members_control_chars_cleaned():
-    # в части страниц доков заголовки и имена приходят с управляющими символами внутри слова:
-    # без чистки секция не опознаётся, а имя не проходит проверку – члены теряются молча
+    # on some docs pages headings and names arrive with control characters inside the word:
+    # without cleaning, the section is not recognized and the name fails validation - members
+    # get lost silently
     props, methods = _МОДУЛЬ.page_members(_СТРАНИЦА_С_МУСОРОМ)
     assert props == {"Позиция"} and methods == {"Закрыть"}
 
@@ -94,18 +95,18 @@ def test_component_page_props_collected():
     assert got is not None
     name, props = got
     assert name == "МойКомпонент"
-    # свои свойства – только заголовки H3 (дубль геттер/сеттер схлопнут, ссылки на типы
-    # из описаний не попадают), унаследованные – тексты ссылок своей секции
+    # own properties - only H3 headings (the getter/setter duplicate is collapsed, type links
+    # from descriptions do not get in), inherited ones - link texts of their own section
     assert props == {"Заголовок", "Видимость", "Ширина"}
 
 
 def test_non_component_page_skipped():
-    # в базовых типах нет Стд::Интерфейс::Компонент – страница не компонент
+    # the base types do not include Стд::Интерфейс::Компонент - the page is not a component
     assert _МОДУЛЬ.component_props("какой-то/путь/index.html", _СТРАНИЦА_НЕ_КОМПОНЕНТА) is None
 
 
 def test_component_base_page_included_by_path():
-    # сама страница Компонента (в базовых только Объект) включается по известному пути
+    # the Компонент page itself (only Объект among its base types) is included by its known path
     raw = _СТРАНИЦА_НЕ_КОМПОНЕНТА.replace("ПростойТип", "Компонент")
     got = _МОДУЛЬ.component_props(_МОДУЛЬ.COMPONENT_PAGE, raw)
     assert got is not None

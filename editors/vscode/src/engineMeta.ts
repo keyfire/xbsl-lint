@@ -1,11 +1,11 @@
-// Скаффолдинг метаданных: тонкий клиент движка xbsl. Единственный источник шаблонов и
-// правок – модуль xbsl.scaffold движка; расширение только собирает параметры в UI и
-// применяет присланные изменения через WorkspaceEdit (сохраняются undo и грязные буферы).
+// Metadata scaffolding: a thin client of the xbsl engine. The single source of templates and
+// edits is the engine's xbsl.scaffold module; the extension only gathers parameters in the UI
+// and applies the returned changes via WorkspaceEdit (undo and dirty buffers survive).
 //
-// Два транспорта с одинаковым результатом (полные новые тексты файлов):
-//   - LSP-режим: кастомный запрос xbsl/meta* (сервер читает открытые буферы);
-//   - CLI-режим: `xbsl <подкоманда> ... --dry-run` (движок читает диск, поэтому перед
-//     правкой существующего файла грязный буфер предлагается сохранить).
+// Two transports with an identical result (full new file texts):
+//   - LSP mode: the custom xbsl/meta* request (the server reads open buffers);
+//   - CLI mode: `xbsl <subcommand> ... --dry-run` (the engine reads the disk, so before
+//     editing an existing file a dirty buffer is offered to be saved).
 
 import { spawn } from "child_process";
 import * as vscode from "vscode";
@@ -57,14 +57,14 @@ function runCli(plan: CliPlan, cwd: string | undefined): Promise<ScaffoldResult 
       try {
         resolve(JSON.parse(out) as ScaffoldResult);
       } catch {
-        resolve(undefined); // не-JSON: старый движок без подкоманд либо крах запуска
+        resolve(undefined); // non-JSON: an old engine without subcommands or a startup crash
       }
     });
     child.stdin?.end();
   });
 }
 
-// Сообщение о недоступности скаффолдинга: старый движок или движок не установлен.
+// Message about scaffolding being unavailable: an old engine or the engine is not installed.
 function reportUnavailable(): void {
   const install = vscode.l10n.t("Install/upgrade the engine");
   void vscode.window
@@ -79,8 +79,9 @@ function reportUnavailable(): void {
     });
 }
 
-// Вызов операции скаффолдинга: LSP при активном сервере, иначе CLI. undefined – движок
-// недоступен (сообщение уже показано); {error} – отказ операции (показан вызывающим).
+// Scaffolding operation call: LSP when the server is active, otherwise CLI. undefined - the
+// engine is unavailable (the message is already shown); {error} - the operation refused
+// (shown by the caller).
 export async function callMeta(
   lspMethod: string,
   lspParams: Record<string, unknown>,
@@ -93,7 +94,7 @@ export async function callMeta(
     if (viaLsp) {
       return viaLsp;
     }
-    // Сервер поднят, но метода нет – значит движок старее расширения.
+    // The server is up but the method is missing - the engine is older than the extension.
   }
   const viaCli = await runCli(cliPlan(cliSubcommand, cliArgs), cwd);
   if (viaCli) {
@@ -103,11 +104,11 @@ export async function callMeta(
   return undefined;
 }
 
-// В CLI-режиме движок читает файлы с диска: несохранённый буфер правимого файла обязан
-// быть сохранён до вызова, иначе применение полного нового текста затёрло бы правки.
+// In CLI mode the engine reads files from disk: an unsaved buffer of the file being edited
+// must be saved before the call, otherwise applying the full new text would wipe the edits.
 export async function ensureSavedForCli(paths: string[]): Promise<boolean> {
   if (lspActive()) {
-    return true; // LSP-сервер видит буферы, сохранение не требуется
+    return true; // the LSP server sees the buffers, saving is not needed
   }
   const dirty = vscode.workspace.textDocuments.filter(
     (doc) => doc.isDirty && paths.some((p) => doc.uri.fsPath === p)
@@ -130,8 +131,8 @@ export async function ensureSavedForCli(paths: string[]): Promise<boolean> {
   return true;
 }
 
-// Применение результата: новые файлы создаются, правимые заменяются целиком одним
-// WorkspaceEdit (обратимо через undo). Возвращает список затронутых путей.
+// Applying the result: new files are created, edited ones are replaced entirely by a single
+// WorkspaceEdit (reversible via undo). Returns the list of affected paths.
 export async function applyScaffold(result: ScaffoldResult): Promise<string[]> {
   if (result.error) {
     void vscode.window.showWarningMessage(vscode.l10n.t("XBSL: {0}", result.error));
@@ -150,7 +151,7 @@ export async function applyScaffold(result: ScaffoldResult): Promise<string[]> {
     }
   }
   await vscode.workspace.applyEdit(we);
-  // Правки существующих файлов сохраняются (создание файлов WorkspaceEdit уже пишет на диск).
+  // Edits of existing files are saved (file creation via WorkspaceEdit already writes to disk).
   for (const file of files.filter((f) => !f.created)) {
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === file.path);
     if (doc?.isDirty) {

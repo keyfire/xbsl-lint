@@ -1,4 +1,4 @@
-"""Проверки версионированного доступа к данным (самодостаточность, выбор версии)."""
+"""Checks of versioned data access (self-containedness, version selection)."""
 
 import pytest
 

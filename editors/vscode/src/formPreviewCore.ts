@@ -1,11 +1,12 @@
-// Каркасный предпросмотр формы 1С:Элемент: yaml-описание (КомпонентИнтерфейса) превращается
-// в HTML-макет – группы, поля, кнопки, таблицы, вкладки. Это wireframe, а не рендер платформы:
-// раскладка и подписи передаются, точные размеры и стили – нет. Модуль чистый (без vscode),
-// чтобы рендер проверялся обычными node-тестами; webview-обвязка – в formPreview.ts.
+// Wireframe preview of a 1C:Element form: the yaml description (КомпонентИнтерфейса) is turned
+// into an HTML mockup - groups, fields, buttons, tables, tabs. This is a wireframe, not the
+// platform's rendering: layout and captions are conveyed, exact sizes and styles are not. The
+// module is pure (no vscode) so the rendering can be checked by plain node tests; the webview
+// wiring is in formPreview.ts.
 //
-// Дерево берётся из Наследует.Содержимое; дочерние узлы живут только в известных свойствах
-// (Содержимое, Страницы, Колонки) – остальные вложенные объекты (АбсолютныйЦвет, Источник
-// динамического списка и т.п.) являются значениями свойств, а не компонентами.
+// The tree is taken from Наследует.Содержимое; child nodes live only in known properties
+// (Содержимое, Страницы, Колонки) - other nested objects (АбсолютныйЦвет, the Источник of a
+// dynamic list, etc.) are property values, not components.
 
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import type { YAMLMap } from "yaml";
@@ -14,7 +15,7 @@ export type PreviewResult =
   | { ok: true; html: string; title: string }
   | { ok: false; reason: "parse" | "not-form"; detail?: string };
 
-// -- доступ к yaml-узлам ------------------------------------------------------------------
+// -- access to yaml nodes -----------------------------------------------------------------
 
 function get(map: unknown, key: string): unknown {
   if (!isMap(map)) {
@@ -39,7 +40,7 @@ function prop(map: unknown, key: string): string | undefined {
   return str(get(map, key));
 }
 
-// Тип компонента без параметров-дженериков: "ПолеВвода<Строка>" -> "ПолеВвода".
+// Component type without generic parameters: "ПолеВвода<Строка>" -> "ПолеВвода".
 function baseType(map: unknown): string | undefined {
   const t = prop(map, "Тип");
   if (!t) {
@@ -49,12 +50,12 @@ function baseType(map: unknown): string | undefined {
   return (angle > 0 ? t.slice(0, angle) : t).trim();
 }
 
-// Смещение узла в исходном тексте – для перехода из предпросмотра к yaml.
+// Node offset in the source text - for navigating from the preview to yaml.
 function offsetOf(map: unknown): number | undefined {
   return isMap(map) && map.range ? map.range[0] : undefined;
 }
 
-// -- утилиты HTML ---------------------------------------------------------------------------
+// -- HTML utilities -------------------------------------------------------------------------
 
 export function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -67,7 +68,7 @@ function tagAttrs(node: unknown, cls: string, style?: string): string {
   return `class="${cls}"${styleAttr}${offAttr}`;
 }
 
-// Значение свойства: биндинг (=Данные.Х) показываем моноширинным чипом, литерал – текстом.
+// Property value: a binding (=Данные.Х) is shown as a monospaced chip, a literal - as text.
 function valueHtml(v: string | undefined, placeholder = ""): string {
   if (v === undefined || v === "") {
     return `<span class="ph">${esc(placeholder)}</span>`;
@@ -82,7 +83,7 @@ function isTrue(map: unknown, key: string): boolean {
   return prop(map, key) === "Истина";
 }
 
-// -- перевод свойств в стили ----------------------------------------------------------------
+// -- mapping properties to styles -----------------------------------------------------------
 
 function growStyle(node: unknown, horizontalParent: boolean): string {
   const parts: string[] = [];
@@ -115,7 +116,7 @@ function alignStyle(node: unknown): string {
   return parts.join(";");
 }
 
-// Цвет {Тип: АбсолютныйЦвет, Значение: RGB(595964)} и шрифт {Размер, Начертание/Насыщенность}.
+// Color {Тип: АбсолютныйЦвет, Значение: RGB(595964)} and font {Размер, Начертание/Насыщенность}.
 function textStyle(node: unknown): string {
   const parts: string[] = [];
   const rgb = prop(get(node, "Цвет"), "Значение");
@@ -135,7 +136,7 @@ function textStyle(node: unknown): string {
   return parts.join(";");
 }
 
-// -- рендер компонентов ---------------------------------------------------------------------
+// -- component rendering --------------------------------------------------------------------
 
 function renderChildren(node: unknown, horizontal: boolean): string {
   if (isSeq(node)) {
@@ -254,7 +255,7 @@ function renderComponent(node: unknown, horizontalParent: boolean): string {
   }
 }
 
-// Панель команд формы: ОсновнаяКоманда + карты именованных команд (КомандыЗаписи и т.п.).
+// Form command bar: ОсновнаяКоманда + maps of named commands (КомандыЗаписи etc.).
 function renderCommandBar(inherit: unknown): string {
   const buttons: string[] = [];
   const push = (cmd: unknown, fallback: string) => {
@@ -280,20 +281,20 @@ function renderCommandBar(inherit: unknown): string {
   return buttons.length > 0 ? `<div class="cmdbar">${buttons.join("")}</div>` : "";
 }
 
-// -- вход -----------------------------------------------------------------------------------
+// -- entry point ----------------------------------------------------------------------------
 
-// -- панель свойств: описание узла и точечные правки yaml ------------------------------------
+// -- properties panel: node description and targeted yaml edits ------------------------------
 //
-// Выбранный в каркасе компонент описывается набором строк-свойств для панели (как в
-// веб-редакторе платформы), а правка значения превращается в точечную текстовую замену
-// по диапазонам yaml-узлов – документ не переформатируется, undo работает.
+// The component selected in the wireframe is described by a set of property rows for the panel
+// (like in the platform's web editor), and a value edit is turned into a targeted text
+// replacement by yaml node ranges - the document is not reformatted, undo works.
 
 export interface PropRow {
   key: string;
-  value: string; // текущее значение ("" – свойство не задано)
+  value: string; // current value ("" - the property is not set)
   control: "text" | "select" | "tristate";
-  options?: string[]; // для select
-  complex?: boolean; // значение-объект: показывается, но не редактируется
+  options?: string[]; // for select
+  complex?: boolean; // object value: shown but not editable
 }
 
 export interface NodeDescription {
@@ -308,7 +309,7 @@ export interface TextEdit {
   newText: string;
 }
 
-// Свойства, которые панель показывает всегда (по виду компонента), в порядке веб-редактора.
+// Properties the panel always shows (by component kind), in the web editor's order.
 const COMMON_PROPS = ["Имя", "Заголовок"];
 const LAYOUT_PROPS = [
   "Компоновка",
@@ -333,8 +334,8 @@ const CURATED: Record<string, string[]> = {
   Страницы: ["Имя", "РастягиватьПоГоризонтали", "РастягиватьПоВертикали"],
 };
 
-// Варианты значений перечислимых свойств. Список не исчерпывающий: текущее значение вне
-// списка добавляется в options, так что незнакомый вариант не теряется.
+// Value options of enumerable properties. The list is not exhaustive: a current value outside
+// the list is added to options, so an unfamiliar variant is not lost.
 function optionsFor(key: string): string[] | undefined {
   if (key === "Компоновка") {
     return ["Вертикальная", "Горизонтальная"];
@@ -364,7 +365,7 @@ function controlFor(key: string, options: string[] | undefined): PropRow["contro
   return options ? "select" : "text";
 }
 
-// Ключи, под которыми живут дочерние компоненты, – в панель свойств не выводятся.
+// Keys under which child components live - not shown in the properties panel.
 const CHILD_KEYS = new Set(["Тип", "Содержимое", "Страницы", "Колонки", "Источник"]);
 
 function findMapAt(node: unknown, offset: number): YAMLMap | undefined {
@@ -419,7 +420,7 @@ export function describeNode(text: string, offset: number): NodeDescription | un
   for (const key of CURATED[baseType(node) ?? ""] ?? [...COMMON_PROPS, ...LAYOUT_PROPS]) {
     pushRow(key, prop(node, key) ?? "");
   }
-  // Остальные свойства из yaml: скаляры редактируются, объекты показываются как есть.
+  // Remaining properties from yaml: scalars are editable, objects are shown as is.
   for (const item of node.items) {
     const key = isScalar(item.key) ? String(item.key.value) : "";
     if (!key || CHILD_KEYS.has(key) || seen.has(key)) {
@@ -434,8 +435,8 @@ export function describeNode(text: string, offset: number): NodeDescription | un
   return { typeName, offset, rows };
 }
 
-// Скаляр в yaml-текст: простые значения без кавычек, остальные – двойные кавычки (JSON-эскейп
-// корректен для YAML). Биндинги (=Данные.Х) остаются без кавычек.
+// Scalar to yaml text: simple values without quotes, the rest - double quotes (JSON escaping
+// is valid for YAML). Bindings (=Данные.Х) stay unquoted.
 function encodeScalar(value: string): string {
   if (/^[=A-Za-zА-Яа-яЁё0-9_][A-Za-zА-Яа-яЁё0-9_.,() =\/-]*$/.test(value) && !/\s$/.test(value)) {
     return value;
@@ -452,9 +453,9 @@ function lineEndOf(text: string, offset: number): number {
   return nl === -1 ? text.length : nl;
 }
 
-// Правка свойства компонента: value = null снимает свойство (строка удаляется),
-// существующий скаляр заменяется по своему диапазону, новое свойство вписывается
-// строкой после "Тип" с тем же отступом, что и остальные ключи узла.
+// Component property edit: value = null removes the property (the line is deleted), an
+// existing scalar is replaced within its range, a new property is written as a line after
+// "Тип" with the same indent as the node's other keys.
 export function propertyEdit(text: string, nodeOffset: number, key: string, value: string | null): TextEdit | undefined {
   const node = findMapAt(parsedContents(text), nodeOffset);
   if (!node) {
@@ -475,13 +476,13 @@ export function propertyEdit(text: string, nodeOffset: number, key: string, valu
       return { start: pair.value.range[0], end: pair.value.range[1], newText: encodeScalar(value) };
     }
     if ((pair.value === null || pair.value === undefined) && isScalar(pair.key) && pair.key.range) {
-      // "Ключ:" без значения – дописать значение после двоеточия.
+      // "Ключ:" without a value - append the value after the colon.
       const end = lineEndOf(text, pair.key.range[1]);
       return { start: end, end, newText: " " + encodeScalar(value) };
     }
-    return undefined; // значение-объект панелью не правится
+    return undefined; // an object value is not edited by the panel
   }
-  // Свойства нет – вписать после строки с "Тип" (или первой строки узла).
+  // The property is absent - insert after the "Тип" line (or the node's first line).
   const anchor = node.items.find((item) => isScalar(item.key) && String(item.key.value) === "Тип") ?? node.items[0];
   if (!anchor || !isScalar(anchor.key) || !anchor.key.range) {
     return undefined;

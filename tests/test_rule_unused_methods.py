@@ -1,7 +1,7 @@
-"""Проверки правила code/unused-method (мёртвые методы, тир D, scope=project).
+"""Checks of the code/unused-method rule (dead methods, tier D, scope=project).
 
-Правилу нужен лексер, а лексеру – языковые данные Элемента; без данных модуль
-пропускается целиком (conftest этот файл не знает, страхуемся сами).
+The rule needs the lexer, and the lexer needs the Element language data; without the data
+the whole module is skipped (conftest does not know this file, so we guard ourselves).
 """
 
 import pytest
@@ -27,7 +27,7 @@ def _hits(diags):
     return [d for d in diags if d.rule_id == RULE]
 
 
-# --- Сигнал: объявлен и больше нигде не встречается ------------------------------------
+# --- The signal: declared and never seen anywhere else ---------------------------------
 
 def test_dead_method_flagged(tmp_path):
     d = _lint_dir(
@@ -51,10 +51,10 @@ def test_off_by_default(tmp_path):
     assert not _hits(d)
 
 
-# --- Гард: имя упоминается где-то ещё ---------------------------------------------------
+# --- Guard: the name is mentioned somewhere else ----------------------------------------
 
 def test_qualified_call_from_other_module_not_flagged(tmp_path):
-    # статический метод менеджера, вызываемый с квалификацией Модуль.Метод
+    # a static manager method called with the Модуль.Метод qualification
     d = _lint_dir(
         tmp_path,
         Менеджер__xbsl="стат метод Посчитать(): Число\n    возврат 1\n;\n",
@@ -73,7 +73,7 @@ def test_mention_in_yaml_not_flagged(tmp_path):
 
 
 def test_mention_in_string_literal_not_flagged(tmp_path):
-    # мост HTML-вставки вызывает метод по имени внутри строкового литерала
+    # the HTML insert bridge calls the method by name inside a string literal
     d = _lint_dir(
         tmp_path,
         Ф__xbsl=(
@@ -88,7 +88,7 @@ def test_mention_in_string_literal_not_flagged(tmp_path):
 
 
 def test_mention_in_comment_not_flagged(tmp_path):
-    # упоминание в комментарии тоже глушит: лучше молчание, чем ложное
+    # a mention in a comment silences too: silence is better than a false positive
     d = _lint_dir(
         tmp_path,
         М__xbsl="// Колбэк: платформа вызывает ПоТаймеру\nметод ПоТаймеру()\n;\n",
@@ -96,7 +96,7 @@ def test_mention_in_comment_not_flagged(tmp_path):
     assert not _hits(d)
 
 
-# --- Гард: аннотации --------------------------------------------------------------------
+# --- Guard: annotations -----------------------------------------------------------------
 
 def test_any_annotation_not_flagged(tmp_path):
     d = _lint_dir(
@@ -118,7 +118,7 @@ def test_annotation_with_arguments_not_flagged(tmp_path):
 
 
 def test_annotation_of_next_method_not_inherited(tmp_path):
-    # аннотация принадлежит следующему методу, а не предыдущему
+    # the annotation belongs to the next method, not the previous one
     d = _lint_dir(
         tmp_path,
         М__xbsl="метод Мёртвый()\n;\n\n@НаСервере\nметод Живой()\n;\n\nметод Главный()\n    Живой()\n;\n",
@@ -133,7 +133,7 @@ def test_static_between_annotation_and_method(tmp_path):
     assert not _hits(d)
 
 
-# --- Гард: события платформы ------------------------------------------------------------
+# --- Guard: platform events -------------------------------------------------------------
 
 def test_platform_event_without_annotation_not_flagged(tmp_path):
     d = _lint_dir(
@@ -143,7 +143,7 @@ def test_platform_event_without_annotation_not_flagged(tmp_path):
     assert not _hits(d)
 
 
-# --- Гард: особые модули ----------------------------------------------------------------
+# --- Guard: special modules -------------------------------------------------------------
 
 def test_object_module_skipped(tmp_path):
     d = _lint_dir(
@@ -163,7 +163,7 @@ def test_http_service_module_skipped(tmp_path):
 
 
 def test_http_service_with_trailing_comment_skipped(tmp_path):
-    # комментарий после вида не прячет HTTP-сервис от исключения
+    # a comment after the kind does not hide the HTTP service from the exemption
     d = _lint_dir(
         tmp_path,
         Апи__yaml="ВидЭлемента: HttpСервис # публичное апи\nИмя: Апи\n",
@@ -172,10 +172,10 @@ def test_http_service_with_trailing_comment_skipped(tmp_path):
     assert not _hits(d)
 
 
-# --- Прочее -----------------------------------------------------------------------------
+# --- Miscellaneous ----------------------------------------------------------------------
 
 def test_same_name_in_two_modules_not_flagged(tmp_path):
-    # два одноимённых объявления глушат друг друга (упоминание есть – судить нельзя)
+    # two same-named declarations silence each other (a mention exists - no verdict possible)
     d = _lint_dir(
         tmp_path,
         А__xbsl="метод Общий()\n;\n",

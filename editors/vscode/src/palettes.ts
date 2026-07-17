@@ -1,13 +1,13 @@
-// Палитры подсветки XBSL из популярных цветовых схем. Применяются точечно через
-// editor.tokenColorCustomizations: правила адресуют только скоупы `*.xbsl`, поэтому
-// глобальная тема редактора и остальные языки не затрагиваются. Свои правила помечаем
-// именем с префиксом, чтобы уметь заменять и снимать их, не трогая чужие настройки.
+// XBSL highlighting palettes from popular color schemes. Applied surgically via
+// editor.tokenColorCustomizations: the rules address only `*.xbsl` scopes, so the global
+// editor theme and other languages stay untouched. Our rules are marked with a prefixed
+// name so they can be replaced and removed without touching foreign settings.
 
 import * as vscode from "vscode";
 
 const RULE_PREFIX = "xbsl-palette";
 
-// Группы скоупов грамматики, которым палитра назначает цвета.
+// Grammar scope groups the palette assigns colors to.
 const BUCKETS: Record<string, string[]> = {
   keyword: ["keyword.control.xbsl", "keyword.operator.word.xbsl"],
   storage: ["storage.type.xbsl", "storage.modifier.xbsl"],
@@ -34,10 +34,10 @@ interface BucketColor {
 interface Palette {
   label: string;
   detail: string;
-  colors?: Record<string, BucketColor>; // нет = снять переопределения (тема редактора)
+  colors?: Record<string, BucketColor>; // absent = remove the overrides (editor theme)
 }
 
-// Цвета взяты из канонических значений соответствующих тем.
+// Colors are taken from the canonical values of the respective themes.
 const PALETTES: Palette[] = [
   {
     label: vscode.l10n.t("Editor theme"),
@@ -152,8 +152,8 @@ function buildRules(palette: Palette): TextMateRule[] {
   return rules;
 }
 
-// Подменяет НАШИ правила в editor.tokenColorCustomizations, сохраняя чужие настройки
-// пользователя (правила без нашего префикса и остальные ключи объекта).
+// Swaps OUR rules in editor.tokenColorCustomizations, preserving the user's foreign
+// settings (rules without our prefix and the object's other keys).
 async function applyPalette(palette: Palette): Promise<void> {
   const editorCfg = vscode.workspace.getConfiguration("editor");
   const current = editorCfg.get<Record<string, unknown>>("tokenColorCustomizations") ?? {};

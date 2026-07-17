@@ -1,7 +1,7 @@
-// Чистое ядро панели шаблонов: аргументы движка, разбор его ответа, группировка и проверка
-// черновика. Без импортов vscode - покрыто юнит-тестами (test/templatesCore.test.ts).
+// Pure core of the templates panel: engine arguments, parsing its response, grouping and
+// draft validation. No vscode imports - covered by unit tests (test/templatesCore.test.ts).
 //
-// Вся запись живёт в движке (xbsl templates save/import/export): расширение только рисует.
+// All writing lives in the engine (xbsl templates save/import/export): the extension only draws.
 
 export interface TemplateRow {
   name: string;
@@ -32,8 +32,8 @@ export interface EngineConfig {
 export const CONTEXTS = ["STATEMENT_CONTEXT", "DECLARATION_CONTEXT", "QUERY_CONTEXT"] as const;
 export const ENVIRONMENTS = ["SERVER_ENVIRONMENT", "CLIENT_ENVIRONMENT"] as const;
 
-// Аргументы `xbsl templates <действие>`. --file идёт ПОСЛЕ действия: движок принимает его
-// у каждой подкоманды именно для этого.
+// Arguments of `xbsl templates <action>`. --file goes AFTER the action: the engine accepts
+// it on every subcommand exactly for this.
 export function templatesArgs(action: string, cfg: EngineConfig, extra: string[] = []): string[] {
   const args = cfg.usePython ? ["-m", "xbsl"] : [];
   args.push("templates", action, ...extra);
@@ -54,7 +54,7 @@ export function parseTemplatesList(stdout: string): TemplatesList {
   return { templates: data.templates as TemplateRow[], file: String(data.file ?? "") };
 }
 
-// Ответ пишущих действий (save/import/export) - либо {error}, либо сводка.
+// Response of writing actions (save/import/export) - either {error} or a summary.
 export function parseTemplatesResult(stdout: string): Record<string, unknown> {
   const data = JSON.parse(stdout);
   if (data && typeof data.error === "string") {
@@ -68,8 +68,8 @@ export interface CategoryGroup {
   templates: TemplateRow[];
 }
 
-// Дерево списка: категории в алфавитном порядке, внутри - по аббревиатуре. Порядок устойчив,
-// иначе строка уезжала бы из-под курсора при каждой правке.
+// List tree: categories in alphabetical order, inside - by abbreviation. The order is stable,
+// otherwise the row would slide out from under the cursor on every edit.
 export function groupByCategory(rows: TemplateRow[]): CategoryGroup[] {
   const byCategory = new Map<string, TemplateRow[]>();
   for (const row of rows) {
@@ -98,8 +98,8 @@ export interface TemplateDraft {
   isAutoinsertable: boolean;
 }
 
-// Проверка черновика перед отправкой в движок: движок проверит ещё раз, но сообщение в форме
-// понятнее, чем ошибка процесса, и не стоит записи на диск.
+// Draft validation before sending to the engine: the engine checks again, but a message in the
+// form is clearer than a process error and costs no disk write.
 export function validateDraft(draft: TemplateDraft, existing: TemplateRow[], original?: string): string | undefined {
   const name = draft.name.trim();
   if (!name) {
@@ -120,14 +120,15 @@ export function validateDraft(draft: TemplateDraft, existing: TemplateRow[], ori
   return undefined;
 }
 
-// `мет[од] - Метод` -> аббревиатура `метод`: то, что видно в списке и что набирают в редакторе.
-// Разбор дублирует движок намеренно - в форме подсказка нужна до сохранения.
+// `мет[од] - Метод` -> the abbreviation `метод`: what is visible in the list and what is typed
+// in the editor. The parsing duplicates the engine on purpose - the form needs the hint before
+// saving.
 export function triggerOf(name: string): string {
   const head = name.split(" - ")[0] ?? "";
   return head.replace("[", "").replace("]", "").trim();
 }
 
-// Набор, который уйдёт в `xbsl templates save`: конверт того же вида, что и выгрузка.
+// The set that goes to `xbsl templates save`: an envelope of the same shape as the export.
 export function toEnvelope(rows: Array<TemplateRow | TemplateDraft>): string {
   return JSON.stringify({
     templates: rows.map((r) => ({
@@ -141,7 +142,7 @@ export function toEnvelope(rows: Array<TemplateRow | TemplateDraft>): string {
   });
 }
 
-// Замена шаблона по имени (правка) либо добавление в конец (новый).
+// Replace a template by name (edit) or append at the end (new).
 export function upsert(
   rows: TemplateRow[],
   draft: TemplateDraft,

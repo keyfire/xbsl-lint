@@ -1,12 +1,13 @@
-// Дерево метаданных проекта 1С:Элемент (своя иконка на Activity Bar): корень – проект (правый
-// клик открывает модуль приложения Проект.xbsl), под ним элементы сгруппированы по виду
-// (ВидЭлемента) – справочники, общие модули, регистры и т.п. У объектов раскрываются поддеревья:
-// Реквизиты / Измерения / Ресурсы / Табличные части / Формы; в реквизиты/измерения/ресурсы
-// можно добавить поле. Клик: общий модуль -> xbsl, форма -> предпросмотр, объект -> описание.
-// Формы объекта/списка вложены под владельца, формы без владельца – в раздел "Общие формы".
+// Metadata tree of a 1C:Element project (own icon on the Activity Bar): the root is the project
+// (right click opens the application module Проект.xbsl), elements under it are grouped by kind
+// (ВидЭлемента) - catalogs, common modules, registers and so on. Objects expand into subtrees:
+// Реквизиты / Измерения / Ресурсы / Табличные части / Формы; a field can be added into
+// attributes/dimensions/resources. Click: common module -> xbsl, form -> preview, object -> description.
+// Object/list forms are nested under their owner, ownerless forms go to the "Common forms" section.
 //
-// Иконки – codicon (родные для VS Code). Целевой набор под замену на свой SVG (Material Symbols,
-// Rounded, Apache-2.0) описан в README расширения. Разбор и вставка полей – чистый metadataCore.
+// Icons are codicons (native to VS Code). The target set for replacing them with our own SVG
+// (Material Symbols, Rounded, Apache-2.0) is described in the extension README. Parsing and field
+// insertion are pure metadataCore.
 
 import * as fs from "fs";
 import * as path from "path";
@@ -20,9 +21,10 @@ import {
 } from "./metadataCore";
 import { updatePropsFromSelection } from "./metadataProps";
 
-// Вид элемента -> группа в дереве + codicon. Несколько видов могут делить одну группу. Название
-// группы – английский ключ: он и группирует, и служит ключом l10n (в англ. UI бандл не грузится и
-// показывается сам ключ; ru-перевод – в bundle.l10n.ru.json). Метки нижних поддеревьев см. ADD_SPECS.
+// Element kind -> tree group + codicon. Several kinds may share one group. The group name is an
+// English key: it both groups and serves as the l10n key (in the English UI the bundle is not loaded
+// and the key itself is shown; the ru translation lives in bundle.l10n.ru.json). Labels of the lower
+// subtrees - see ADD_SPECS.
 const KIND_ROWS: ReadonlyArray<readonly [kind: string, group: string, icon: string]> = [
   ["Справочник", "Catalogs", "book"],
   ["Документ", "Documents", "note"],
@@ -74,23 +76,23 @@ const KIND_META = new Map<string, KindMeta>();
 KIND_ROWS.forEach(([kind, group, icon], i) => KIND_META.set(kind, { group, icon, order: i }));
 
 const FORM_KIND = "КомпонентИнтерфейса";
-// Английские ключи-метки (см. комментарий к KIND_ROWS): показываются через l10n.t.
+// English label keys (see the comment at KIND_ROWS): displayed via l10n.t.
 const OTHER_GROUP = "Other";
 const COMMON_FORMS_GROUP = "Common forms";
 const COMMON_FORMS_ORDER = 8000;
 const OTHER_ORDER = 9000;
 
-// Пополняемая группа: yaml-секция (русский ключ, не переводится), подпись (английский ключ l10n),
-// иконка, токен меню. Шаблоны строк нового элемента живут в движке (xbsl.scaffold);
-// fieldKind – имя вида элемента в его словаре.
+// Appendable group: yaml section (Russian key, not translated), caption (English l10n key),
+// icon, menu token. Line templates for a new element live in the engine (xbsl.scaffold);
+// fieldKind is the element kind name in its vocabulary.
 interface AddSpec {
   section: string;
   fieldKind: string;
-  label: string; // английский ключ l10n метки поддерева (показ через l10n.t)
+  label: string; // English l10n key of the subtree label (shown via l10n.t)
   icon: string;
   token: string;
   defaultName: string;
-  noun: string; // ключ l10n (родительный падеж): "attribute" -> "реквизита"
+  noun: string; // l10n key (genitive case): "attribute" -> "реквизита"
 }
 
 const ADD_SPECS: Record<string, AddSpec> = {
@@ -103,7 +105,7 @@ const ADD_SPECS: Record<string, AddSpec> = {
   tabular: { section: "ТабличныеЧасти", fieldKind: "табличная-часть", label: "Tabular sections", icon: "table", token: "addtabular", defaultName: "НоваяТабличнаяЧасть", noun: "tabular section" },
 };
 
-// Вид -> пополняемые группы (порядок = порядок групп).
+// Kind -> its appendable groups (order = group order).
 const KIND_ADD_GROUPS: Record<string, string[]> = {
   Справочник: ["attr", "tabular"],
   Документ: ["attr", "tabular"],
@@ -114,7 +116,7 @@ const KIND_ADD_GROUPS: Record<string, string[]> = {
   Структура: ["structfield"],
 };
 
-// Секция -> её поля из разобранной структуры.
+// Section -> its fields from the parsed structure.
 const SECTION_FIELDS: Record<string, (it: MetaInternals) => MetaField[]> = {
   Реквизиты: (it) => it.attributes,
   Измерения: (it) => it.dimensions,
@@ -125,18 +127,19 @@ const SECTION_FIELDS: Record<string, (it: MetaInternals) => MetaField[]> = {
   ТабличныеЧасти: (it) => it.tabulars,
 };
 
-// Виды, у которых первичный артефакт – код: клик открывает xbsl, а не описание.
+// Kinds whose primary artifact is code: click opens the xbsl, not the description.
 const CODE_KINDS = new Set(["ОбщийМодуль", "HttpСервис", "SoapСервис", "КлиентSoapСервиса"]);
 
-// Кандидаты для поля Тип в панели свойств: примитивы + ссылки объектов + перечисления. Ссылку
-// дают справочники и документы (<Имя>.Ссылка?), перечисление – <Имя>? (обычно требует nullable).
-// Список открытый: панель показывает его подсказками datalist, но ввести можно любой тип.
+// Candidates for the Тип field in the properties panel: primitives + object references +
+// enumerations. A reference comes from catalogs and documents (<Имя>.Ссылка?), an enumeration -
+// <Имя>? (usually requires nullable). The list is open: the panel shows it as datalist hints,
+// but any type can be entered.
 const PRIMITIVE_TYPES = ["Строка", "Число", "Булево", "Дата", "ДатаВремя", "УникальныйИдентификатор"];
 const REF_KINDS = new Set(["Справочник", "Документ"]);
 
-// Создаваемые из дерева виды: категория показывается всегда (даже пустой), в её корне –
-// "добавить объект". Шаблоны (доп. строки, парный модуль) знает движок (xbsl.scaffold);
-// здесь только список для меню. Форма – в псевдокатегории "Общие формы", не своей категорией.
+// Kinds creatable from the tree: the category is always shown (even empty), with "add object"
+// at its root. Templates (extra lines, the paired module) are known to the engine (xbsl.scaffold);
+// here is only the list for the menu. A form goes to the "Common forms" pseudo-category, not its own.
 const NEW_OBJECT_KINDS = [
   "Справочник",
   "Документ",
@@ -149,11 +152,11 @@ const NEW_OBJECT_KINDS = [
   "HttpСервис",
   "ГлобальноеКлиентскоеСобытие",
   "ФрагментКомандногоИнтерфейса",
-  FORM_KIND, // общая форма (без владельца)
+  FORM_KIND, // common form (without an owner)
 ];
 const CREATABLE_KINDS = NEW_OBJECT_KINDS.filter((k) => k !== FORM_KIND);
 
-// Латинский slug вида – для id по-видовой команды "Добавить <класс>" и токена меню.
+// Latin slug of a kind - for the id of the per-kind "Add <class>" command and the menu token.
 const CREATABLE_SLUG: Record<string, string> = {
   Справочник: "catalog",
   Документ: "document",
@@ -169,7 +172,7 @@ const CREATABLE_SLUG: Record<string, string> = {
   КомпонентИнтерфейса: "commonform",
 };
 
-// Осмысленное имя по умолчанию (иначе "Новый" + вид даёт неуклюжее "НовыйКомпонентИнтерфейса").
+// A meaningful default name (otherwise "Новый" + kind yields the clumsy "НовыйКомпонентИнтерфейса").
 const NEW_OBJECT_DEFAULT: Record<string, string> = {
   КомпонентИнтерфейса: "НоваяФорма",
   Структура: "НоваяСтруктура",
@@ -208,13 +211,13 @@ interface Project {
   appModulePath?: string; // Проект.xbsl
 }
 
-// Подсистема = папка с Подсистема.yaml (имя = имя папки; членство элементов – по папке).
+// Subsystem = a folder with Подсистема.yaml (name = the folder name; element membership is by folder).
 interface Subsystem {
   name: string;
   dir: string;
 }
 
-// --- разбор исходников ------------------------------------------------------------------
+// --- source parsing ---------------------------------------------------------------------
 
 const RE_KIND = /^ВидЭлемента:\s*(\S+)/m;
 const RE_NAME = /^Имя:\s*(\S+)/m;
@@ -254,7 +257,7 @@ async function parseModel(projectRootFor: (folder: vscode.WorkspaceFolder) => st
       continue;
     }
     seen.add(key);
-    // Подсистема.yaml – папка-подсистема (имя не парсим, оно = имя папки).
+    // Подсистема.yaml - a subsystem folder (the name is not parsed, it = the folder name).
     if (path.basename(yamlPath) === "Подсистема.yaml") {
       const dir = path.dirname(yamlPath);
       subsystems.push({ name: path.basename(dir), dir });
@@ -267,7 +270,7 @@ async function parseModel(projectRootFor: (folder: vscode.WorkspaceFolder) => st
     } catch {
       continue;
     }
-    // Проект.yaml – без ВидЭлемента: отдельный корень дерева.
+    // Проект.yaml - has no ВидЭлемента: a separate tree root.
     if (path.basename(yamlPath) === "Проект.yaml") {
       const dir = path.dirname(yamlPath);
       const appModule = path.join(dir, "Проект.xbsl");
@@ -300,25 +303,25 @@ async function parseModel(projectRootFor: (folder: vscode.WorkspaceFolder) => st
   return { elements, projects, subsystems };
 }
 
-// --- узел дерева ------------------------------------------------------------------------
+// --- tree node --------------------------------------------------------------------------
 
 class XbslNode extends vscode.TreeItem {
   children?: XbslNode[];
-  parent?: XbslNode; // родитель – для getParent (нужен TreeView.reveal)
+  parent?: XbslNode; // parent - for getParent (required by TreeView.reveal)
   yamlPath?: string;
   modulePath?: string;
   objectModulePath?: string;
   appModulePath?: string;
-  offset?: number; // смещение узла в yaml – для перехода
-  addKind?: string; // группа: ключ ADD_SPECS для "добавить"
-  newObjectKind?: string; // категория: вид создаваемого объекта
-  ownerName?: string; // группа "Формы": объект-владелец (для добавления формы)
-  codeKind?: boolean; // код-вид (модуль/HTTP-сервис): клик открывает модуль слева
-  stdKind?: string; // стандартный реквизит: вид объекта (Справочник/Документ)
-  stdName?: string; // стандартный реквизит: имя (Наименование/Код/Номер/Дата)
+  offset?: number; // node offset in the yaml - for navigation
+  addKind?: string; // group: the ADD_SPECS key for "add"
+  newObjectKind?: string; // category: the kind of the object being created
+  ownerName?: string; // "Forms" group: the owner object (for adding a form)
+  codeKind?: boolean; // code kind (module/HTTP service): click opens the module on the left
+  stdKind?: string; // standard attribute: the object kind (Справочник/Документ)
+  stdName?: string; // standard attribute: the name (Наименование/Код/Номер/Дата)
 }
 
-// Проставить ссылки на родителя по всему построенному дереву (для reveal).
+// Set parent links across the whole built tree (for reveal).
 function setParents(nodes: XbslNode[], parent?: XbslNode): void {
   for (const node of nodes) {
     node.parent = parent;
@@ -328,7 +331,7 @@ function setParents(nodes: XbslNode[], parent?: XbslNode): void {
   }
 }
 
-// Первый узел дерева, удовлетворяющий предикату (обход в глубину, включая вложенные поля).
+// The first tree node satisfying the predicate (depth-first traversal, including nested fields).
 function findNode(nodes: XbslNode[], pred: (n: XbslNode) => boolean): XbslNode | undefined {
   for (const node of nodes) {
     if (pred(node)) {
@@ -350,7 +353,7 @@ function subsystemNode(sub: Subsystem): XbslNode {
   const node = new XbslNode(sub.name, vscode.TreeItemCollapsibleState.None);
   node.iconPath = new vscode.ThemeIcon("symbol-namespace");
   node.yamlPath = path.join(sub.dir, "Подсистема.yaml");
-  node.resourceUri = vscode.Uri.file(node.yamlPath); // для git-статусов (цвет/бейдж), иконку держим свою
+  node.resourceUri = vscode.Uri.file(node.yamlPath); // for git statuses (color/badge), keeping our own icon
   node.contextValue = "subsystem yaml";
   node.command = { command: "xbsl.metadata.openYaml", title: "", arguments: [node] };
   return node;
@@ -368,8 +371,8 @@ function subsystemsBranchNode(subsystems: Subsystem[]): XbslNode {
   return node;
 }
 
-// Узел подсистемы в режиме "По подсистемам": сворачиваемый, несёт вложенные подсистемы и свои
-// объекты (по классам). Открыть Подсистема.yaml – через контекстное меню (клик разворачивает).
+// Subsystem node in the "By subsystems" mode: collapsible, carries nested subsystems and its own
+// objects (by classes). Подсистема.yaml is opened via the context menu (a click expands the node).
 function subsystemGroupNode(sub: Subsystem, children: XbslNode[]): XbslNode {
   const node = new XbslNode(
     sub.name,
@@ -377,15 +380,15 @@ function subsystemGroupNode(sub: Subsystem, children: XbslNode[]): XbslNode {
   );
   node.iconPath = new vscode.ThemeIcon("symbol-namespace");
   node.yamlPath = path.join(sub.dir, "Подсистема.yaml");
-  node.resourceUri = vscode.Uri.file(node.yamlPath); // git-статусы
+  node.resourceUri = vscode.Uri.file(node.yamlPath); // git statuses
   node.contextValue = "subsystem yaml addsub";
   node.children = children;
   return node;
 }
 
-// Дети проекта в режиме "По подсистемам": дерево подсистем (по вложенности папок), под каждой – её
-// объекты по классам; объекты вне подсистем – категориями в корне проекта. Членство – по папке:
-// объект принадлежит САМОЙ ГЛУБОКОЙ подсистеме, чья папка является префиксом его пути.
+// Project children in the "By subsystems" mode: the subsystem tree (by folder nesting), under each -
+// its objects by classes; objects outside subsystems - as categories at the project root. Membership
+// is by folder: an object belongs to the DEEPEST subsystem whose folder is a prefix of its path.
 function subsystemModeChildren(subsystems: Subsystem[], elements: Element[]): XbslNode[] {
   const under = (child: string, dir: string): boolean => child.toLowerCase().startsWith(dir.toLowerCase() + path.sep);
   const deepest = (p: string, among: Subsystem[]): Subsystem | undefined => {
@@ -443,8 +446,8 @@ function subsystemModeChildren(subsystems: Subsystem[], elements: Element[]): Xb
 function projectNode(project: Project, children: XbslNode[], filterNames: string[]): XbslNode {
   const node = new XbslNode(project.name, vscode.TreeItemCollapsibleState.Expanded);
   node.iconPath = new vscode.ThemeIcon("project");
-  node.resourceUri = vscode.Uri.file(path.join(project.dir, "Проект.yaml")); // git-статусы
-  // Серым рядом – Поставщик\Имя из Проект.yaml; при отборе добавляем его перечень.
+  node.resourceUri = vscode.Uri.file(path.join(project.dir, "Проект.yaml")); // git statuses
+  // Grayed out next to the name - Поставщик\Имя from Проект.yaml; a filter appends its list.
   const base = project.vendor ? `${project.vendor}\\${project.name}` : "";
   node.description = filterNames.length
     ? `${base} • ${vscode.l10n.t("filter")}: ${filterNames.join(", ")}`.trim()
@@ -459,7 +462,7 @@ function projectNode(project: Project, children: XbslNode[], filterNames: string
 }
 
 function categoryNode(group: string, icon: string, children: XbslNode[], createKind?: string): XbslNode {
-  // group – английский ключ (он же ключ группировки); показываем перевод, ключ не меняем.
+  // group is an English key (also the grouping key); we display the translation, the key stays.
   const node = new XbslNode(
     vscode.l10n.t(group),
     children.length ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
@@ -467,7 +470,7 @@ function categoryNode(group: string, icon: string, children: XbslNode[], createK
   node.iconPath = new vscode.ThemeIcon(icon);
   node.description = String(children.length);
   node.newObjectKind = createKind;
-  // Токен newobj-<slug> включает нужную по-видовую команду "Добавить <класс>".
+  // The newobj-<slug> token enables the right per-kind "Add <class>" command.
   node.contextValue = ["xbslCategory", createKind ? `newobj-${CREATABLE_SLUG[createKind]}` : ""]
     .filter(Boolean)
     .join(" ");
@@ -489,27 +492,28 @@ function fieldNode(field: MetaField, yamlPath: string, icon: string): XbslNode {
   node.offset = field.offset;
   node.children = kids;
   node.contextValue = "member field props";
-  // Клик: описание слева (курсор на поле), панель свойств – справа.
+  // Click: the description on the left (cursor on the field), the properties panel - on the right.
   node.command = { command: "xbsl.metadata.openWithProps", title: "", arguments: [node] };
   return node;
 }
 
-// Узел табличной части: как поле, но с действием "+ добавить реквизит" (маркер addtcattr).
+// Tabular section node: like a field, but with the "+ add attribute" action (the addtcattr marker).
 function tabularNode(tc: MetaField, yamlPath: string): XbslNode {
   const node = fieldNode(tc, yamlPath, "table");
   node.contextValue = "member field props addtcattr";
   return node;
 }
 
-// Узел стандартного реквизита (Наименование/Код/Номер/Дата): материализован (есть в Реквизиты) – со
-// смещением записи, иначе синтетический (значения по умолчанию, серым "(по умолчанию)"). Клик открывает
-// описание слева + панель свойств справа; правка синтетического материализует запись в yaml.
+// Standard attribute node (Наименование/Код/Номер/Дата): materialized (present in Реквизиты) - with
+// the record offset, otherwise synthetic (default values, grayed "(default)"). Click opens the
+// description on the left + the properties panel on the right; editing a synthetic one materializes
+// the record in the yaml.
 function standardAttrNode(kind: string, name: string, yamlPath: string, internals?: MetaInternals): XbslNode {
   const offset = internals?.attributes.find((a) => a.name === name)?.offset;
   const node = new XbslNode(name, vscode.TreeItemCollapsibleState.None);
   node.iconPath = new vscode.ThemeIcon("symbol-field");
   node.yamlPath = yamlPath;
-  node.offset = offset; // undefined – синтетический
+  node.offset = offset; // undefined - synthetic
   node.stdKind = kind;
   node.stdName = name;
   node.description = offset === undefined ? vscode.l10n.t("(default)") : undefined;
@@ -536,13 +540,13 @@ function addGroupNode(addKind: string, yamlPath: string, fields: MetaField[]): X
   node.yamlPath = yamlPath;
   node.addKind = addKind;
   node.contextValue = `group ${spec.token}`;
-  // У табличных частей дети – ТЧ с добавлением реквизита; у прочих групп – обычные поля.
+  // In the tabular group the children are sections with attribute adding; other groups - plain fields.
   node.children = fields.map((f) => (addKind === "tabular" ? tabularNode(f, yamlPath) : fieldNode(f, yamlPath, spec.icon)));
   return node;
 }
 
-// Группа только для просмотра (табличные части, шаблоны URL): без "добавить". label – английский
-// ключ l10n.
+// Display-only group (tabular sections, URL templates): without "add". label is an English
+// l10n key.
 function displayGroupNode(label: string, icon: string, yamlPath: string, fields: MetaField[]): XbslNode {
   const node = new XbslNode(vscode.l10n.t(label), vscode.TreeItemCollapsibleState.Collapsed);
   node.iconPath = new vscode.ThemeIcon(icon);
@@ -556,7 +560,7 @@ function formNode(el: Element): XbslNode {
   const node = new XbslNode(el.name, vscode.TreeItemCollapsibleState.None);
   node.iconPath = new vscode.ThemeIcon(formIcon(el.name));
   node.yamlPath = el.yamlPath;
-  node.resourceUri = vscode.Uri.file(el.yamlPath); // git-статусы
+  node.resourceUri = vscode.Uri.file(el.yamlPath); // git statuses
   node.modulePath = el.modulePath;
   node.contextValue = ["member", "form", "yaml", el.modulePath ? "xbsl" : ""].filter(Boolean).join(" ");
   node.command = { command: "xbsl.metadata.previewForm", title: "", arguments: [node] };
@@ -564,8 +568,8 @@ function formNode(el: Element): XbslNode {
   return node;
 }
 
-// Группа "Формы". Для справочника/документа можно добавить форму объекта (canAddForm) – тогда
-// группа показывается всегда и несёт владельца.
+// The "Forms" group. For a catalog/document an object form can be added (canAddForm) - then the
+// group is always shown and carries the owner.
 function formsGroupNode(forms: Element[], owner?: { name: string; yamlPath: string }): XbslNode {
   const node = new XbslNode(
     vscode.l10n.t("Forms"),
@@ -593,15 +597,15 @@ function elementNode(el: Element, boundForms: Element[]): XbslNode {
   }
   for (const key of KIND_ADD_GROUPS[el.kind] ?? []) {
     let fields = internals ? SECTION_FIELDS[ADD_SPECS[key].section]?.(internals) ?? [] : [];
-    // Стандартные реквизиты показываем в своей группе – из обычных Реквизитов их убираем (без дублей).
+    // Standard attributes are shown in their own group - drop them from the regular Реквизиты (no duplicates).
     if (key === "attr" && stdNames.size) {
       fields = fields.filter((f) => !stdNames.has(f.name));
     }
     groups.push(addGroupNode(key, el.yamlPath, fields));
   }
   if (internals) {
-    // Табличные части справочника/документа – через KIND_ADD_GROUPS (с добавлением); здесь только
-    // группы без добавления.
+    // Tabular sections of a catalog/document go through KIND_ADD_GROUPS (with adding); here are only
+    // groups without adding.
     if (el.kind === "HttpСервис" && internals.urlTemplates.length) {
       groups.push(displayGroupNode("URL templates", "globe", el.yamlPath, internals.urlTemplates));
     }
@@ -617,25 +621,25 @@ function elementNode(el: Element, boundForms: Element[]): XbslNode {
   );
   node.iconPath = new vscode.ThemeIcon(metaFor(el.kind).icon);
   node.yamlPath = el.yamlPath;
-  node.resourceUri = vscode.Uri.file(el.yamlPath); // git-статусы (цвет/бейдж), иконку держим свою
+  node.resourceUri = vscode.Uri.file(el.yamlPath); // git statuses (color/badge), keeping our own icon
   node.modulePath = el.modulePath;
   node.objectModulePath = el.objectModulePath;
-  node.offset = internals?.rootOffset; // корень объекта – для панели свойств
+  node.offset = internals?.rootOffset; // the object root - for the properties panel
   node.children = groups;
   node.contextValue = ["element", "yaml", "props", "deletable", el.modulePath ? "xbsl" : "", el.objectModulePath ? "objmod" : ""]
     .filter(Boolean)
     .join(" ");
   node.codeKind = CODE_KINDS.has(el.kind);
-  // Клик: исходник слева (модуль код-видов или описание), панель свойств – справа.
+  // Click: the source on the left (module for code kinds, or the description), properties - right.
   node.command = { command: "xbsl.metadata.openWithProps", title: "", arguments: [node] };
   node.tooltip = el.kind;
   return node;
 }
 
-// --- построение модели ------------------------------------------------------------------
+// --- model building ---------------------------------------------------------------------
 
-// Категории (по виду) для набора элементов, включая раздел "Общие формы". Пустые создаваемые
-// категории показываем только без отбора (showEmptyCreatable) – при отборе они лишний шум.
+// Categories (by kind) for a set of elements, including the "Common forms" section. Empty creatable
+// categories are shown only without a filter (showEmptyCreatable) - under a filter they are noise.
 function categoriesOf(elements: Element[], showEmptyCreatable: boolean): XbslNode[] {
   const forms = elements.filter((e) => e.kind === FORM_KIND);
   const objects = elements.filter((e) => e.kind !== FORM_KIND);
@@ -696,7 +700,7 @@ function categoriesOf(elements: Element[], showEmptyCreatable: boolean): XbslNod
     cat.elements.push(node);
     cats.set(meta.group, cat);
   }
-  // Создаваемые виды: помечаем "добавить объект"; пустые показываем только без отбора.
+  // Creatable kinds: mark them with "add object"; empty ones are shown only without a filter.
   for (const kind of CREATABLE_KINDS) {
     const meta = metaFor(kind);
     const existing = cats.get(meta.group);
@@ -713,8 +717,8 @@ function categoriesOf(elements: Element[], showEmptyCreatable: boolean): XbslNod
     node: categoryNode(group, cat.icon, cat.elements, cat.createKind),
   }));
 
-  // Общие формы – псевдокатегория; "добавить" создаёт форму без владельца. Показываем всегда
-  // (как создаваемые), кроме активного отбора без общих форм.
+  // Common forms are a pseudo-category; "add" creates a form without an owner. Always shown
+  // (like creatable ones), except under an active filter with no common forms.
   const commonFormNodes = [...commonForms].sort(byName).map(formNode);
   if (commonFormNodes.length || showEmptyCreatable) {
     roots.push({
@@ -736,15 +740,15 @@ function buildRoots(model: Model, filterDirs: Set<string>, mode: GroupMode): Xbs
   const elements = filterActive ? model.elements.filter((el) => underFilter(el.yamlPath)) : model.elements;
   const showEmpty = !filterActive;
 
-  // Дети проекта: "По классам" – ветка Подсистемы + категории по видам; "По подсистемам" – дерево
-  // подсистем с объектами под ними.
+  // Project children: "By object classes" - the Subsystems branch + categories by kind;
+  // "By subsystems" - the subsystem tree with the objects under it.
   const childrenOf = (elems: Element[], subs: Subsystem[]): XbslNode[] =>
     mode === "subsystem"
       ? subsystemModeChildren(subs, elems)
       : [subsystemsBranchNode(subs), ...categoriesOf(elems, showEmpty)];
 
   if (model.projects.length === 0) {
-    // Не нашли Проект.yaml – без корня проекта.
+    // No Проект.yaml found - go without a project root.
     return mode === "subsystem" ? subsystemModeChildren(model.subsystems, elements) : categoriesOf(elements, showEmpty);
   }
   const projects = [...model.projects].sort(byName);
@@ -782,21 +786,21 @@ function buildRoots(model: Model, filterDirs: Set<string>, mode: GroupMode): Xbs
   );
 }
 
-// --- провайдер --------------------------------------------------------------------------
+// --- provider ---------------------------------------------------------------------------
 
 class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
   private readonly emitter = new vscode.EventEmitter<XbslNode | undefined | void>();
   readonly onDidChangeTreeData = this.emitter.event;
   private roots?: XbslNode[];
   private model?: Model;
-  private filter = new Set<string>(); // каталоги подсистем активного отбора
-  private groupMode: GroupMode = "kind"; // иерархия дерева: по классам или по подсистемам
-  private treeView?: vscode.TreeView<XbslNode>; // для reveal (getParent обязателен)
-  private pendingReveal?: (n: XbslNode) => boolean; // показать этот узел после перестроения
+  private filter = new Set<string>(); // subsystem directories of the active filter
+  private groupMode: GroupMode = "kind"; // tree hierarchy: by classes or by subsystems
+  private treeView?: vscode.TreeView<XbslNode>; // for reveal (getParent is mandatory)
+  private pendingReveal?: (n: XbslNode) => boolean; // reveal this node after a rebuild
 
   constructor(private readonly projectRootFor: (folder: vscode.WorkspaceFolder) => string) {}
 
-  // Дерево создаётся отдельно (нужен доступ к reveal); связываем после создания.
+  // The tree view is created separately (access to reveal is needed); attached after creation.
   attachView(view: vscode.TreeView<XbslNode>): void {
     this.treeView = view;
   }
@@ -849,14 +853,14 @@ class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
       return node.children ?? [];
     }
     const roots = await this.buildRootsIfNeeded();
-    // Отложенный показ (после добавления объекта/поля) – когда свежее дерево построено.
+    // Deferred reveal (after adding an object/field) - once the fresh tree is built.
     if (this.pendingReveal) {
       setTimeout(() => void this.flushReveal(), 0);
     }
     return roots;
   }
 
-  // Куда класть новый объект: подсистемы (папки) и корень проекта.
+  // Where to put a new object: subsystems (folders) and the project root.
   async placements(): Promise<{ subsystems: Subsystem[]; projectDir?: string }> {
     if (!this.model) {
       this.model = await parseModel(this.projectRootFor);
@@ -864,8 +868,8 @@ class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
     return { subsystems: this.model.subsystems, projectDir: this.model.projects[0]?.dir };
   }
 
-  // Кандидаты типа для панели свойств (комбобокс Тип): примитивы, затем ссылки объектов
-  // (<Имя>.Ссылка?) и перечисления (<Имя>?), каждая группа по алфавиту. Список открытый.
+  // Type candidates for the properties panel (the Тип combo box): primitives, then object references
+  // (<Имя>.Ссылка?) and enumerations (<Имя>?), each group alphabetized. The list is open.
   async typeCandidates(): Promise<string[]> {
     if (!this.model) {
       this.model = await parseModel(this.projectRootFor);
@@ -884,12 +888,12 @@ class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
     return [...PRIMITIVE_TYPES, ...refs, ...enums];
   }
 
-  // Показать (выделить) узел в дереве после перестроения – для добавления объекта/поля: новый
-  // узел появится только в свежих roots, поэтому reveal откладываем до их построения.
+  // Reveal (select) a node in the tree after a rebuild - for adding an object/field: the new node
+  // only appears in the fresh roots, so the reveal is deferred until they are built.
   requestReveal(pred: (n: XbslNode) => boolean): void {
     this.pendingReveal = pred;
-    // Держим отбор reveal короткое окно: показ должен пережить повторное перестроение от файлового
-    // наблюдателя (сохранение файла → refresh ~300 мс). По истечении окна снимаем.
+    // Keep the reveal predicate for a short window: the reveal must survive the repeated rebuild
+    // from the file watcher (file save -> refresh ~300 ms). Once the window expires, clear it.
     setTimeout(() => {
       if (this.pendingReveal === pred) {
         this.pendingReveal = undefined;
@@ -904,28 +908,29 @@ class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
     }
     const node = findNode(this.roots, this.pendingReveal);
     if (!node) {
-      return; // узел не отображается (напр. под отбором) – молча выходим
+      return; // the node is not displayed (e.g. filtered out) - exit silently
     }
-    // pendingReveal НЕ снимаем здесь – пусть показ переживёт перестроение наблюдателя (снимет таймер).
+    // pendingReveal is NOT cleared here - let the reveal survive the watcher rebuild (the timer clears it).
     try {
       await this.treeView.reveal(node, { select: true, focus: false });
     } catch {
-      // reveal может отказать (дерево ещё не готово) – не критично
+      // reveal may refuse (the tree is not ready yet) - not critical
     }
   }
 
-  // Показать в дереве элемент активного редактора – без перестроения дерева. Синхронизируем,
-  // только когда дерево на виду, чтобы не выдёргивать его на каждый переход по редакторам.
+  // Reveal the active editor's element in the tree - without rebuilding the tree. Synchronize only
+  // while the tree is visible, so as not to yank it on every editor switch.
   async revealForUri(uri: vscode.Uri): Promise<void> {
     if (this.pendingReveal) {
-      return; // идёт показ только что добавленного узла (поля/объекта) – не перебиваем его
+      return; // a just-added node (field/object) is being revealed - do not interrupt it
     }
     if (!this.treeView?.visible) {
       return;
     }
     const fsPath = uri.fsPath;
-    // Уже выбран узел этого же файла (или его поле) – не перебиваем выбор пользователя: иначе клик по
-    // полю (открывает yaml объекта) перебросил бы выделение на родителя-объект.
+    // A node of this very file (or its field) is already selected - do not override the user's
+    // choice: otherwise a click on a field (which opens the object's yaml) would move the selection
+    // to the parent object.
     if (
       this.treeView.selection.some(
         (n) => n.yamlPath === fsPath || n.modulePath === fsPath || n.objectModulePath === fsPath
@@ -950,11 +955,11 @@ class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
   }
 }
 
-// --- команды и регистрация --------------------------------------------------------------
+// --- commands and registration ----------------------------------------------------------
 
-// Колонка редактора для исходников (yaml/xbsl): где уже открыт этот файл, иначе где открыт любой
-// исходник, иначе – левая. Так описания/модули держатся слева, а панели предпросмотра/свойств
-// уходят вправо (Beside), и повторные клики не плодят колонки.
+// Editor column for sources (yaml/xbsl): where this file is already open, otherwise where any
+// source is open, otherwise - the left one. This keeps descriptions/modules on the left while the
+// preview/properties panels go right (Beside), and repeated clicks do not multiply columns.
 function sourceColumn(uri?: vscode.Uri): vscode.ViewColumn {
   const editors = vscode.window.visibleTextEditors;
   if (uri) {
@@ -1001,31 +1006,32 @@ async function previewForm(node?: XbslNode): Promise<void> {
   if (!node?.yamlPath) {
     return;
   }
-  // yaml – в колонке исходников (слева, в фокусе), предпросмотр открываем панелью справа (Beside).
+  // yaml - in the sources column (left, focused), the preview opens as a panel on the right (Beside).
   await openFile(node.yamlPath);
   await vscode.commands.executeCommand("xbsl.previewForm", vscode.Uri.file(node.yamlPath));
 }
 
-// Клик по объекту/полю/модулю: исходник слева (описание с курсором на узле, или модуль код-видов),
-// панель свойств – справа. У модуля исходник – его .xbsl, но свойства (описание) всё равно показываем.
+// Click on an object/field/module: the source on the left (the description with the cursor on the
+// node, or the module for code kinds), the properties panel - on the right. For a module the source
+// is its .xbsl, but the properties (description) are shown anyway.
 async function openWithProps(node?: XbslNode): Promise<void> {
   if (!node) {
     return;
   }
   if (node.codeKind && node.modulePath) {
-    await openFile(node.modulePath); // модуль слева
+    await openFile(node.modulePath); // the module on the left
   } else if (node.yamlPath) {
-    await reveal(node); // описание слева + курсор на узле (offset)
+    await reveal(node); // the description on the left + cursor on the node (offset)
   }
   if (node.yamlPath && (node.offset !== undefined || node.stdName)) {
-    await vscode.commands.executeCommand("xbsl.metadata.props", node); // свойства справа
+    await vscode.commands.executeCommand("xbsl.metadata.props", node); // properties on the right
   }
 }
 
 const IDENTIFIER = /^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*$/;
 
-// Применить результат движка и показать вставленное: reveal в дереве + курсор в редакторе
-// (точку интереса присылает движок в поле cursor правимого файла).
+// Apply the engine result and show what was inserted: reveal in the tree + cursor in the editor
+// (the point of interest is sent by the engine in the cursor field of the edited file).
 async function applyAndReveal(
   provider: XbslMetadataProvider,
   result: ScaffoldResult,
@@ -1092,7 +1098,7 @@ async function addItem(provider: XbslMetadataProvider, node?: XbslNode): Promise
   );
 }
 
-// Добавить реквизит в табличную часть: движку передаётся имя ТЧ (узел дерева = эта ТЧ).
+// Add an attribute into a tabular section: the engine receives the section name (tree node = that section).
 async function addTabularAttr(provider: XbslMetadataProvider, node?: XbslNode): Promise<void> {
   const tabular = node ? String(node.label) : "";
   if (!node?.yamlPath || !tabular) {
@@ -1139,7 +1145,7 @@ async function addObject(provider: XbslMetadataProvider, node?: XbslNode): Promi
     return;
   }
 
-  // Куда положить: подсистема (папка) или корень проекта.
+  // Where to put it: a subsystem (folder) or the project root.
   const { subsystems, projectDir } = await provider.placements();
   const items: Placement[] = [
     ...subsystems.map((s) => ({ label: s.name, dir: s.dir })),
@@ -1179,8 +1185,8 @@ async function addObject(provider: XbslMetadataProvider, node?: XbslNode): Promi
   );
 }
 
-// Добавить формы справочнику/документу: движок генерирует форму с наполнением по реквизитам
-// и сам регистрирует её в Интерфейс владельца.
+// Add forms to a catalog/document: the engine generates a form populated from the attributes
+// and registers it in the owner's Интерфейс by itself.
 async function addObjectForm(provider: XbslMetadataProvider, node?: XbslNode): Promise<void> {
   const owner = node?.ownerName;
   const ownerYaml = node?.yamlPath;
@@ -1217,8 +1223,9 @@ async function addObjectForm(provider: XbslMetadataProvider, node?: XbslNode): P
   );
 }
 
-// Удалить объект: его файлы (yaml + модуль + модуль объекта). Ссылки не обновляются –
-// оборванные ловит линтер/деплой. С подтверждением; удаление обратимо (VS Code undo).
+// Delete an object: its files (yaml + module + object module). References are not updated -
+// dangling ones are caught by the linter/deploy. With confirmation; the deletion is reversible
+// (VS Code undo).
 async function deleteObject(provider: XbslMetadataProvider, node?: XbslNode): Promise<void> {
   if (!node?.yamlPath) {
     return;
@@ -1298,14 +1305,14 @@ async function filterBySubsystem(provider: XbslMetadataProvider): Promise<void> 
     placeHolder: vscode.l10n.t("Show only these subsystems (nothing selected – no filter)"),
   });
   if (!picks) {
-    return; // отмена – отбор не трогаем
+    return; // canceled - leave the filter as is
   }
   provider.setFilter(picks.map((p) => p.dir));
 }
 
 const GROUP_MODE_KEY = "xbsl.metadata.groupMode";
 
-// Выбор иерархии дерева: по классам объектов или по подсистемам; выбор запоминается.
+// Tree hierarchy choice: by object classes or by subsystems; the choice is remembered.
 async function pickGroupMode(provider: XbslMetadataProvider, context: vscode.ExtensionContext): Promise<void> {
   const current = provider.mode;
   const items: Array<vscode.QuickPickItem & { mode: GroupMode }> = [
@@ -1328,7 +1335,7 @@ export function registerMetadataTree(
     treeDataProvider: provider,
     showCollapseAll: true,
   });
-  provider.attachView(view); // reveal требует доступ к дереву
+  provider.attachView(view); // reveal requires access to the tree view
   const savedMode = context.globalState.get<GroupMode>(GROUP_MODE_KEY);
   if (savedMode === "kind" || savedMode === "subsystem") {
     provider.setGroupMode(savedMode);
@@ -1352,10 +1359,10 @@ export function registerMetadataTree(
   context.subscriptions.push(
     view,
     watcher,
-    // Панель свойств следует за выделением в дереве (мышь, стрелки, программный
-    // reveal), если она уже открыта; открывает её по-прежнему клик или пункт "Свойства".
+    // The properties panel follows the tree selection (mouse, arrows, programmatic reveal)
+    // if it is already open; it is still opened by a click or the "Properties" menu item.
     view.onDidChangeSelection((e) => updatePropsFromSelection(e.selection[0])),
-    // Обратная навигация: активный редактор описания/модуля/формы – показать его элемент в дереве.
+    // Reverse navigation: the active editor of a description/module/form - reveal its element in the tree.
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor && editor.document.uri.scheme === "file") {
         void provider.revealForUri(editor.document.uri);
@@ -1385,8 +1392,8 @@ export function registerMetadataTree(
     vscode.commands.registerCommand("xbsl.metadata.groupMode", () => pickGroupMode(provider, context))
   );
 
-  // По-видовые команды "Добавить <класс>" (метка = вид; создаёт addObject по newObjectKind узла).
-  // Включая общую форму (её категория – "Общие формы", не через CREATABLE_KINDS).
+  // Per-kind "Add <class>" commands (label = the kind; creates via addObject by the node's
+  // newObjectKind). Including the common form (its category is "Common forms", not via CREATABLE_KINDS).
   for (const kind of NEW_OBJECT_KINDS) {
     context.subscriptions.push(
       vscode.commands.registerCommand(`xbsl.metadata.addObject.${CREATABLE_SLUG[kind]}`, (n?: XbslNode) =>
@@ -1395,6 +1402,6 @@ export function registerMetadataTree(
     );
   }
 
-  // Панель свойств берёт отсюда кандидатов для комбобокса Тип (состав проекта знает провайдер).
+  // The properties panel takes the Тип combo box candidates from here (the provider knows the project).
   return { typeCandidates: () => provider.typeCandidates() };
 }

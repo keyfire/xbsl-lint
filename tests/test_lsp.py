@@ -1,4 +1,4 @@
-"""Чистые помощники LSP-сервера (без pygls): слово под курсором и разбор параметров."""
+"""Pure LSP server helpers (no pygls): the word under the cursor and parameter parsing."""
 
 from xbsl import lsp
 
@@ -6,17 +6,17 @@ from xbsl import lsp
 def test_word_at():
     line = "знч Список = новый Массив()"
     assert lsp._word_at(line, 0) == "знч"
-    assert lsp._word_at(line, 6) == "Список"      # середина слова
+    assert lsp._word_at(line, 6) == "Список"      # middle of the word
     assert lsp._word_at(line, 20) == "Массив"
-    assert lsp._word_at(line, 10) == "Список"      # хвостовой край слова (курсор в конце)
-    assert lsp._word_at(line, 11) == ""            # на операторе '='
+    assert lsp._word_at(line, 10) == "Список"      # trailing edge of the word (cursor at its end)
+    assert lsp._word_at(line, 11) == ""            # on the '=' operator
 
 
 def test_word_at_edges():
     assert lsp._word_at("", 0) == ""
-    assert lsp._word_at("Массив", 100) == "Массив"  # курсор за концом строки
-    assert lsp._word_at("A.Поле", 2) == "Поле"      # точка – граница слова
-    assert lsp._word_at("Тип_1", 0) == "Тип_1"       # подчёркивание и цифра – часть имени
+    assert lsp._word_at("Массив", 100) == "Массив"  # cursor past the end of the line
+    assert lsp._word_at("A.Поле", 2) == "Поле"      # a dot is a word boundary
+    assert lsp._word_at("Тип_1", 0) == "Тип_1"       # underscore and digit are part of the name
 
 
 def test_param_dict_and_object():
@@ -32,10 +32,10 @@ def test_param_dict_and_object():
 
 
 def test_doc_key_meets_both_uri_spellings(tmp_path):
-    """Редактор шлёт file:///d%3A/..., сервер строит file:///d:/... – ключ обязан совпасть.
+    """The editor sends file:///d%3A/..., the server builds file:///d:/... - the key must match.
 
-    Пока сравнивались строки uri, project-находки открытого файла терялись: ключ,
-    под который их клали, не находился по ключу от редактора.
+    While uri strings were compared directly, project findings of an open file were getting
+    lost: the key they were stored under could not be found by the key from the editor.
     """
     import os
     import re
@@ -48,10 +48,10 @@ def test_doc_key_meets_both_uri_spellings(tmp_path):
     f.write_text("ВидЭлемента: Справочник\n", encoding="utf-8")
 
     серверный = uris.from_fs_path(str(f))
-    # ровно то, чем отличается запись редактора на Windows
+    # exactly the way the editor's spelling differs on Windows
     редакторский = re.sub(r"^file:///([A-Za-z]):", r"file:///\1%3A", серверный)
     if os.name == "nt":
-        assert серверный != редакторский  # иначе тест ничего не проверяет
+        assert серверный != редакторский  # otherwise the test checks nothing
 
     ключ = lambda u: lsp._doc_key(Path(uris.to_fs_path(u)), u)
     assert ключ(серверный) == ключ(редакторский)

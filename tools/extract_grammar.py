@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Извлечь языковые данные XBSL из грамматики платформы 1С:Элемент.
+"""Extract the XBSL language data from the 1C:Element platform grammar.
 
-XBSL реализован на Eclipse Xtext + ANTLR. Внутри дистрибутива (в jar
-com.e1c.g5rt.xbsl.language-*.jar) лежат сгенерированные InternalBsl.g и InternalBsl.tokens.
-Скрипт читает их и формирует xbsl/data/element/<версия>/language.json: двуязычные
-ключевые слова, операторы/символы, карту идентификаторов токенов.
+XBSL is implemented on Eclipse Xtext + ANTLR. The distribution (the jar
+com.e1c.g5rt.xbsl.language-*.jar) carries the generated InternalBsl.g and InternalBsl.tokens.
+The script reads them and builds xbsl/data/element/<version>/language.json: bilingual
+keywords, operators/symbols, and the token identifier map.
 
-Версия Элемента определяется из дистрибутива автоматически (или задаётся --element-version).
-Вендорные файлы в репозиторий не коммитятся (кэшируются в .refs/, см. .gitignore) – только
-производный JSON. Сам линтер работает от этого JSON и дистрибутив в рантайме не требует.
+The Element version is detected from the distribution automatically (or set via --element-version).
+Vendor files are not committed to the repository (cached in .refs/, see .gitignore) - only
+the derived JSON is. The linter itself works off that JSON and needs no distribution at runtime.
 """
 
 from __future__ import annotations
@@ -27,11 +27,11 @@ import _distro  # noqa: E402
 GRAMMAR_INNER_G = "InternalBsl.g"
 GRAMMAR_INNER_TOKENS = "InternalBsl.tokens"
 
-# Правила, чьи литералы не операторы: пробелы, перевод строки, BOM и ограничитель строки.
+# Rules whose literals are not operators: whitespace, newline, BOM and the string delimiter.
 _NON_OPERATOR_RULES = {"RULE_WS", "RULE_NL", "RULE_UTF8_BOM", "RULE_DQUOTE"}
 
 
-# --- Распаковка грамматики из дистрибутива ------------------------------------------
+# --- Unpacking the grammar from the distribution ------------------------------------------
 
 
 def _extract_from_dist(dist: Path, dest: Path) -> None:
@@ -52,7 +52,7 @@ def _extract_from_dist(dist: Path, dest: Path) -> None:
 
 
 def resolve_grammar(dist: Path | None, grammar_dir: Path | None) -> Path:
-    """Вернуть каталог с InternalBsl.g/.tokens (из --grammar-dir, из дистрибутива или из кэша .refs)."""
+    """Return the directory with InternalBsl.g/.tokens: --grammar-dir, the distribution or .refs cache."""
     refs = _distro.REPO / ".refs" / "grammar"
 
     def has_both(d: Path) -> bool:
@@ -69,7 +69,7 @@ def resolve_grammar(dist: Path | None, grammar_dir: Path | None) -> Path:
     raise SystemExit("Грамматика не найдена. Укажите --dist (каталог дистрибутива) или --grammar-dir.")
 
 
-# --- Разбор -------------------------------------------------------------------------
+# --- Parsing -------------------------------------------------------------------------
 
 _UNESCAPE = {"n": "\n", "r": "\r", "t": "\t", "'": "'", '"': '"', "\\": "\\"}
 

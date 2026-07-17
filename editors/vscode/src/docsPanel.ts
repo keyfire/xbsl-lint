@@ -1,7 +1,8 @@
-// Панель документации 1С:Элемент – webview со страницей справки (как синтакс-помощник в EDT).
-// Содержимое (очищенный HTML) приходит от LSP-сервера линтера; картинки подставляются data-URI,
-// внутренние ссылки ведут к другим страницам в этой же панели, кнопка ведёт к первоисточнику на
-// сайте документации. Панель одна: открытие новой страницы заменяет содержимое.
+// 1C:Element documentation panel - a webview with a help page (like the syntax assistant in
+// EDT). The content (sanitized HTML) comes from the linter's LSP server; images are inlined
+// as data URIs, internal links lead to other pages within the same panel, a button leads to
+// the primary source on the documentation site. There is one panel: opening a new page
+// replaces the content.
 
 import * as vscode from "vscode";
 import { docsAsset, docsForSymbol, docsPage, DocPage } from "./docsClient";
@@ -9,7 +10,7 @@ import { docsAsset, docsForSymbol, docsPage, DocPage } from "./docsClient";
 const VIEW_TYPE = "xbslDocs";
 let panel: vscode.WebviewPanel | undefined;
 
-// Слушатель открытия страницы (дерево "Содержание" по нему позиционируется на документе).
+// Page open listener (the "Contents" tree uses it to position itself on the document).
 let openListener: ((id: string) => void) | undefined;
 export function setDocsOpenListener(fn: (id: string) => void): void {
   openListener = fn;
@@ -28,7 +29,7 @@ function nonce(): string {
   return s;
 }
 
-// Картинки страницы (`<img src="assets/...">`) заменяем на data-URI, вытянув байты у сервера.
+// Page images (`<img src="assets/...">`) are replaced with data URIs, pulling bytes from the server.
 async function inlineImages(html: string): Promise<string> {
   const ids = new Set<string>();
   for (const m of html.matchAll(/<img src="(assets\/[^"]+)"/g)) {
@@ -95,11 +96,11 @@ function shell(bodyHtml: string, sourceUrl: string | undefined, anchor: string |
     const href = a.getAttribute("href") || "";
     if (href.startsWith("#")) {
       const rest = href.slice(1);
-      if (rest.includes("/")) {           // ссылка на другую страницу (возможно с якорем)
+      if (rest.includes("/")) {           // a link to another page (possibly with an anchor)
         e.preventDefault();
         const h = rest.indexOf("#");
         vsapi.postMessage({ type: "open", id: h < 0 ? rest : rest.slice(0, h), anchor: h < 0 ? undefined : rest.slice(h + 1) });
-      }                                   // иначе – якорь этой же страницы: нативная прокрутка
+      }                                   // otherwise - an anchor of this very page: native scrolling
     } else if (href.startsWith("ext:")) {
       e.preventDefault();
       vsapi.postMessage({ type: "external", url: href.slice(4) });
@@ -110,7 +111,7 @@ function shell(bodyHtml: string, sourceUrl: string | undefined, anchor: string |
     const el = document.getElementById(anchor);
     if (el) { el.scrollIntoView({ block: "start" }); }
   }
-  // Кнопка копирования в буфер в правом верхнем углу каждого блока кода.
+  // A copy-to-clipboard button in the top right corner of every code block.
   const L = { copy: ${JSON.stringify(vscode.l10n.t("Copy"))}, copied: ${JSON.stringify(vscode.l10n.t("Copied"))} };
   for (const pre of document.querySelectorAll(".doc pre")) {
     const wrap = document.createElement("div");
@@ -162,7 +163,7 @@ async function render(context: vscode.ExtensionContext, page: DocPage, anchor?: 
   const p = ensurePanel(context);
   p.title = page.title || vscode.l10n.t("Documentation");
   p.webview.html = shell(await inlineImages(page.html), page.url || undefined, anchor, nonce());
-  openListener?.(page.id); // спозиционировать дерево "Содержание" на этом документе
+  openListener?.(page.id); // position the "Contents" tree on this document
 }
 
 export async function openPage(context: vscode.ExtensionContext, id: string, anchor?: string): Promise<void> {
@@ -175,7 +176,7 @@ export async function openPage(context: vscode.ExtensionContext, id: string, anc
   await render(context, page, anchor);
 }
 
-// Правый клик на переменной/типе в редакторе: спросить сервер, к какой странице ведёт символ.
+// Right click on a variable/type in the editor: ask the server which page the symbol leads to.
 export async function openForSymbol(context: vscode.ExtensionContext): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "xbsl") {
@@ -192,7 +193,7 @@ export async function openForSymbol(context: vscode.ExtensionContext): Promise<v
     await render(context, res.page);
     return;
   }
-  // Уверенной страницы нет (метод-секция, неизвестный тип) – предлагаем кандидатов на выбор.
+  // No confident page (a section method, an unknown type) - offer candidates to choose from.
   const candidates = res.candidates ?? [];
   if (candidates.length === 0) {
     void vscode.window.showInformationMessage(vscode.l10n.t('XBSL: no documentation for "{0}".', res.name));

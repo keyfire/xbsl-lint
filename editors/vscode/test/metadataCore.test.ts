@@ -213,8 +213,8 @@ test("insertItemEdit: отсутствующая секция дописывае
   assert.deepStrictEqual(it.resources.map((r) => r.name), ["Курс"]);
 });
 
-// Шаблоны новых объектов, подсистем и вставки табличных частей переехали в движок
-// (xbsl/scaffold.py) и проверяются его pytest-тестами (tests/test_scaffold.py).
+// Templates of new objects, subsystems and tabular section insertions moved to the engine
+// (xbsl/scaffold.py) and are checked by its pytest tests (tests/test_scaffold.py).
 
 test("describeMetaNode: объект – заголовок, Ид/Вид только чтение, ОбластьВидимости = select", () => {
   const it = parseInternals(CATALOG)!;

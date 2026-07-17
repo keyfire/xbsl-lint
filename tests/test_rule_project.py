@@ -1,7 +1,7 @@
-"""Правила group project/: свойства проекта по стандарту "Заполнение свойств проекта".
+"""Rules of the project/ group: project properties per the "Заполнение свойств проекта" standard.
 
-Данные Элемента этим правилам не нужны - они читают только описание проекта, поэтому тесты
-проходят и в чистом чекауте.
+These rules need no Element data - they only read the project descriptor, so the tests
+pass in a clean checkout as well.
 """
 
 from xbsl import engine
@@ -43,7 +43,7 @@ def test_name_lowercase():
 
 
 def test_identifier_with_separator():
-    # разделители в идентификаторе недопустимы: имя образуется от представления слитно
+    # separators are not allowed in the identifier: the name derives from the presentation, joined
     assert len(_lint("project/identifier", _project(name="Кабинет_Сотрудника"))) == 1
     assert _lint("project/identifier", _project(name="КабинетСотрудника")) == []
 
@@ -51,7 +51,7 @@ def test_identifier_with_separator():
 def test_version_two_parts():
     diags = _lint("project/version", _project(version="1.0"))
     assert len(diags) == 1
-    assert "1.0.0" in diags[0].message  # подсказка достраивает недостающее число
+    assert "1.0.0" in diags[0].message  # the hint completes the missing number
 
 
 def test_version_four_parts():
@@ -65,7 +65,7 @@ def test_version_semantic_is_silent():
 def test_presentation_missing():
     body = "Поставщик: Acme\nИмя: Tasks\nВерсия: 1.0.0\n"
     diags = _lint("project/presentation", body)
-    assert len(diags) == 2  # и Представление, и ПредставлениеПоставщика
+    assert len(diags) == 2  # both Представление and ПредставлениеПоставщика
     assert {"Представление", "ПредставлениеПоставщика"} == {
         d.message.split("'")[1] for d in diags
     }
@@ -76,7 +76,7 @@ def test_presentation_empty_string():
 
 
 def test_element_description_is_not_a_project():
-    # у описания элемента есть ВидЭлемента - правила проекта его не трогают
+    # an element descriptor has ВидЭлемента - the project rules leave it alone
     source = engine.load_text(
         "Задачи.yaml",
         "ВидЭлемента: Справочник\nИд: 42073842-db14-41d6-a17a-7b03a5d57933\nИмя: Задачи\n",

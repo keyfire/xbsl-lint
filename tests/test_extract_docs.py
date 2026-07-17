@@ -1,4 +1,4 @@
-"""Разбор страницы и сайдбара в tools/extract_docs.py – на мини-фикстурах (без дистрибутива)."""
+"""Page and sidebar parsing in tools/extract_docs.py - on mini fixtures (no distribution)."""
 
 import sys
 from pathlib import Path
@@ -8,8 +8,8 @@ import extract_docs as ex  # noqa: E402
 
 ORIGIN = "https://1cmycloud.com"
 
-# Мини-страница в разметке Docusaurus: хлебные крошки и футер вне контент-блока, ссылка на Std,
-# якорь-решётка, блок кода Prism, картинка и управляющий символ внутри слова.
+# A mini page in Docusaurus markup: breadcrumbs and footer outside the content block, a link to Std,
+# a hash anchor, a Prism code block, an image, and a control character inside a word.
 PAGE = (
     "<html><body><article>"
     '<nav class="theme-doc-breadcrumbs"><span itemprop="name">Мас\x00сив</span></nav>'
@@ -40,8 +40,8 @@ def _rec():
 
 def test_fields_extracted():
     r = _rec()
-    assert r["id"] == "stdlib/element/xbsl/Std/Collections/Array_ru"  # id = URL-путь без /docs/help/
-    assert r["title"] == "Массив"                                     # управляющий символ вычищен
+    assert r["id"] == "stdlib/element/xbsl/Std/Collections/Array_ru"  # id = URL path without /docs/help/
+    assert r["title"] == "Массив"                                     # the control character is cleaned out
     assert r["qualified"] == "Стд::Коллекции::Массив"
     assert r["availability"] == "КлиентИСервер"
     assert r["url"] == ORIGIN + "/docs/help/stdlib/element/xbsl/Std/Collections/Array_ru/"
@@ -57,7 +57,7 @@ def test_kind_heuristic():
 def test_chrome_stripped():
     html = _rec()["html"]
     assert "theme-doc" not in html and "breadcrumbs" not in html
-    assert "низ страницы" not in html       # футер вне контента
+    assert "низ страницы" not in html       # the footer is outside the content
     assert "class=" not in html and "<nav" not in html and "<div" not in html
     assert "hash-link" not in html and "​" not in html
 
@@ -70,7 +70,7 @@ def test_internal_link_rewritten_external_kept():
 
 def test_code_flattened():
     html = _rec()["html"]
-    # переносы строк и отступ внутри блока кода сохраняются (не съедаются нормализацией пробелов)
+    # line breaks and indentation inside a code block survive (not eaten by whitespace normalization)
     assert "<pre><code>знч Х = 1\n  Х = 2</code></pre>" in html
     assert "token" not in html and "<span" not in html
 
@@ -91,10 +91,10 @@ def test_no_content_block_returns_none():
     assert ex._record("x/index.html", "<html><body>нет разметки</body></html>", ORIGIN) is None
 
 
-# --- разбор сайдбара ------------------------------------------------------------------
+# --- sidebar parsing ------------------------------------------------------------------
 
-# Мини-бандл: два сайдбара; во втором – метка с лишним экранированием кавычек (как в реальном
-# бандле 'Ключевое слово \\"ничто\\"'), которую обычный json.loads не берёт.
+# A mini bundle: two sidebars; the second has a label with extra quote escaping (as in the real
+# bundle, 'Ключевое слово \\"ничто\\"') that plain json.loads cannot handle.
 JS = (
     'x={"developer":[{"type":"category","label":"Основы","items":['
     '{"type":"link","label":"Обзор","href":"/docs/help/topics/overview"}]},'
@@ -111,7 +111,7 @@ def test_sidebar_items_parsed():
 
 
 def test_sidebar_double_escaped_quote_repaired():
-    std = ex._sidebar_items(JS, "xbslStdlib")   # содержит метку с \\"ничто\\"
+    std = ex._sidebar_items(JS, "xbslStdlib")   # contains the label with \\"ничто\\"
     assert std is not None and len(std) == 1
     assert "ничто" in std[0]["label"]
 
@@ -125,7 +125,7 @@ def test_collect_hrefs_skips_template_ns():
     ]
     out: set[str] = set()
     ex._collect_hrefs(items, out)
-    assert out == {"topics/x"}                  # шаблонный неймспейс и его поддерево пропущены
+    assert out == {"topics/x"}                  # the template namespace and its subtree are skipped
 
 
 def test_href_to_page():

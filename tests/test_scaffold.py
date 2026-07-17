@@ -1,7 +1,7 @@
-"""Скаффолдинг метаданных (xbsl/scaffold.py): правки текста, шаблоны, операции.
+"""Metadata scaffolding (xbsl/scaffold.py) - text edits, templates, operations.
 
-Каждый сгенерированный yaml дополнительно прогоняется через PyYAML: шаблон, который
-не разбирается парсером, не должен пройти тесты независимо от точечных проверок.
+Every generated yaml is additionally fed through PyYAML: a template the parser cannot
+parse must not pass the tests regardless of the targeted checks.
 """
 
 import re
@@ -48,7 +48,7 @@ def _valid_yaml(text: str) -> object:
     return pyyaml.safe_load(text)
 
 
-# --- правки текста -------------------------------------------------------------------
+# --- text edits ---------------------------------------------------------------------------
 
 
 def test_insert_item_into_existing_section():
@@ -56,7 +56,7 @@ def test_insert_item_into_existing_section():
     out = apply_edit(CATALOG, edit)
     names = [i["Имя"] for i in section_items(out, "Реквизиты")]
     assert names == ["Артикул", "Цвет"]
-    # Вставка точечная: секция ТабличныеЧасти не сдвинулась по содержимому.
+    # The insertion is targeted - the ТабличныеЧасти section content did not shift.
     assert out.count("ТабличныеЧасти:") == 1
     assert _valid_yaml(out)
 
@@ -82,7 +82,7 @@ def test_insert_nested_item_into_tabular():
     parsed = _valid_yaml(out)
     tc = parsed["ТабличныеЧасти"][0]
     assert [f["Имя"] for f in tc["Реквизиты"]] == ["Компонент", "Количество"]
-    # Реквизиты верхнего уровня не пострадали.
+    # Top-level Реквизиты are unaffected.
     assert [i["Имя"] for i in section_items(out, "Реквизиты")] == ["Артикул"]
 
 
@@ -91,7 +91,7 @@ def test_section_items_inline_form():
     assert [i["Имя"] for i in section_items(text, "Элементы")] == ["Один", "Два"]
 
 
-# --- объекты ---------------------------------------------------------------------------
+# --- objects ------------------------------------------------------------------------------
 
 
 def test_new_object_catalog(tmp_path):
@@ -101,7 +101,7 @@ def test_new_object_catalog(tmp_path):
     text = (tmp_path / "Товары.yaml").read_text(encoding="utf-8")
     parsed = _valid_yaml(text)
     assert parsed["ВидЭлемента"] == "Справочник"
-    # Умолчание – платформенное: видимость не расширяется за разработчика.
+    # The default is the platform one - visibility is not widened on the developer's behalf.
     assert parsed["ОбластьВидимости"] == "ВПодсистеме"
     assert parsed["Ид"]
 
@@ -135,7 +135,8 @@ def test_new_object_access_control(tmp_path):
         scaffold.op_new_object(tmp_path, "Справочник", "Заказы", access="РазрешеноАутентифицированным")
     )
     parsed = _valid_yaml((tmp_path / "Заказы.yaml").read_text(encoding="utf-8"))
-    # Право лежит внутри Разрешения: КонтрольДоступа – набор "Право: СпособКонтроляДоступа".
+    # The right sits inside Разрешения under КонтрольДоступа - a set of
+    # "Право: СпособКонтроляДоступа" pairs.
     assert parsed["КонтрольДоступа"]["Разрешения"]["ПоУмолчанию"] == "РазрешеноАутентифицированным"
 
 
@@ -159,8 +160,8 @@ def test_new_component_command_uses_component_type_property(tmp_path):
     result = scaffold.op_new_object(tmp_path, "КомандаСКомпонентом", "КомандаЗакрытьФорму")
     apply_result(result)
     parsed = _valid_yaml((tmp_path / "КомандаЗакрытьФорму.yaml").read_text(encoding="utf-8"))
-    # Свойство называется ТипКомпонента: вариант "Компонент" из перечня свойств документации
-    # проверен деплоем и отвергается компилятором ("Неизвестное свойство").
+    # The property is named ТипКомпонента - the "Компонент" variant from the documented
+    # property list was tried in a deploy and is rejected by the compiler ("Неизвестное свойство").
     assert parsed["ТипКомпонента"] == "Форма"
     assert "Компонент" not in parsed
     module = (tmp_path / "КомандаЗакрытьФорму.xbsl").read_text(encoding="utf-8")
@@ -173,14 +174,14 @@ def test_new_soap_service(tmp_path):
     )
     apply_result(result)
     parsed = _valid_yaml((tmp_path / "СервисМагазина.yaml").read_text(encoding="utf-8"))
-    # Структура по документации SoapСервис: пространство имён, имя сервиса, URL, обработчики.
+    # Structure per the SoapСервис documentation - namespace, service name, URL, handlers.
     assert parsed["ИмяСервиса"] == "СервисМагазина"
     assert parsed["КорневойUrl"] == "/СервисМагазина"
     assert "ПространствоИменСервиса" in parsed
     assert parsed["Обработчики"][0]["Имя"] == "Операция1"
     assert parsed["Обработчики"][0]["Метод"] == "Операция1"
     assert parsed["КонтрольДоступа"]["Разрешения"]["Вызов"] == "РазрешеноАутентифицированным"
-    # Метод операции объявлен в парном модуле.
+    # The operation method is declared in the paired module.
     module = (tmp_path / "СервисМагазина.xbsl").read_text(encoding="utf-8")
     assert "метод Операция1()" in module
 
@@ -190,14 +191,14 @@ def test_processing_operation_writes_handler(tmp_path):
     yaml_path = tmp_path / "РасчетДоставки.yaml"
     result = scaffold.op_add_field(yaml_path, "операция", "Рассчитать")
     apply_result(result)
-    # Операция попала в yaml, а одноимённый @Обработчик-метод – в модуль.
+    # The operation landed in the yaml, and the same-named @Обработчик method - in the module.
     parsed = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
     assert [o["Имя"] for o in parsed["Операции"]] == ["Рассчитать"]
     module = (tmp_path / "РасчетДоставки.xbsl").read_text(encoding="utf-8")
     assert "@Обработчик\nметод Рассчитать()" in module.replace("\r\n", "\n")
     assert any("Рассчитать" in n for n in result.notes)
 
-    # Повторное добавление того же метода не дублирует его в модуле.
+    # Adding the same method again does not duplicate it in the module.
     apply_result(scaffold.op_add_field(yaml_path, "операция", "РассчитатьПочтой"))
     again = scaffold.op_add_field(yaml_path, "операция", "Ещё")
     apply_result(again)
@@ -206,28 +207,28 @@ def test_processing_operation_writes_handler(tmp_path):
 
 
 def test_http_root_url_drops_kind_suffix(tmp_path):
-    # КорневойUrl – публичный префикс, суффикс вида HttpСервис в нём лишний.
+    # КорневойUrl is a public prefix - the HttpСервис kind suffix is redundant in it.
     result = scaffold.op_new_object(tmp_path, "HttpСервис", "КаталогHttpСервис", routes="GET /")
     apply_result(result)
     parsed = _valid_yaml((tmp_path / "КаталогHttpСервис.yaml").read_text(encoding="utf-8"))
     assert parsed["КорневойUrl"] == "/Каталог"
-    # Кириллица в публичном URL – повод предупредить (боевые URL латиницей).
+    # Cyrillic in a public URL warrants a warning (production URLs use Latin).
     assert any("латиницей" in note for note in result.notes)
 
 
 def test_http_stub_has_no_dead_locals(tmp_path):
-    # Заготовки обработчиков не должны содержать вычисленных, но неиспользуемых переменных:
-    # живой код – валидная заглушка, развёрнутый пример идёт комментарием.
+    # Handler stubs must not contain computed but unused variables - the live code is
+    # a valid stub, and the expanded example goes as a comment.
     result = scaffold.op_new_object(
         tmp_path, "HttpСервис", "Каталог", routes="GET /, POST /, GET /{id}, DELETE /{id}",
     )
     apply_result(result)
     module = (tmp_path / "Каталог.xbsl").read_text(encoding="utf-8")
-    # Живые (не закомментированные) объявления переменной – только те, что реально читаются.
+    # Live (not commented out) variable declarations - only those that are actually read.
     live = [ln for ln in module.splitlines() if not ln.lstrip().startswith("//")]
-    assert not any("пер Ограничение" in ln for ln in live)  # раньше вычислялась впустую
+    assert not any("пер Ограничение" in ln for ln in live)  # used to be computed for nothing
     assert 'знч Ид = Запрос.Параметры.ПолучитьПервый("id")' in module
-    assert 'УстановитьТело("Не найдено: " + Ид)' in module  # Ид используется, не dead-local
+    assert 'УстановитьТело("Не найдено: " + Ид)' in module  # Ид is used - not a dead local
 
 
 def test_http_handler_names_do_not_collide(tmp_path):
@@ -258,7 +259,7 @@ def test_new_report_layout(tmp_path):
     kinds = [f["Вид"] for f in fields]
     assert kinds == ["Измерение", "Измерение", "Мера"]
     assert fields[2]["Выражение"] == "СУММА(Количество)"
-    # Ид полей макета – канонический UUID с дефисами (иначе линтер yaml/id-uuid ругается).
+    # Layout field Ид is a canonical hyphenated UUID (otherwise the yaml/id-uuid rule complains).
     assert all(re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
                             f["Ид"]) for f in fields)
 
@@ -288,9 +289,9 @@ def test_localized_strings_mapping_sections(tmp_path):
     apply_result(scaffold.op_add_field(yaml_path, "шаблон", "ТекущееВремя",
                                        type_="Текущее время: %0"))
     parsed = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
-    # Секции – отображения ключ: значение (не список). Значение строки по умолчанию = ключ.
+    # The sections are key: value mappings (not lists). The default string value = the key.
     assert parsed["Строки"] == {"Задачи": "Задачи", "Событие": "Событие"}
-    assert parsed["Шаблоны"] == {"ТекущееВремя": "Текущее время: %0"}  # шаблон в кавычках
+    assert parsed["Шаблоны"] == {"ТекущееВремя": "Текущее время: %0"}  # the template is quoted
 
     with pytest.raises(ScaffoldError, match="уже есть"):
         scaffold.op_add_field(yaml_path, "строка", "Задачи")
@@ -306,7 +307,7 @@ def test_index_stub_field_and_note(tmp_path):
     assert any("замените Поля" in n for n in result.notes)
 
 
-# --- поля ------------------------------------------------------------------------------
+# --- fields -------------------------------------------------------------------------------
 
 
 @pytest.fixture()
@@ -356,7 +357,7 @@ def test_add_tabular_with_starter_attribute(catalog_path):
     assert new_tc["Реквизиты"][0]["Имя"] == "Реквизит1"
 
 
-# --- подсистема и проект ----------------------------------------------------------------
+# --- subsystem and project ----------------------------------------------------------------
 
 
 def test_add_subsystem_blocks(tmp_path):
@@ -385,7 +386,7 @@ def test_new_project_files(tmp_path):
         scaffold.op_new_project(tmp_path, "vendor", "Приложение")
 
 
-# --- маршруты в существующий сервис ------------------------------------------------------
+# --- routes into an existing service ------------------------------------------------------
 
 
 def test_add_route_extends_service(tmp_path):
@@ -396,7 +397,7 @@ def test_add_route_extends_service(tmp_path):
     parsed = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
     by_template = {t["Шаблон"]: [m["Метод"] for m in t["Методы"]] for t in parsed["ШаблоныUrl"]}
     assert by_template["/{id}"] == ["GET", "DELETE"]
-    assert by_template["/"] == ["GET"]  # дубль не добавился
+    assert by_template["/"] == ["GET"]  # the duplicate was not added
     assert any("уже есть" in note for note in result.notes)
     module = (tmp_path / "Апи.xbsl").read_text(encoding="utf-8")
     assert module.count("метод Удалить") == 1
@@ -410,11 +411,11 @@ def test_add_route_new_template(tmp_path):
     assert {t["Шаблон"] for t in parsed["ШаблоныUrl"]} == {"/", "/users"}
 
 
-# --- формы -------------------------------------------------------------------------------
+# --- forms --------------------------------------------------------------------------------
 
 
 def _make_project(tmp_path) -> Path:
-    """Мини-проект: vendor/Приложение/Основное с иерархией папок как в реальных исходниках."""
+    """Mini project - vendor/Приложение/Основное with the folder hierarchy of real sources."""
     apply_result(scaffold.op_new_project(tmp_path, "vendor", "Приложение"))
     return tmp_path / "vendor" / "Приложение" / "Основное"
 
@@ -439,8 +440,8 @@ def test_add_forms_for_catalog(tmp_path):
     parsed_list = _valid_yaml(form_list)
     ns_type = "ДинамическийСписок<vendor::Приложение::Основное::ТоварыФормаСписка.ДанныеСтрокиСписка>"
     assert parsed_list["Свойства"][0]["Тип"] == ns_type
-    # Колонка динамического списка адресует поле строки через ПолеЗначения (оно же даёт
-    # сортировку по колонке) – как в рабочих формах проекта и эталонов.
+    # A dynamic list column addresses the row field via ПолеЗначения (which also enables
+    # sorting by the column) - as in the project's working forms and the reference ones.
     columns = parsed_list["Наследует"]["Содержимое"]["Содержимое"]["Колонки"]
     assert [c["ПолеЗначения"] for c in columns] == ["Наименование", "Цвет", "Вес"]
     assert [c["Заголовок"] for c in columns] == ["Наименование", "Цвет", "Вес"]
@@ -471,8 +472,9 @@ def test_add_form_layout_with_tabulars(tmp_path):
     assert "Таблица<ИсточникДанныхМассив<Заказ.Строки>>" in form
     assert "=Компоненты.Строки.ДобавитьСтроку" in form
     assert _valid_yaml(form)
-    # Обязательный реквизит Дата документа попал в форму (он создаётся в yaml сразу).
-    # Номер опционален и по умолчанию отсутствует – фантомного поля Номер в форме быть не должно.
+    # The mandatory document attribute Дата made it into the form (it is created in the yaml
+    # right away). Номер is optional and absent by default - the form must not get a phantom
+    # Номер field.
     assert "Значение: =Объект.Дата" in form
     assert "=Объект.Номер" not in form
 
@@ -503,15 +505,15 @@ def test_hierarchical_list_form(tmp_path):
     form = (subsystem / "РазделыФормаСписка.yaml").read_text(encoding="utf-8")
     row = "vendor::Приложение::Основное::РазделыФормаСписка.ДанныеСтрокиСписка"
     assert f"ДинамическийСписок<{row}, {row}>" in form
-    # Имени иерархии "Иерархия" не существует (так называется таблица языка запросов):
-    # для иерархии элементов используется режим ПоУмолчанию.
+    # A hierarchy named "Иерархия" does not exist (that is the name of the query language
+    # table) - item hierarchy uses the ПоУмолчанию mode.
     hierarchy = _valid_yaml(form)["Свойства"][0]["ЗначениеПоУмолчанию"]["ИспользуемаяИерархия"]
     assert hierarchy == {"Тип": "РежимИерархии", "Значение": "ПоУмолчанию"}
     assert "Выражение: Родитель" in form
     assert _valid_yaml(form)
 
 
-# --- разведка ----------------------------------------------------------------------------
+# --- introspection ------------------------------------------------------------------------
 
 
 def test_object_info_and_project_info(tmp_path):
@@ -534,24 +536,24 @@ def test_object_info_and_project_info(tmp_path):
         scaffold.object_info(tmp_path, name="Нет")
 
 
-# --- переименование объекта ---------------------------------------------------------------
+# --- object rename ------------------------------------------------------------------------
 
 
 def _make_rename_project(tmp_path) -> Path:
-    """Проект со складом, его формами и ловушками совпадающих имён."""
+    """A project with the Склады catalog, its forms, and same-name traps."""
     subsystem = _make_project(tmp_path)
     apply_result(scaffold.op_new_object(subsystem, "Справочник", "Склады"))
     apply_result(scaffold.op_new_object(subsystem, "Справочник", "СкладыАрхив"))
     apply_result(scaffold.op_new_object(subsystem, "Справочник", "Заказы"))
     apply_result(scaffold.op_add_form(tmp_path, name="Склады"))
 
-    # Представление объекта и заголовок формы.
+    # Object presentation and form title.
     yaml_path = subsystem / "Склады.yaml"
     yaml_path.write_text(
         yaml_path.read_text(encoding="utf-8") + "Представление: Склад\n", encoding="utf-8"
     )
 
-    # Реквизит-ловушка: называется как объект (не должен переименоваться).
+    # Trap attribute - named like the object (must not get renamed).
     apply_result(scaffold.op_add_field(subsystem / "Заказы.yaml", "реквизит", "Склады",
                                        type_="Склады.Ссылка?"))
 
@@ -572,7 +574,7 @@ def _make_rename_project(tmp_path) -> Path:
         ";\n",
         encoding="utf-8",
     )
-    # Компонент строки карточного списка.
+    # Card list row component.
     (subsystem / "СтрокаСпискаСклады.yaml").write_text(
         "ВидЭлемента: КомпонентИнтерфейса\nИд: x\nИмя: СтрокаСпискаСклады\n", encoding="utf-8"
     )
@@ -620,15 +622,15 @@ def test_rename_object_files_and_references(tmp_path):
 
     orders = (subsystem / "Заказы.yaml").read_text(encoding="utf-8")
     assert "Тип: Хранилища.Ссылка?" in orders
-    assert "Имя: Склады" in orders  # реквизит-тёзка не переименован
+    assert "Имя: Склады" in orders  # the namesake attribute is not renamed
 
     module = (subsystem / "Заказы.xbsl").read_text(encoding="utf-8")
-    assert "импорт Склады" in module          # подсистема в импорте не трогается
+    assert "импорт Склады" in module          # the subsystem in the import is untouched
     assert "пер С: Хранилища.Ссылка?" in module
     assert "ИЗ Хранилища КАК С" in module
-    assert '"Склады не изменились"' in module  # строковый литерал сохранён
+    assert '"Склады не изменились"' in module  # the string literal is preserved
     assert "Хранилища в комментарии" in module
-    assert "Объект.Склады" in module           # член после точки – чужое имя
+    assert "Объект.Склады" in module           # a member after a dot is a foreign name
 
     object_module = (subsystem / "Хранилища.Объект.xbsl").read_text(encoding="utf-8")
     assert "Хранилища.ПересчитатьРазрешенияДоступа()" in object_module
@@ -643,7 +645,8 @@ def test_rename_object_errors(tmp_path):
     with pytest.raises(ScaffoldError, match="совпадают"):
         scaffold.op_rename_object(tmp_path, "Склады", "Склады")
 
-    # Тёзки в двух подсистемах: без файла – ошибка, с файлом – переименовывается указанный.
+    # Namesakes in two subsystems - without a file it is an error, with a file the
+    # specified one gets renamed.
     apply_result(scaffold.op_add_subsystem(subsystem.parent, "Дальняя"))
     other = subsystem.parent / "Дальняя"
     apply_result(scaffold.op_new_object(other, "Справочник", "Склады"))
@@ -662,11 +665,11 @@ def test_rename_object_dry_dict_shape(tmp_path):
     assert plan["renames"] and all("from" in r and "to" in r for r in plan["renames"])
     assert plan["files"] and all("content" not in f for f in plan["files"])
     assert any("замен" in note for note in plan["notes"])
-    # Ничего не записано: операция только вычисляет изменения.
+    # Nothing is written - the operation only computes the changes.
     assert (tmp_path / "vendor" / "Приложение" / "Основное" / "Склады.yaml").is_file()
 
 
-# --- карточная форма списка ---------------------------------------------------------------
+# --- card list form -----------------------------------------------------------------------
 
 
 def _cards_project(tmp_path, fields: list[tuple[str, str]]) -> Path:
@@ -696,7 +699,7 @@ def test_cards_list_form_without_photo(tmp_path):
     assert settings["АвтоЗаполнение"] == "ДобавлятьКолонкиИСтроки"
     assert settings["ОписаниеАвтоматическихКолонок"]["МинимальнаяШирина"] == 400
 
-    # Поля списка: Ссылка для навигации + показанные карточкой.
+    # List fields - Ссылка for navigation plus the fields the card shows.
     fields = [f["Выражение"] for f in form["Свойства"][0]["ЗначениеПоУмолчанию"]["Поля"]]
     assert fields == ["Ссылка", "Наименование", "Должность", "Отдел"]
 
@@ -706,7 +709,7 @@ def test_cards_list_form_without_photo(tmp_path):
     assert row["Наследует"]["Тип"] == f"ПроизвольнаяСтрокаСписка<СтрокаДинамическогоСписка<{row_type}>>"
     assert card["Тип"] == "СтандартнаяКарточка"
     assert card["Заголовок"] == "=ДанныеСтроки.Данные.Наименование"
-    # Строковое поле идёт прямо в Содержимое, ссылка – Надписью: обе в Группе.
+    # A string field goes straight into Содержимое, a reference - as a Надпись; both in a Группа.
     labels = card["Содержимое"]["Содержимое"]
     assert [l["Значение"] for l in labels] == [
         "=ДанныеСтроки.Данные.Должность", "=ДанныеСтроки.Данные.Отдел",
@@ -733,7 +736,7 @@ def test_cards_list_form_with_photo(tmp_path):
 
     form = _valid_yaml((subsystem / "СотрудникиФормаСписка.yaml").read_text(encoding="utf-8"))
     settings = form["Наследует"]["Содержимое"]["Содержимое"]["КонтейнерСтрок"]["НастройкиМатричнойКомпоновки"]
-    assert settings["ОписаниеАвтоматическихКолонок"]["МинимальнаяШирина"] == 250  # фото – уже
+    assert settings["ОписаниеАвтоматическихКолонок"]["МинимальнаяШирина"] == 250  # photo - narrower
 
     row = _valid_yaml((subsystem / "СтрокаСпискаСотрудники.yaml").read_text(encoding="utf-8"))
     card = row["Наследует"]["Содержимое"]
@@ -744,15 +747,15 @@ def test_cards_list_form_with_photo(tmp_path):
     assert picture["Тип"] == "Картинка"
     assert picture["Масштабирование"] == "Пропорционально"
     assert picture["Изображение"] == "=ДанныеСтроки.Данные.Фото ?? Ресурс{Аккаунт.svg}.Ссылка"
-    assert picture["РастягиватьПоВертикали"] == "Ложь"  # иначе Высота растянется на остаток
+    assert picture["РастягиватьПоВертикали"] == "Ложь"  # otherwise Высота stretches to the rest
     assert label["Значение"] == "=ДанныеСтроки.Данные.Наименование"
 
 
 def test_cards_document_formats_date_and_notes_hidden_fields(tmp_path):
     subsystem = _make_project(tmp_path)
     apply_result(scaffold.op_new_object(subsystem, "Документ", "Заказы"))
-    # Номер у документа опционален и по умолчанию не создаётся – объявляем его явно, чтобы
-    # он стал заголовком карточки (стартовая Дата уже есть в yaml).
+    # A document's Номер is optional and not created by default - declare it explicitly so
+    # it becomes the card title (the starter Дата is already in the yaml).
     for name in ("Номер", "ПолеА", "ПолеБ", "ПолеВ", "ПолеГ"):
         apply_result(scaffold.op_add_field(subsystem / "Заказы.yaml", "реквизит", name))
     result = scaffold.op_add_form(tmp_path, name="Заказы", forms=["list-cards"])
@@ -760,7 +763,7 @@ def test_cards_document_formats_date_and_notes_hidden_fields(tmp_path):
 
     row = _valid_yaml((subsystem / "СтрокаСпискаЗаказы.yaml").read_text(encoding="utf-8"))
     card = row["Наследует"]["Содержимое"]
-    # Заголовок – Номер (первое строковое), Дата форматируется, лишние поля не влезли.
+    # The title is Номер (the first string field), Дата gets formatted, extra fields did not fit.
     assert card["Заголовок"] == "=ДанныеСтроки.Данные.Номер"
     values = [l["Значение"] for l in card["Содержимое"]["Содержимое"]]
     assert values[0] == '=ДанныеСтроки.Данные.Дата.Представление("дд ММММ гггг ЧЧ:мм")'
@@ -783,12 +786,12 @@ def test_cards_conflicts_and_unknown_form_kind(tmp_path):
     subsystem = tmp_path / "vendor" / "Приложение" / "Основное"
     apply_result(scaffold.op_add_form(tmp_path, name="Сотрудники", forms=["list-cards"]))
 
-    # Форма уже есть – ни она, ни её компонент строки не трогаются.
+    # The form already exists - neither it nor its row component is touched.
     again = scaffold.op_add_form(tmp_path, name="Сотрудники", forms=["list-cards"])
     assert any("СотрудникиФормаСписка.yaml уже существует" in n for n in again.notes)
     assert again.changes == []
 
-    # Форма удалена, компонент остался: форма создаётся заново, компонент – пропускается.
+    # The form was deleted, the component stayed - the form is recreated, the component is skipped.
     (subsystem / "СотрудникиФормаСписка.yaml").unlink()
     partial = scaffold.op_add_form(tmp_path, name="Сотрудники", forms=["list-cards"])
     created = [c.path.name for c in partial.changes if c.created]
@@ -796,7 +799,7 @@ def test_cards_conflicts_and_unknown_form_kind(tmp_path):
     assert any("СтрокаСпискаСотрудники.yaml уже существует" in n for n in partial.notes)
 
 
-# --- контроль доступа ---------------------------------------------------------------------
+# --- access control -----------------------------------------------------------------------
 
 
 def test_access_info_and_set_default(tmp_path):
@@ -805,7 +808,7 @@ def test_access_info_and_set_default(tmp_path):
     apply_result(scaffold.op_add_field(subsystem / "Товары.yaml", "реквизит", "Цвет"))
     yaml_path = subsystem / "Товары.yaml"
 
-    # Секции нет – сводка None (значит, действует РазрешеноАдминистраторам).
+    # No section - the summary is None (meaning РазрешеноАдминистраторам is in effect).
     assert scaffold.object_info(tmp_path, name="Товары")["access"] is None
 
     result = scaffold.op_set_access(tmp_path, name="Товары", default="РазрешеноАутентифицированным")
@@ -813,14 +816,14 @@ def test_access_info_and_set_default(tmp_path):
     text = yaml_path.read_text(encoding="utf-8")
     parsed = _valid_yaml(text)
     assert parsed["КонтрольДоступа"]["Разрешения"]["ПоУмолчанию"] == "РазрешеноАутентифицированным"
-    assert parsed["Реквизиты"][0]["Имя"] == "Цвет"  # секция данных не пострадала
+    assert parsed["Реквизиты"][0]["Имя"] == "Цвет"  # the data section is unaffected
     assert any("нет секции" in n for n in result.notes)
 
     info = scaffold.object_info(tmp_path, name="Товары")
     assert info["access"]["default"] == "РазрешеноАутентифицированным"
     assert info["access_rights"] == ["Создание", "Чтение", "Изменение", "Удаление"]
 
-    # Повторная установка того же значения – файл не трогается.
+    # Setting the same value again - the file is not touched.
     again = scaffold.op_set_access(tmp_path, name="Товары", default="РазрешеноАутентифицированным")
     assert again.changes == []
     assert any("уже имеют такие значения" in n for n in again.notes)
@@ -836,14 +839,14 @@ def test_access_set_individual_rights_precisely(tmp_path):
         permissions={"Чтение": "РазрешеноВсем", "Создание": "РазрешеноАутентифицированным"},
     ))
     perms = _valid_yaml(yaml_path.read_text(encoding="utf-8"))["КонтрольДоступа"]["Разрешения"]
-    # Существующее ПоУмолчанию сохранено, новые права дописаны.
+    # The existing ПоУмолчанию is preserved, the new rights are appended.
     assert perms == {
         "ПоУмолчанию": "РазрешеноАдминистраторам",
         "Чтение": "РазрешеноВсем",
         "Создание": "РазрешеноАутентифицированным",
     }
 
-    # Замена значения существующего права – на месте.
+    # Replacing the value of an existing right - in place.
     apply_result(scaffold.op_set_access(tmp_path, name="Товары",
                                         permissions={"Чтение": "РазрешеноАутентифицированным"}))
     perms = _valid_yaml(yaml_path.read_text(encoding="utf-8"))["КонтрольДоступа"]["Разрешения"]
@@ -889,14 +892,14 @@ def test_access_validation(tmp_path):
     with pytest.raises(ScaffoldError, match="Нечего менять"):
         scaffold.op_set_access(tmp_path, name="Товары")
 
-    # У сервиса своё право Вызов; шаблоны URL не трогаются.
+    # The service has its own Вызов right; URL templates are not touched.
     apply_result(scaffold.op_set_access(tmp_path, name="Каталог",
                                         permissions={"Вызов": "РазрешеноВсем"}))
     service = _valid_yaml((subsystem / "Каталог.yaml").read_text(encoding="utf-8"))
     assert service["КонтрольДоступа"]["Разрешения"]["Вызов"] == "РазрешеноВсем"
     assert service["ШаблоныUrl"]
 
-    # Пользовательское право (ПравоНаЭлемент) допускается как есть.
+    # A custom right (ПравоНаЭлемент) is accepted as is.
     apply_result(scaffold.op_set_access(
         tmp_path, name="Товары",
         permissions={"ПравоНаТовар.ИзменениеЦены": "РазрешенияВычисляются"},
@@ -915,8 +918,8 @@ def test_project_info_access_summary(tmp_path):
     overview = scaffold.project_info(tmp_path)
     by_name = {o["name"]: o for o in overview["objects"]}
     assert by_name["Товары"]["access_default"] == "РазрешеноАутентифицированным"
-    assert by_name["Склады"]["access_default"] is None  # секции нет
-    assert "access_default" not in by_name["Хелпер"]  # вид без управления доступом
+    assert by_name["Склады"]["access_default"] is None  # no section
+    assert "access_default" not in by_name["Хелпер"]  # a kind without access control
     assert "РазрешеноВсем" in overview["access_methods"]
     assert overview["access_kind_rights"]["HttpСервис"] == ["Вызов"]
 
@@ -928,7 +931,7 @@ def test_report_form_registered_when_interface_exists(tmp_path):
         report={"source": "Регистр.Продажи", "rows": ["Клиент"], "measures": ["Сумма"]},
     ))
     yaml_path = subsystem / "Продажи2.yaml"
-    # У отчёта уже есть секция Интерфейс – регистрация формы обязана в неё дописаться.
+    # The report already has an Интерфейс section - the form registration must append into it.
     yaml_path.write_text(
         yaml_path.read_text(encoding="utf-8") + "Интерфейс:\n    ВключатьВАвтоИнтерфейс: Ложь\n",
         encoding="utf-8",
@@ -942,36 +945,37 @@ def test_report_form_registered_when_interface_exists(tmp_path):
     assert any("уже зарегистрирована" in n for n in again.notes)
 
 
-# --- виды объектов: покрытие и парные файлы -----------------------------------------------
+# --- object kinds: coverage and paired files ----------------------------------------------
 
 
 def test_every_bare_kind_creates_valid_yaml(tmp_path):
-    """Каждый вид без обязательных параметров создаётся и даёт разбираемый yaml."""
+    """Every kind with no mandatory parameters gets created and yields parseable yaml."""
     for kind in scaffold.bare_kinds():
         result = scaffold.op_new_object(tmp_path, kind, f"Проверка{len(kind)}{abs(hash(kind)) % 97}")
         yaml_change = next(c for c in result.changes if c.path.suffix == ".yaml")
         parsed = _valid_yaml(yaml_change.content)
         assert parsed["ВидЭлемента"] == kind
-        # Умолчание видимости платформенное – инструмент не расширяет её за разработчика.
+        # The visibility default is the platform one - the tool does not widen it
+        # on the developer's behalf.
         assert parsed["ОбластьВидимости"] == "ВПодсистеме"
 
 
 def test_kind_module_pairs(tmp_path):
-    """Парный файл создаётся ровно у тех видов, которым он нужен, и с нужным расширением."""
+    """The paired file is created exactly for the kinds that need it, with the right extension."""
     def files(kind: str) -> list[str]:
         return [c.path.suffix for c in scaffold.op_new_object(tmp_path / kind, kind, "Э").changes]
 
-    # Право на элемент – перечисление: "Не имеет модуля".
+    # ПравоНаЭлемент is an enumeration - "Не имеет модуля".
     assert files("ПравоНаЭлемент") == [".yaml"]
-    # Право на действие вычисляет разрешения в модуле.
+    # ПравоНаДействие computes its permissions in the module.
     assert files("ПравоНаДействие") == [".yaml", ".xbsl"]
-    # Контракты типа и сущности – одни свойства, модуль только под абстрактные методы.
+    # Type and entity contracts are properties only - a module exists just for abstract methods.
     assert files("КонтрактТипа") == [".yaml"]
     assert files("КонтрактСущности") == [".yaml"]
     assert files("КонтрактСервиса") == [".yaml", ".xbsl"]
-    # У виртуальной таблицы парный файл – запрос, а не модуль.
+    # A virtual table's paired file is a query, not a module.
     assert files("ВиртуальнаяТаблица") == [".yaml", ".xbql"]
-    # Навигационная команда декларативна, остальные команды живут обработчиком.
+    # A navigation command is declarative, other commands live in a handler.
     assert files("НавигационнаяКоманда") == [".yaml"]
     assert files("ОбычнаяКоманда") == [".yaml", ".xbsl"]
     assert files("СобытиеЖурналаСобытий") == [".yaml"]
@@ -982,7 +986,7 @@ def test_kind_module_stubs_carry_documented_handlers(tmp_path):
         changes = scaffold.op_new_object(tmp_path / kind, kind, name).changes
         return next(c for c in changes if c.path.suffix in (".xbsl", ".xbql")).content
 
-    # Имя элемента подставляется в обобщения; КлючДоступа.Объект – литеральный базовый тип.
+    # The element name is substituted into generics; КлючДоступа.Объект is a literal base type.
     stub = module("ПравоНаДействие", "ПравоМодератора")
     assert "метод ВычислитьРазрешенияДоступа(Права: ЧитаемыйМассив<ПравоМодератора.Объект>)" in stub
     assert "ЧитаемаяКоллекция<КлючДоступа.Объект>" in stub
@@ -993,38 +997,38 @@ def test_kind_module_stubs_carry_documented_handlers(tmp_path):
     assert "метод ПослеПодключения()" in module(
         "ПараметрСамостоятельнойРегистрацииПользователя", "Приглашение"
     )
-    # Среда разработки создаёт запрос пустым – генератор не выдумывает текст запроса.
+    # The IDE creates the query empty - the generator does not invent query text.
     assert module("ВиртуальнаяТаблица", "Остатки").strip() == ""
 
 
 def test_kind_notes_and_mandatory_fields(tmp_path):
-    # Событию журнала обязателен ШаблонПредставления (для вида Информация).
+    # An event log event requires ШаблонПредставления (for the Информация kind).
     result = scaffold.op_new_object(tmp_path, "СобытиеЖурналаСобытий", "ИмпортДанных")
     parsed = _valid_yaml(result.changes[0].content)
     assert parsed["ВидСобытия"] == "Информация"
     assert parsed["ШаблонПредставления"] == "ИмпортДанных"
     assert any("ХарактерОшибки" in n for n in result.notes)
 
-    # Цветовой схеме обязательно Представление.
+    # A color scheme requires Представление.
     scheme = scaffold.op_new_object(tmp_path, "ЦветоваяСхемаОтчета", "СхемаОтчета")
     assert _valid_yaml(scheme.changes[0].content)["Представление"] == "СхемаОтчета"
     assert any("Цвета" in n for n in scheme.notes)
 
-    # Виртуальной таблице напоминаем про обязательный запрос.
+    # For a virtual table we remind about the mandatory query.
     vt = scaffold.op_new_object(tmp_path, "ВиртуальнаяТаблица", "Остатки")
     assert any(".xbql" in n for n in vt.notes)
 
 
 def test_new_sections_of_added_kinds(tmp_path):
     subsystem = _make_project(tmp_path)
-    # Константы набора констант – с Ид (как реквизиты).
+    # Constant set constants carry Ид (like attributes).
     apply_result(scaffold.op_new_object(subsystem, "НаборКонстант", "КурсыВалют"))
     apply_result(scaffold.op_add_field(subsystem / "КурсыВалют.yaml", "константа", "КурсЦБ",
                                        type_="Число"))
     const = _valid_yaml((subsystem / "КурсыВалют.yaml").read_text(encoding="utf-8"))["Константы"][0]
     assert const["Имя"] == "КурсЦБ" and const["Ид"]
 
-    # Свойства контракта типа – без Ид, контракта сущности – с Ид.
+    # Type contract properties come without Ид, entity contract ones - with Ид.
     apply_result(scaffold.op_new_object(subsystem, "КонтрактТипа", "КонтрактПредставления"))
     apply_result(scaffold.op_add_field(subsystem / "КонтрактПредставления.yaml", "свойство",
                                        "Заголовок", type_="Строка"))
@@ -1039,7 +1043,7 @@ def test_new_sections_of_added_kinds(tmp_path):
     entity_prop = _valid_yaml((subsystem / "Контрагенты.yaml").read_text(encoding="utf-8"))["Свойства"][0]
     assert entity_prop["Ид"]
 
-    # Действия права на элемент – секция Элементы.
+    # Item right actions go into the Элементы section.
     apply_result(scaffold.op_new_object(subsystem, "ПравоНаЭлемент", "ПравоНаКонтрагента"))
     apply_result(scaffold.op_add_field(subsystem / "ПравoНаКонтрагента.yaml".replace("o", "о"),
                                        "значение", "ИзменениеЦены"))
@@ -1054,11 +1058,11 @@ def test_new_project_version_follows_standard(tmp_path):
     project = _valid_yaml(
         (tmp_path / "vendor" / "Приложение" / "Проект.yaml").read_text(encoding="utf-8")
     )
-    # Правило project/version требует A.B.C – генератор не должен ему противоречить.
+    # The project/version rule requires A.B.C - the generator must not contradict it.
     assert project["Версия"] == "1.0.0"
 
 
-# --- форма объекта: колонки табличной части и обёртка раздела ------------------------------
+# --- object form: tabular part columns and section wrapper --------------------------------
 
 
 def _doc_with_tabular(tmp_path, extra_fields: int = 0) -> Path:
@@ -1078,10 +1082,11 @@ def test_object_info_reads_tabular_fields(tmp_path):
     info = scaffold.object_info(tmp_path, name="Приходы")
     tabular = info["tabulars"][0]
     assert tabular["name"] == "Товары"
-    # Реквизит1 добавляется вместе с самой ТЧ (пустая ТЧ платформой не поддерживается).
+    # Реквизит1 is added along with the tabular part itself (the platform does not
+    # support an empty one).
     assert [f["name"] for f in tabular["fields"]] == ["Реквизит1", "Количество"]
     assert [f["type"] for f in tabular["fields"]] == ["Строка", "Число"]
-    assert subsystem  # каталог подсистемы использован
+    assert subsystem  # the subsystem directory is used
 
 
 def test_tabular_table_has_columns(tmp_path):
@@ -1091,28 +1096,28 @@ def test_tabular_table_has_columns(tmp_path):
     section = form["Наследует"]["Содержимое"]["ДополнительныеРазделы"][0]
     table = section["Содержимое"][0]["Содержимое"][0]
     assert table["Тип"] == "Таблица<ИсточникДанныхМассив<Приходы.Товары>>"
-    # Колонки обязательны: без них таблица показывает пустые строки.
+    # Columns are mandatory - without them the table shows empty rows.
     columns = table["Колонки"]
     assert [c["Заголовок"] for c in columns] == ["Реквизит1", "Количество"]
-    # ПолеЗначения задаёт и сортировку по колонке.
+    # ПолеЗначения also defines sorting by the column.
     assert [c["ПолеЗначения"] for c in columns] == ["Реквизит1", "Количество"]
     assert columns[0]["Тип"] == "СтандартнаяКолонкаТаблицы<Приходы.Товары>"
 
 
 def test_form_section_wraps_fields_in_group(tmp_path):
-    """РазделФормы.Содержимое – Массив<Группа>: поля кладутся в область, а не напрямую."""
+    """РазделФормы.Содержимое is Массив<Группа> - fields go into an area, not directly."""
     subsystem = _doc_with_tabular(tmp_path)
     apply_result(scaffold.op_add_form(tmp_path, name="Приходы", forms=["object"]))
     form = _valid_yaml((subsystem / "ПриходыФормаОбъекта.yaml").read_text(encoding="utf-8"))
     section = form["Наследует"]["Содержимое"]["ОсновнойРаздел"]
     assert section["Тип"] == "РазделФормы"
     area = section["Содержимое"][0]
-    assert set(area) == {"Содержимое"}  # область раздела: как в эталонных формах, без Тип
+    assert set(area) == {"Содержимое"}  # section area - as in the reference forms, no Тип
     assert [c["Имя"] for c in area["Содержимое"]] == ["Дата"]
 
 
 def test_group_section_keeps_fields_inline(tmp_path):
-    """Ветка panels: у Группы содержимое – Массив<Компонент>, обёртка не нужна."""
+    """The panels branch - a Группа content is Массив<Компонент>, no wrapper is needed."""
     subsystem = _doc_with_tabular(tmp_path, extra_fields=4)
     info = scaffold.object_info(tmp_path, name="Приходы")
     assert info["suggested_layout"] == "panels"
@@ -1120,15 +1125,15 @@ def test_group_section_keeps_fields_inline(tmp_path):
     form = _valid_yaml((subsystem / "ПриходыФормаОбъекта.yaml").read_text(encoding="utf-8"))
     section = form["Наследует"]["Содержимое"]["ОсновнойРаздел"]
     assert section["Тип"] == "Группа"
-    assert all("Тип" in c for c in section["Содержимое"])  # поля лежат прямо в группе
+    assert all("Тип" in c for c in section["Содержимое"])  # fields sit directly in the group
 
 
 def test_object_attribute_never_lands_in_tabular(tmp_path):
-    """Реквизит объекта пишется в секцию объекта, даже если своей секции ещё нет.
+    """An object attribute goes into the object section even when that section does not exist yet.
 
-    Ловушка: у документа с табличной частью есть ВЛОЖЕННАЯ секция `Реквизиты`, и поиск
-    секции по любому отступу принимал её за секцию объекта – реквизит уезжал в ТЧ, а поля
-    ТЧ считались полями объекта.
+    The trap: a document with a tabular part has a NESTED `Реквизиты` section, and a section
+    lookup at any indent took it for the object section - the attribute drifted into the
+    tabular part, and tabular part fields counted as object fields.
     """
     apply_result(scaffold.op_new_object(tmp_path, "Документ", "Приходы"))
     yaml_path = tmp_path / "Приходы.yaml"
@@ -1138,7 +1143,7 @@ def test_object_attribute_never_lands_in_tabular(tmp_path):
                                        tabular="Товары"))
 
     parsed = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
-    # Дата – стартовый реквизит документа в секции объекта; Контрагент дописан к ней.
+    # Дата is the document's starter attribute in the object section; Контрагент is appended.
     assert [f["Имя"] for f in parsed["Реквизиты"]] == ["Дата", "Контрагент"]
     assert [f["Имя"] for f in parsed["ТабличныеЧасти"][0]["Реквизиты"]] == ["Реквизит1", "Цена"]
 
@@ -1146,13 +1151,13 @@ def test_object_attribute_never_lands_in_tabular(tmp_path):
     assert [f["name"] for f in info["fields"]] == ["Дата", "Контрагент"]
     assert [f["name"] for f in info["tabulars"][0]["fields"]] == ["Реквизит1", "Цена"]
 
-    # Имя, занятое в табличной части, не считается дублем реквизита объекта.
+    # A name taken in the tabular part does not count as a duplicate object attribute.
     apply_result(scaffold.op_add_field(yaml_path, "реквизит", "Реквизит1", type_="Строка"))
     parsed = _valid_yaml(yaml_path.read_text(encoding="utf-8"))
     assert [f["Имя"] for f in parsed["Реквизиты"]] == ["Дата", "Контрагент", "Реквизит1"]
 
 
-# --- применимость форм к виду -------------------------------------------------------------
+# --- form applicability per kind ----------------------------------------------------------
 
 
 def _register(tmp_path) -> Path:
@@ -1168,8 +1173,9 @@ def _register(tmp_path) -> Path:
 def test_register_fields_include_dimensions_and_resources(tmp_path):
     _register(tmp_path)
     info = scaffold.object_info(tmp_path, name="КурсыВалют")
-    # Данные регистра – Измерения и Ресурсы; раньше сводка видела только Реквизиты.
-    # Измерение1 – стартовое измерение (без него РС не компилируется), затем добавленные.
+    # Register data is Измерения and Ресурсы; the summary used to see only Реквизиты.
+    # Измерение1 is the starter dimension (the information register does not compile
+    # without it), then the added ones.
     assert [f["name"] for f in info["fields"]] == ["Измерение1", "Валюта", "Курс", "Источник"]
 
 
@@ -1177,7 +1183,7 @@ def test_register_gets_list_form_only(tmp_path):
     subsystem = _register(tmp_path)
     result = scaffold.op_add_form(tmp_path, name="КурсыВалют")
     apply_result(result)
-    # Формы объекта у регистра не бывает – по умолчанию делается только список.
+    # A register has no object form - by default only the list form is generated.
     assert not (subsystem / "КурсыВалютФормаОбъекта.yaml").exists()
     form = _valid_yaml((subsystem / "КурсыВалютФормаСписка.yaml").read_text(encoding="utf-8"))
     columns = form["Наследует"]["Содержимое"]["Содержимое"]["Колонки"]
@@ -1196,7 +1202,7 @@ def test_kinds_without_forms_are_rejected(tmp_path):
         scaffold.op_add_form(tmp_path, name="Хелпер", forms=["list"])
 
 
-# --- сводка: регистры и обработчики разрешений --------------------------------------------
+# --- info summary: registers and permission handlers --------------------------------------
 
 
 def test_object_info_balance_register(tmp_path):
@@ -1207,11 +1213,11 @@ def test_object_info_balance_register(tmp_path):
     apply_result(scaffold.op_add_field(yaml_path, "ресурс", "Количество", type_="Число"))
 
     info = scaffold.object_info(tmp_path, name="ОстаткиТоваров")
-    # Остатки – значение ВидРегистра по умолчанию; движению нужен ВидЗаписи (Приход/Расход).
+    # Остатки is the default ВидРегистра value; a movement needs ВидЗаписи (Приход/Расход).
     assert info["register"]["register_kind"] == "Остатки"
     assert info["register"]["needs_record_type"] is True
-    # Ресурс1 – стартовый ресурс (без него РН не компилируется), стоит в секции Ресурсы
-    # перед добавленным Количеством.
+    # Ресурс1 is the starter resource (the accumulation register does not compile without
+    # it); it sits in the Ресурсы section before the added Количество.
     assert [f["name"] for f in info["fields"]] == [
         "Период", "Регистратор", "ВидЗаписи", "Товар", "Ресурс1", "Количество",
     ]
@@ -1233,7 +1239,7 @@ def test_object_info_information_register_periodicity(tmp_path):
     subsystem = _make_project(tmp_path)
     apply_result(scaffold.op_new_object(subsystem, "РегистрСведений", "Настройки"))
     info = scaffold.object_info(tmp_path, name="Настройки")
-    # Непериодический – Период не порождается.
+    # Непериодический - no Период is produced.
     assert info["register"]["periodicity"] == "Непериодический"
     assert info["register"]["needs_record_type"] is False
     assert "Период" not in [f["name"] for f in info["fields"]]
@@ -1243,7 +1249,7 @@ def test_object_info_information_register_periodicity(tmp_path):
                          encoding="utf-8")
     periodic = scaffold.object_info(tmp_path, name="Настройки")
     assert periodic["register"]["periodicity"] == "День"
-    # Период (стандартное поле периодического РС) + стартовое Измерение1.
+    # Период (the standard field of a periodic register) plus the starter Измерение1.
     assert [f["name"] for f in periodic["fields"]] == ["Период", "Измерение1"]
 
 
@@ -1252,9 +1258,9 @@ def test_object_info_access_handlers(tmp_path):
     apply_result(scaffold.op_new_object(subsystem, "Справочник", "Задачи"))
     info = scaffold.object_info(tmp_path, name="Задачи")
     assert info["access_handlers"] == {"module": None, "level1": False, "level2": False}
-    assert info["register"] is None  # не регистр
+    assert info["register"] is None  # not a register
 
-    # Обработчики разрешений живут в модуле объекта <Имя>.xbsl.
+    # Permission handlers live in the object module <Имя>.xbsl.
     (subsystem / "Задачи.xbsl").write_text(
         "@Обработчик\n"
         "метод ВычислитьРазрешенияДоступа(): Массив<РазрешениеДоступа>\n    возврат []\n;\n\n"
@@ -1267,7 +1273,7 @@ def test_object_info_access_handlers(tmp_path):
     assert both["access_handlers"] == {"module": "Задачи.xbsl", "level1": True, "level2": True}
 
 
-# --- зависимость от библиотеки -----------------------------------------------------------
+# --- library dependency -------------------------------------------------------------------
 
 
 def _project_yaml(tmp_path) -> Path:
@@ -1279,7 +1285,7 @@ def test_add_dependency_creates_section(tmp_path):
     project = _project_yaml(tmp_path)
     result = scaffold.op_add_dependency(tmp_path, "acme", "CurrencyConverter", "9.0.2")
     apply_result(result)
-    # Формат раздела – из документации "Подключить библиотеку к проекту".
+    # The section format is from the "Подключить библиотеку к проекту" documentation.
     assert _valid_yaml(project.read_text(encoding="utf-8"))["Библиотеки"] == [
         {"Имя": "CurrencyConverter", "Поставщик": "acme", "Версия": "9.0.2"}
     ]
@@ -1289,8 +1295,8 @@ def test_add_dependency_creates_section(tmp_path):
 def test_add_dependency_version_stays_unquoted(tmp_path):
     project = _project_yaml(tmp_path)
     apply_result(scaffold.op_add_dependency(tmp_path, "acme", "CurrencyConverter", "2.0"))
-    # Версия пишется без кавычек – так её пишет платформа и показывает документация,
-    # хотя разбор yaml и делает из "2.0" число.
+    # The version is written unquoted - that is how the platform writes it and the docs
+    # show it, even though yaml parsing turns "2.0" into a number.
     assert "Версия: 2.0" in project.read_text(encoding="utf-8")
 
 
@@ -1307,7 +1313,7 @@ def test_add_dependency_updates_version_in_place(tmp_path):
     apply_result(scaffold.op_add_dependency(tmp_path, "acme", "CurrencyConverter", "9.0.2"))
     result = scaffold.op_add_dependency(tmp_path, "acme", "CurrencyConverter", "9.1.0")
     apply_result(result)
-    # Разные версии одной библиотеки внутри проекта не допускаются: запись одна, версия новая.
+    # Different versions of one library within a project are not allowed - one entry, new version.
     assert _valid_yaml(project.read_text(encoding="utf-8"))["Библиотеки"] == [
         {"Имя": "CurrencyConverter", "Поставщик": "acme", "Версия": "9.1.0"}
     ]
@@ -1324,7 +1330,7 @@ def test_add_dependency_same_version_is_noop(tmp_path):
 
 def test_add_dependency_rejects_build_version(tmp_path):
     _project_yaml(tmp_path)
-    # 1.0-42 – версия сборки; к проекту подключается версия релиза.
+    # 1.0-42 is a build version; a project links a release version.
     with pytest.raises(ScaffoldError, match="версия сборки"):
         scaffold.op_add_dependency(tmp_path, "acme", "CurrencyConverter", "1.0-42")
 
@@ -1341,7 +1347,7 @@ def test_add_dependency_reports_ambiguous_root(tmp_path):
     apply_result(scaffold.op_new_project(tmp_path, "vendor", "Второй"))
     with pytest.raises(ScaffoldError, match="несколько проектов"):
         scaffold.op_add_dependency(tmp_path, "acme", "CurrencyConverter", "2.0")
-    # Явный путь снимает неоднозначность.
+    # An explicit path removes the ambiguity.
     target = tmp_path / "vendor" / "Второй" / "Проект.yaml"
     apply_result(scaffold.op_add_dependency(
         tmp_path, "acme", "CurrencyConverter", "2.0", project_yaml=target

@@ -1,7 +1,8 @@
-"""Правила соглашений по написанию кода (CODE_STYLE, разделы 1-8).
+"""Code style convention rules (CODE_STYLE, sections 1-8).
 
-У каждого правила проверяется и срабатывание на "плохом" примере, и молчание на "хорошем"
-(примеры взяты из самого CODE_STYLE), а у правил-исключений – что исключение не ловится.
+For every rule we check both firing on the "bad" example and silence on the "good" one
+(the examples come from CODE_STYLE itself), and for rules with exceptions - that the
+exception is not caught.
 """
 
 from xbsl import engine
@@ -15,7 +16,7 @@ def _clean(content, rule_id, name="М.xbsl"):
     return _lint(content, rule_id, name) == []
 
 
-# --- 1. Оформление -------------------------------------------------------------------
+# --- 1. Formatting -------------------------------------------------------------------
 
 def test_tab_indent_flagged():
     d = _lint("метод Ф()\n\tвозврат 1\n;\n", "style/tab-indent")
@@ -44,8 +45,8 @@ def test_line_length_string_literal_ok():
 def test_line_length_off_by_default():
     long_call = "    Вызвать(" + ", ".join(f"Параметр{i}" for i in range(15)) + ")\n"
     diags = engine.run_sources([engine.load_text("М.xbsl", "метод Ф()\n" + long_call + ";\n")])
-    # Только про длину строки: вызов несуществующего метода в фикстуре честно ловит
-    # code/undefined-name, он здесь не предмет проверки.
+    # Line length only: the nonexistent method call in the fixture is honestly caught by
+    # code/undefined-name, which is not what is being checked here.
     assert [d for d in diags if d.rule_id == "style/line-length"] == []
 
 
@@ -58,7 +59,7 @@ def test_semicolon_after_statement_flagged():
     assert len(d) == 1 and d[0].line == 2
 
 
-# --- 2. Именование -------------------------------------------------------------------
+# --- 2. Naming -----------------------------------------------------------------------
 
 def test_lower_camel_case_flagged():
     d = _lint("метод Ф()\n    знч входящееСообщение = 1\n    возврат входящееСообщение\n;\n",
@@ -76,7 +77,7 @@ def test_upper_camel_case_ok():
 
 
 def test_structure_field_name_not_flagged():
-    # имена полей задаёт контракт сериализации (ключи JSON) – их не проверяем
+    # field names are dictated by the serialization contract (JSON keys) - not checked
     content = "структура Токен\n    пер access_token: Строка\n    пер apptype_id: Число\n;\n"
     assert _clean(content, "style/camel-case")
 
@@ -113,7 +114,7 @@ def test_abbreviation_camel_ok():
 
 
 def test_abbreviation_only_in_declarations():
-    # обращение к чужому имени с аббревиатурой – не наше дело
+    # accessing someone else's name with an abbreviation is not our business
     assert _clean("метод Ф()\n    Клиент.ОтправитьJSON()\n;\n", "style/abbreviation-case")
 
 
@@ -131,7 +132,7 @@ def test_enum_named_vid_ok():
     assert _clean("перечисление ВидКнопки\n    Да\n;\n", "style/enum-name-vid")
 
 
-# --- 3. Типы и инициализация ---------------------------------------------------------
+# --- 3. Types and initialization -----------------------------------------------------
 
 def test_space_before_type_colon_flagged():
     d = _lint('метод Ф()\n    пер Переменная1 : Строка = ""\n;\n', "style/type-colon-space")
@@ -195,7 +196,7 @@ def test_redundant_type_on_constructor_flagged():
 
 
 def test_type_for_empty_literal_ok():
-    # исключение проекта: для пустого литерала вывод типа невозможен
+    # a project exception: type inference is impossible for an empty literal
     assert _clean("метод Ф()\n    пер Результат: Массив<Сводка> = []\n;\n", "style/redundant-type")
 
 
@@ -211,7 +212,7 @@ def test_no_annotation_ok():
     assert _clean('метод Ф()\n    пер Переменная1 = "значение"\n;\n', "style/redundant-type")
 
 
-# --- 4. Коллекции --------------------------------------------------------------------
+# --- 4. Collections ------------------------------------------------------------------
 
 def test_manual_collection_fill_flagged():
     content = (
@@ -244,7 +245,7 @@ def test_collection_literal_ok():
     assert _clean(content, "style/collection-literal")
 
 
-# --- 5. Строки -----------------------------------------------------------------------
+# --- 5. Strings ----------------------------------------------------------------------
 
 def test_tostring_in_concat_flagged():
     d = _lint('метод Ф()\n    знч Р = "Итерация №" + Счетчик.ВСтроку()\n;\n', "style/redundant-tostring")
@@ -273,7 +274,7 @@ def test_interpolation_ok():
     assert _clean('метод Ф()\n    знч Р = "Итерация №%Счетчик из %Всего"\n;\n', "style/interpolation")
 
 
-# --- 6. Переносы ---------------------------------------------------------------------
+# --- 6. Line wrapping ----------------------------------------------------------------
 
 def test_operator_at_line_end_flagged():
     content = (
@@ -303,7 +304,7 @@ def test_operator_at_line_start_ok():
 
 
 def test_plus_at_line_end_ok():
-    # исключение: при конкатенации '+' допускается в конце строки
+    # exception: with concatenation a '+' is allowed at the end of a line
     content = 'метод Ф(): Строка\n    возврат "начало " +\n        "продолжение"\n;\n'
     assert _clean(content, "style/wrap-operator")
 
@@ -319,7 +320,7 @@ def test_comma_at_line_end_ok():
     assert _clean(content, "style/wrap-comma")
 
 
-# --- 7. Методы -----------------------------------------------------------------------
+# --- 7. Methods ----------------------------------------------------------------------
 
 def test_required_after_optional_param_flagged():
     d = _lint('метод НовоеСообщение(Дата = "", Вид: Строка)\n;\n', "style/optional-params-last")
@@ -330,7 +331,7 @@ def test_optional_params_last_ok():
     assert _clean('метод НовоеСообщение(Вид: Строка, Дата = "")\n;\n', "style/optional-params-last")
 
 
-# --- 8. Условия и проверки -----------------------------------------------------------
+# --- 8. Conditions and checks --------------------------------------------------------
 
 def test_compare_with_true_flagged():
     d = _lint("метод Ф(Флаг: Булево)\n    если Флаг == Истина\n        Метод1()\n    ;\n;\n",
@@ -387,10 +388,10 @@ def test_compound_negation_not_flagged():
     assert _clean(content, "style/negated-is")
 
 
-# --- Область действия: блоки Запрос{...} ---------------------------------------------
+# --- Scope: Запрос{...} blocks -------------------------------------------------------
 
 def test_select_by_group():
-    # группа правил – часть id до '/': --select style включает все соглашения сразу
+    # a rule group is the id part before '/': --select style enables all the conventions at once
     content = 'метод Ф()\n    пер Переменная1 : Строка = ""\n;\n'
     d = engine.run_sources([engine.load_text("М.xbsl", content)], select={"style"})
     assert {x.rule_id for x in d} >= {"style/type-colon-space", "style/redundant-type"}

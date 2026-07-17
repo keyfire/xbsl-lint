@@ -1,8 +1,8 @@
-"""Тесты парсера XBSL: AST по грамматике платформы + восстановление на ошибках.
+"""XBSL parser tests: an AST per the platform grammar + recovery on errors.
 
-Позитивные случаи – конструкции, на которых спотыкались токенные эвристики (и которые
-встречаются в боевом корпусе); негативные – битый код обязан давать внятную ошибку в
-правильном месте, не роняя разбор остатка файла.
+Positive cases are constructs that used to trip the token heuristics (and that occur in the
+production corpus); negative ones - broken code must give a clear error at the right place
+without breaking the parse of the rest of the file.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ def bad(text: str) -> list[P.ParseError]:
     return errors
 
 
-# --- уровень модуля ----------------------------------------------------------------------
+# --- module level ----------------------------------------------------------------------
 
 
 def test_module_members():
@@ -69,12 +69,12 @@ def test_method_signature_and_body():
     assert m2.is_static and m3.is_abstract
 
 
-# --- операторы ---------------------------------------------------------------------------
+# --- statements ---------------------------------------------------------------------------
 
 
 def test_if_elsif_versus_nested_else():
-    # `иначе если` на одной строке – ветка иначе-если; `если` на следующей строке –
-    # вложенный если внутри иначе (грамматика: RULE_ELSE (RULE_NL)+ ...).
+    # `иначе если` on one line is an else-if branch; `если` on the next line is a nested
+    # if inside the else (grammar: RULE_ELSE (RULE_NL)+ ...).
     m = ok(
         "метод А()\n"
         "    если Х\n"
@@ -142,7 +142,7 @@ def test_case_for_try():
 
 
 def test_capitalized_control_word_is_a_name():
-    # ruleident: капитализированные формы управляющих слов – законные имена.
+    # ruleident: capitalized forms of the control words are legitimate names.
     m = ok(
         "метод А()\n"
         "    знч Выбор = Ф()\n"
@@ -172,8 +172,8 @@ def test_bare_return_before_else():
 
 
 def test_use_declaration_and_statement():
-    # `исп Имя = ...` – объявление; `исп Выражение` – оператор БЕЗ тела, действующий
-    # до конца охватывающего блока (так пишет боевой код: исп КонтекстДоступа...()).
+    # `исп Имя = ...` is a declaration; `исп Выражение` is a statement WITHOUT a body, in effect
+    # until the end of the enclosing block (production code writes: исп КонтекстДоступа...()).
     m = ok(
         "метод А()\n"
         "    исп Скоуп = Открыть()\n"
@@ -187,7 +187,7 @@ def test_use_declaration_and_statement():
     assert isinstance(call, P.ExprStmt)
 
 
-# --- выражения ---------------------------------------------------------------------------
+# --- expressions ---------------------------------------------------------------------------
 
 
 def test_ternary_and_coalesce():
@@ -205,7 +205,7 @@ def test_ternary_and_coalesce():
 
 
 def test_is_type_with_ternary_branch():
-    # спец-ветка грамматики: `х это Тип ? а : б` – `?` здесь тернарный, не nullable
+    # a special grammar branch: in `х это Тип ? а : б` the `?` is ternary, not nullable
     m = ok(
         "метод А()\n"
         "    знч С = (Б это Число ? (Б как Число).ВСтроку() : \"\")\n"
@@ -234,7 +234,7 @@ def test_lambdas():
     assert isinstance(body[0].expr.args[0].value, P.Lambda)
     assert isinstance(body[1].expr.args[0].value, P.Lambda)
     assert isinstance(body[2].init, P.Lambda) and body[2].init.body_stmts is not None
-    # `Метод` в позиции аргумента – имя, а не лямбда
+    # `Метод` in an argument position is a name, not a lambda
     call = body[3].expr
     assert isinstance(call.args[1].value, P.Name) and call.args[1].value.name == "Метод"
 
@@ -288,7 +288,7 @@ def test_method_ref_stays_on_its_line():
 
 
 def test_string_interpolation_with_nested_string():
-    # интерполяция со вложенной строкой – один STRING-токен, разбор не ломается
+    # interpolation with a nested string is a single STRING token, the parse does not break
     m = ok(
         "метод А()\n"
         "    знч С = \"итог: %{\"★\".Повторить(Н)} из %{Всего.Представление(\"ЧЧ:мм\")}\"\n"
@@ -308,7 +308,7 @@ def test_query_and_pattern_literals():
         ";\n"
     )
     q = m.members[0].body[0].init
-    assert isinstance(q, P.Call)  # .Выполнить() поверх литерала запроса
+    assert isinstance(q, P.Call)  # .Выполнить() on top of the query literal
 
 
 def test_expression_line_breaks():
@@ -324,7 +324,7 @@ def test_expression_line_breaks():
     assert isinstance(m.members[0].body[0].init, P.Binary)
 
 
-# --- ошибки ------------------------------------------------------------------------------
+# --- errors ------------------------------------------------------------------------------
 
 
 def test_error_unclosed_call():
@@ -343,7 +343,7 @@ def test_error_missing_ternary_colon():
 
 
 def test_error_recovers_to_next_statement():
-    # ошибка в первом операторе не прячет разбор остального метода
+    # an error in the first statement does not hide the parse of the rest of the method
     module, errors = P.parse_text(
         "метод А()\n"
         "    знч = 5\n"
@@ -363,7 +363,7 @@ def test_error_position_is_local():
     assert line <= 3
 
 
-# --- правило code/parse-error --------------------------------------------------------------
+# --- the code/parse-error rule --------------------------------------------------------------
 
 
 def _rule_diags(code: str) -> list:
@@ -381,13 +381,13 @@ def test_rule_reports_parse_errors():
 
 
 def test_rule_caps_error_cascade():
-    # изуродованный файл: много ошибок, но диагностик не больше лимита + итоговая строка
+    # a mangled file: many errors, but no more diagnostics than the cap + the summary line
     lines = "".join(f"    Ф{i}(незакрыто\n" for i in range(30))
     found = _rule_diags(f"метод А()\n{lines};\n")
     assert 0 < len(found) <= 11
 
 
-# --- правило code/undefined-name -----------------------------------------------------------
+# --- the code/undefined-name rule -----------------------------------------------------------
 
 
 def _undef(code: str, extra_yaml: str | None = None) -> list:
@@ -400,7 +400,7 @@ def _undef(code: str, extra_yaml: str | None = None) -> list:
 
 
 def test_undefined_name_catches_the_screenshot_typo():
-    # параметр Адреса, в цикле Адресар - компилятор откажет, теперь видит и линтер
+    # parameter Адреса, the loop says Адресар - the compiler refuses it, now the linter sees it too
     diags = _undef(
         "метод ТелоПравки(Адреса: Массив<Строка>): Строка\n"
         "    пер Строки = \"\"\n"
@@ -411,7 +411,7 @@ def test_undefined_name_catches_the_screenshot_typo():
         ";\n"
     )
     assert len(diags) == 1
-    assert "Адресар" in diags[0].message and "Адреса" in diags[0].message  # подсказка
+    assert "Адресар" in diags[0].message and "Адреса" in diags[0].message  # the suggestion
 
 
 def test_undefined_name_knows_scopes():
@@ -437,7 +437,7 @@ def test_undefined_name_knows_scopes():
 
 
 def test_undefined_name_reads_component_yaml():
-    # свойство из парного yaml и член унаследованного типа доступны голым именем
+    # a property from the pair yaml and a member of the inherited type are reachable by bare name
     diags = _undef(
         "метод ПриНажатии()\n"
         "    Титул = \"х\"\n"
@@ -453,9 +453,9 @@ def test_undefined_name_reads_component_yaml():
 
 
 def test_parser_catalog_ru_texts_are_texts():
-    # Грабля локализации: глобальная замена литералов однажды подменила ru-тексты каталога
-    # вызовами i18n.t, и простые сообщения выводились сырыми ключами (en-тексты целы,
-    # поэтому смоук и тесты этого не увидели).
+    # A localization pitfall: a global literal replacement once swapped the catalog ru texts
+    # for i18n.t calls, and simple messages came out as raw keys (the en texts were intact,
+    # so the smoke run and the tests did not see it).
     from xbsl import i18n
 
     for key in i18n.registered_keys():

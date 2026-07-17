@@ -1,8 +1,8 @@
-// Связка с VS Code для навигации по индексу: свой на каждую папку воркспейса кэш индекса
-// проекта, который строит линтер (загружается при активации, обновляется по сохранению с
-// задержкой, не более одного процесса сборки за раз), плюс провайдеры перехода к определению и
-// дополнения поверх чистой логики из navCore.ts. Если линтер не может построить индекс,
-// навигация молчит: подробности идут в канал вывода, всплывающих окон нет.
+// VS Code glue for index-based navigation: a per-workspace-folder cache of the project index
+// built by the linter (loaded on activation, refreshed on save with a delay, at most one
+// build process at a time), plus go-to-definition and completion providers on top of the
+// pure logic from navCore.ts. When the linter cannot build the index, navigation stays
+// silent: details go to the output channel, no popups.
 
 import * as vscode from "vscode";
 import { spawn } from "child_process";
@@ -22,8 +22,8 @@ import {
 } from "./navCore";
 import { parseInternals } from "./metadataCore";
 
-const REFRESH_DELAY = 1500; // задержка (мс) перед пересборкой индекса по сохранению
-const OUTPUT_LIMIT = 64 * 1024 * 1024; // страховка от вышедшего из-под контроля процесса
+const REFRESH_DELAY = 1500; // delay (ms) before rebuilding the index on save
+const OUTPUT_LIMIT = 64 * 1024 * 1024; // safety net against a runaway process
 
 const KIND_MAP: Record<CompletionKind, vscode.CompletionItemKind> = {
   object: vscode.CompletionItemKind.Class,
@@ -71,7 +71,7 @@ function runRaw(command: string, args: string[], cwd: string): Promise<RawRun> {
     });
     if (child.stdin) {
       child.stdin.on("error", () => {
-        /* игнорируем EPIPE, если дочерний процесс завершился раньше времени */
+        /* ignore EPIPE when the child process exited prematurely */
       });
       child.stdin.end();
     }
@@ -80,7 +80,7 @@ function runRaw(command: string, args: string[], cwd: string): Promise<RawRun> {
 
 class IndexCache {
   lookup: IndexLookup | undefined;
-  rootFsPath: string | undefined; // из meta.root; относительно него разрешаются цели перехода
+  rootFsPath: string | undefined; // from meta.root; navigation targets resolve relative to it
   private timer: NodeJS.Timeout | undefined;
   private loading = false;
   private pending = false;
@@ -104,7 +104,7 @@ class IndexCache {
 
   async refresh(): Promise<void> {
     if (this.loading) {
-      this.pending = true; // по одному процессу сборки за раз; перезапустим после текущего
+      this.pending = true; // one build process at a time; re-run after the current one
       return;
     }
     this.loading = true;
@@ -146,7 +146,7 @@ class IndexCache {
         this.output.appendLine(vscode.l10n.t('navigation: "{0}": {1}', shown, reason));
       }
     }
-    // Ни один вариант не сработал: сохраняем прежний индекс (если он был) и молчим.
+    // No variant worked: keep the previous index (if any) and stay silent.
     this.output.appendLine(
       vscode.l10n.t(
         'navigation: the project index "{0}" is unavailable – index-based navigation and completion stay silent',
@@ -163,8 +163,9 @@ class IndexCache {
   }
 }
 
-// Реквизиты объекта из его yaml (для дополнения полей в запросе): реквизитов нет в индексе, читаем
-// файл по пути из индекса и разбираем. Тихо возвращаем undefined при любой неудаче.
+// Object attributes from its yaml (for completing fields in a query): attributes are not in the
+// index, so the file is read by the path from the index and parsed. Silently returns undefined
+// on any failure.
 function objectAttributes(cache: IndexCache, name: string): string[] | undefined {
   const obj = cache.lookup?.objectByName(name);
   if (!obj || !cache.rootFsPath || !obj.path) {
@@ -191,7 +192,7 @@ export function registerNavigation(
   const enabled = (resource?: vscode.Uri): boolean =>
     vscode.workspace.getConfiguration("xbsl", resource ?? null).get<boolean>("navigation.enabled", true);
 
-  // Держит набор кэшей в соответствии с папками воркспейса и признаком включения.
+  // Keeps the cache set in sync with the workspace folders and the enablement flag.
   const syncCaches = (): void => {
     const alive = new Set<string>();
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -223,7 +224,7 @@ export function registerNavigation(
 
   const fileStem = (uri: vscode.Uri): string => path.basename(uri.fsPath).replace(/\.[^.]*$/, "");
 
-  // Путь документа (POSIX) относительно корня индекса (undefined, если документ вне корня).
+  // Document path (POSIX) relative to the index root (undefined when the document is outside).
   const relPath = (cache: IndexCache, uri: vscode.Uri): string | undefined => {
     if (!cache.rootFsPath || uri.scheme !== "file") {
       return undefined;
@@ -311,7 +312,7 @@ export function registerNavigation(
         return undefined;
       }
       const linePrefix = doc.lineAt(position.line).text.slice(0, position.character);
-      // textBefore считаем только при дополнении члена (после точки) – для распознавания блока Запрос{...}.
+      // textBefore is computed only for member completion (after a dot) - to recognize a Запрос{...} block.
       const memberDot = /[A-Za-zА-Яа-яЁё_][A-Za-z0-9А-Яа-яЁё_]*\.[A-Za-z0-9А-Яа-яЁё_]*$/.test(linePrefix);
       const entries = resolveCompletions(cache.lookup, {
         languageId: doc.languageId,

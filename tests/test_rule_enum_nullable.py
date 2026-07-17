@@ -1,4 +1,4 @@
-"""Проверки правила yaml/enum-needs-nullable (перечисление в Тип: без nullable)."""
+"""Checks of the yaml/enum-needs-nullable rule (an enum in Тип: without nullable)."""
 
 from xbsl import engine
 from xbsl.cli import discover
@@ -35,7 +35,7 @@ def test_bare_enum_attribute_flagged(tmp_path):
     )
     assert len(d) == 1 and d[0].rule_id == _RULE
     assert "ВидСообщения?" in d[0].message
-    assert (d[0].line, d[0].col) == (6, 14)  # точная позиция имени в 'Тип: ВидСообщения'
+    assert (d[0].line, d[0].col) == (6, 14)  # the exact position of the name in 'Тип: ВидСообщения'
 
 
 def test_nullable_enum_attribute_not_flagged(tmp_path):
@@ -73,7 +73,7 @@ def test_input_field_argument_flagged(tmp_path):
         "    -\n        Имя: ПолеВид\n        Тип: ПолеВвода<ВидСообщения>\n",
     )
     assert len(d) == 1 and "ПолеВвода<ВидСообщения?>" in d[0].message
-    # позиция – начало аргумента внутри 'Тип: ПолеВвода<ВидСообщения>'
+    # the position is the start of the argument inside 'Тип: ПолеВвода<ВидСообщения>'
     assert (d[0].line, d[0].col) == (6, 24)
 
 
@@ -87,7 +87,7 @@ def test_input_field_nullable_argument_not_flagged(tmp_path):
 
 
 def test_explicit_default_value_not_flagged(tmp_path):
-    # ЗначениеПоУмолчанию рядом с Тип задаёт дефолт явно - легальная форма без '?'
+    # ЗначениеПоУмолчанию next to Тип sets the default explicitly - a legal form without '?'
     d = _вид(
         tmp_path,
         "ВидЭлемента: Справочник\nИмя: Письма\nРеквизиты:\n"
@@ -98,7 +98,7 @@ def test_explicit_default_value_not_flagged(tmp_path):
 
 
 def test_enum_default_element_not_flagged(tmp_path):
-    # у перечисления есть элемент с ПоУмолчанию: Истина - дефолт есть у самого типа
+    # the enum has an element with ПоУмолчанию: Истина - the type itself has a default
     d = _вид(
         tmp_path,
         "ВидЭлемента: Справочник\nИмя: Письма\nРеквизиты:\n"
@@ -109,7 +109,7 @@ def test_enum_default_element_not_flagged(tmp_path):
 
 
 def test_union_and_other_generics_skipped(tmp_path):
-    # сужение: объединения и другие дженерики не флагаются
+    # narrowing: unions and other generics are not flagged
     d = _вид(
         tmp_path,
         "ВидЭлемента: Справочник\nИмя: Письма\nРеквизиты:\n"
@@ -127,7 +127,7 @@ def test_non_element_file_skipped(tmp_path):
 
 
 def test_block_scalar_not_scanned(tmp_path):
-    # строка 'Тип: ВидСообщения' внутри литерального блока - текст, а не тип
+    # the line 'Тип: ВидСообщения' inside a literal block is text, not a type
     d = _вид(
         tmp_path,
         "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nОписание: |\n    Тип: ВидСообщения\n",
@@ -136,7 +136,7 @@ def test_block_scalar_not_scanned(tmp_path):
 
 
 def test_same_value_guarded_elsewhere_skipped(tmp_path):
-    # одно и то же значение и с дефолтом, и без: текстовые позиции неразличимы - пропуск
+    # the same value both with and without a default: text positions are indistinguishable - skip
     d = _вид(
         tmp_path,
         "ВидЭлемента: Справочник\nИмя: Письма\nРеквизиты:\n"
@@ -148,7 +148,7 @@ def test_same_value_guarded_elsewhere_skipped(tmp_path):
 
 
 def test_crlf_positions(tmp_path):
-    # файл с CRLF: позиция значения находится, диагностика одна
+    # a file with CRLF: the value position is found, a single diagnostic
     (tmp_path / "ВидСообщения.yaml").write_text(_ВИД_YAML, encoding="utf-8")
     (tmp_path / "Ф.yaml").write_bytes(
         "ВидЭлемента: Справочник\r\nИмя: Письма\r\nРеквизиты:\r\n"

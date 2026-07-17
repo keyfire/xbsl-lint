@@ -1,7 +1,7 @@
-"""Тесты правила code/unknown-member: обращение к члену переменной известного stdlib-типа.
+"""Tests of the code/unknown-member rule: member access on a variable of a known stdlib type.
 
-First-hop и только доказуемый негатив: сущностные агрегаты (протокол записи не полон в
-доках), проектные и параметризованные типы, латинские написания членов – пропускаются.
+First-hop and provable negatives only: entity aggregates (the record protocol is incomplete
+in the docs), project and parameterized types, Latin member spellings - all skipped.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def test_project_type_is_silent():
 
 
 def test_generic_type_is_silent():
-    # параметризованные типы не проверяются (first-hop без вывода)
+    # parameterized types are not checked (first-hop, no inference)
     diags = _lint(
         "метод Тест(Список: Массив<Строка>)\n"
         "    Список.НетТакого()\n"
@@ -64,7 +64,7 @@ def test_generic_type_is_silent():
 
 
 def test_redeclared_name_is_silent():
-    # имя с двумя разными типами объявлений отравлено - не наговариваем
+    # a name with two differently typed declarations is poisoned - do not raise false accusations
     diags = _lint(
         "метод А(Значение: Строка)\n"
         "    Значение.НетТакого()\n"
@@ -76,8 +76,8 @@ def test_redeclared_name_is_silent():
 
 
 def test_entity_members_come_from_facets():
-    # члены записи и ссылки сущности живут на фасетных страницах (Пользователи.Объект);
-    # имя агрегата покрывает объединение фасетов
+    # entity record and reference members live on the facet pages (Пользователи.Объект);
+    # the aggregate name covers the union of the facets
     diags = _lint(
         "метод Тест(Пользователь: Пользователи)\n"
         "    Сообщить(Пользователь.Ид)\n"

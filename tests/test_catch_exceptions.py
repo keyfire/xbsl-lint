@@ -1,7 +1,7 @@
-"""Тесты правила code/catch-non-exception: тип в 'поймать' обязан быть исключением.
+"""Tests of the code/catch-non-exception rule: the type in 'поймать' must be an exception.
 
-Правило доказывает только негатив: находка требует, чтобы тип был ИЗВЕСТЕН как
-не-исключение (stdlib-тип без сигнатуры исключения или локальная 'структура').
+The rule only proves the negative: a finding requires the type to be KNOWN as a
+non-exception (a stdlib type without an exception signature, or a local 'структура').
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def test_local_structure_is_flagged_and_local_exception_passes():
 
 
 def test_unknown_project_type_is_silent():
-    # тип из другого модуля правилу не виден - не наговариваем
+    # a type from another module is invisible to the rule - do not raise false accusations
     assert _lint(_try("ЧужоеИсключениеПроекта")) == []
 
 

@@ -1,4 +1,4 @@
-"""query/in-subquery-composite: `В` с подзапросом по полю составного типа."""
+"""query/in-subquery-composite: `В` with a subquery over a composite-type field."""
 
 from xbsl import engine
 from xbsl.cli import discover
@@ -88,7 +88,7 @@ def test_simple_type_is_silent(tmp_path):
 
 
 def test_nullable_is_not_composite(tmp_path):
-    # `Строка|?` – та же Строка, только с Неопределено: одна альтернатива, стандарт не о ней
+    # `Строка|?` is still Строка, just with Неопределено: one alternative, not what the standard is about
     diags = _project(tmp_path, _query(
         "        ВЫБРАТЬ 1\n"
         "        ИЗ Товары КАК Т\n"
@@ -98,7 +98,7 @@ def test_nullable_is_not_composite(tmp_path):
 
 
 def test_union_inside_generic_is_not_composite(tmp_path):
-    # `Массив<Строка|Число>` – один тип, а не составной: `|` внутри обобщения не делит
+    # `Массив<Строка|Число>` is one type, not composite: `|` inside a generic does not split
     diags = _project(tmp_path, _query(
         "        ВЫБРАТЬ 1\n"
         "        ИЗ Товары КАК Т\n"
@@ -108,7 +108,7 @@ def test_union_inside_generic_is_not_composite(tmp_path):
 
 
 def test_value_list_is_silent(tmp_path):
-    # стандарт – про подзапрос; список значений в скобках эффективен и на составном типе
+    # the standard is about subqueries; a parenthesized value list is efficient even on a composite type
     diags = _project(tmp_path, _query(
         "        ВЫБРАТЬ 1\n"
         "        ИЗ Товары КАК Т\n"
@@ -139,7 +139,7 @@ def test_table_without_alias(tmp_path):
 
 
 def test_alias_redefined_in_subquery_is_skipped(tmp_path):
-    # алиас Т в подзапросе – уже другая таблица: таблицу поля мы не знаем и молчим
+    # the Т alias in the subquery is a different table already: we do not know the field's table, so stay silent
     diags = _project(tmp_path, _query(
         "        ВЫБРАТЬ 1\n"
         "        ИЗ Товары КАК Т\n"
@@ -158,7 +158,7 @@ def test_unknown_prefix_is_skipped(tmp_path):
 
 
 def test_deep_chain_is_skipped(tmp_path):
-    # `Т.Товар.Бейдж` – тип последнего сегмента цепочки нам неизвестен
+    # `Т.Товар.Бейдж` - the type of the last chain segment is unknown to us
     diags = _project(tmp_path, _query(
         "        ВЫБРАТЬ 1\n"
         "        ИЗ Товары КАК Т\n"
@@ -194,5 +194,5 @@ def test_two_conditions_in_one_block(tmp_path):
         "        И Т.Пометка В (ВЫБРАТЬ Ф.Бейдж ИЗ Фильтры КАК Ф)\n"
         "        И Т.Бейдж НЕ В (ВЫБРАТЬ Ф.Бейдж ИЗ Фильтры КАК Ф)"
     ))
-    # составной Бейдж – дважды, Пометка (nullable Строка) – не в счёт
+    # the composite Бейдж - twice; Пометка (a nullable Строка) does not count
     assert len(diags) == 2

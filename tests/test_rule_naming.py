@@ -1,10 +1,11 @@
-"""Правила группы naming/: имена элементов проекта по стандарту 1С:Элемент.
+"""The naming/ rule group: project element names per the 1C:Element standard.
 
-Правила читают yaml-описание, поэтому данные Элемента нужны только правилу naming/presentation –
-оно спрашивает у метамодели, есть ли у вида свойство Представление; такие тесты помечены
-needs_data. Число имени (naming/number и ветка "существительное" правила naming/boolean-name)
-считает морфология: тесты берут её через фикстуру morph и без pymorphy3 пропускаются. Остальные
-тесты проходят в чистом чекауте – ни данных, ни морфологии им не нужно.
+The rules read the yaml description, so the Element data is needed only by naming/presentation -
+it asks the metamodel whether the kind has the Представление property; such tests are marked
+needs_data. The grammatical number of a name (naming/number and the "noun" branch of
+naming/boolean-name) is computed by morphology: the tests take it via the morph fixture and are
+skipped without pymorphy3. The remaining tests pass in a clean checkout - they need neither the
+data nor the morphology.
 """
 
 import pytest
@@ -30,19 +31,19 @@ _ID = "11111111-2222-3333-4444-555555555555"
 
 @pytest.fixture
 def morph():
-    """Морфология (pymorphy3): без неё правила числа и существительного молчат."""
+    """Morphology (pymorphy3): without it the number and noun rules stay silent."""
     pytest.importorskip("pymorphy3")
-    if naming._morph() is None:  # pragma: no cover – анализатор не поднялся
+    if naming._morph() is None:  # pragma: no cover - the analyzer did not come up
         pytest.skip("pymorphy3 недоступен")
 
 
 def _yaml(vid, name, tail=""):
-    """Минимальное описание объекта: вид, Ид, Имя и хвост (Представление, секции)."""
+    """A minimal object description: the kind, Ид, Имя and a tail (Представление, sections)."""
     return f"ВидЭлемента: {vid}\nИд: {_ID}\nИмя: {name}\n{tail}"
 
 
 def _section(section, *items):
-    """Секция описания из пар (Имя, Тип); пустой Тип не выводится (у табличных частей его нет)."""
+    """A description section of (Имя, Тип) pairs; an empty Тип is omitted (tabular sections have none)."""
     out = f"{section}:\n"
     for i, (name, kind) in enumerate(items, start=1):
         out += "    -\n"
@@ -54,23 +55,23 @@ def _section(section, *items):
 
 
 def _lint(rule_id, vid, name, tail=""):
-    """Диагностики одного правила по описанию объекта в памяти."""
+    """Diagnostics of a single rule over an in-memory object description."""
     source = engine.load_text(f"{name}.yaml", _yaml(vid, name, tail))
     return engine.run_sources([source], select={rule_id})
 
 
-# --- 1.2 буква "ё" ----------------------------------------------------------------------
+# --- 1.2 the letter "ё" ----------------------------------------------------------------------
 
 def test_yo_in_object_name():
     d = _lint(_YO, "Справочник", "ПересчётТоваров")
     assert len(d) == 1
     assert d[0].rule_id == _YO
-    assert d[0].line == 3  # строка Имя
-    assert "ПересчетТоваров" in d[0].message  # подсказка – то же имя через "е"
+    assert d[0].line == 3  # the Имя line
+    assert "ПересчетТоваров" in d[0].message  # the suggestion is the same name spelled with "е"
 
 
 def test_yo_in_attribute_name():
-    # Имена реквизитов проверяются наравне с именем объекта, диагностика встаёт на их строку.
+    # Attribute names are checked on par with the object name, the diagnostic lands on their line.
     d = _lint(_YO, "Справочник", "Товары", _section("Реквизиты", ("Объём", "Число")))
     assert len(d) == 1
     assert d[0].line == 7
@@ -80,7 +81,7 @@ def test_yo_clean_name_silent():
     assert _lint(_YO, "Справочник", "ПересчетТоваров") == []
 
 
-# --- 1.2 подчёркивание ------------------------------------------------------------------
+# --- 1.2 underscore ------------------------------------------------------------------
 
 def test_underscore_as_separator():
     d = _lint(_UNDERSCORE, "ОбщийМодуль", "Разбор_Ответа")
@@ -90,7 +91,7 @@ def test_underscore_as_separator():
 
 @pytest.mark.parametrize("name", ["ФизическоеЛицо_v2", "ФизическиеЛицаApi_3_1"])
 def test_underscore_version_tail_allowed(name):
-    # Версионный хвост – единственное, ради чего стандарт разрешает подчёркивание.
+    # A version tail is the only thing the standard allows the underscore for.
     assert _lint(_UNDERSCORE, "Справочник", name) == []
 
 
@@ -98,10 +99,10 @@ def test_underscore_clean_name_silent():
     assert _lint(_UNDERSCORE, "Справочник", "ФизическиеЛица") == []
 
 
-# --- 1.3 аббревиатура одним словом ------------------------------------------------------
+# --- 1.3 an abbreviation as one word ------------------------------------------------------
 
 @pytest.mark.parametrize(("name", "suggestion"), [
-    ("ЗапросыКМССервер", "ЗапросыКмсСервер"),  # последняя заглавная – начало слова "Сервер"
+    ("ЗапросыКМССервер", "ЗапросыКмсСервер"),  # the last capital letter starts the word "Сервер"
     ("СуммаНДС", "СуммаНдс"),
 ])
 def test_abbreviation_caps(name, suggestion):
@@ -115,7 +116,7 @@ def test_abbreviation_caps(name, suggestion):
     "ДоступКПриложениям", "КнопкаЗаписатьИЗакрыть", "ОбращенияВПоддержку",
 ])
 def test_abbreviation_ignores_prepositions(name):
-    # Одиночная заглавная перед словом – предлог или союз, а не аббревиатура.
+    # A single capital before a word is a preposition or a conjunction, not an abbreviation.
     assert _lint(_ABBREV, "Справочник", name) == []
 
 
@@ -124,15 +125,15 @@ def test_abbreviation_clean_name_silent():
 
 
 def test_abbreviation_leaves_latin_terms_to_its_rule():
-    # АПИ – англоязычный термин: его ведёт naming/latin-term, здесь двойной диагностики нет.
+    # АПИ is an English term: naming/latin-term owns it, no double diagnostic here.
     assert _lint(_ABBREV, "ОбщийМодуль", "АПИСервиса") == []
 
 
-# --- 1.4 англоязычный термин оригиналом -------------------------------------------------
+# --- 1.4 an English term in its original spelling -------------------------------------------------
 
 @pytest.mark.parametrize(("name", "word", "suggestion"), [
     ("АпиСервиса", "Апи", "ApiСервиса"),
-    ("АПИСервиса", "АПИ", "ApiСервиса"),  # тот же термин, записанный заглавными
+    ("АПИСервиса", "АПИ", "ApiСервиса"),  # the same term written in capitals
     ("РазборУрл", "Урл", "РазборUrl"),
 ])
 def test_latin_term(name, word, suggestion):
@@ -145,7 +146,7 @@ def test_latin_term(name, word, suggestion):
 
 @pytest.mark.parametrize("name", ["Токены", "ЛогинПользователя"])
 def test_latin_term_keeps_borrowed_words(name):
-    # Токен и логин вошли в русский язык – стандарт их не запрещает.
+    # Токен and логин have entered the Russian language - the standard does not forbid them.
     assert _lint(_LATIN, "Справочник", name) == []
 
 
@@ -153,7 +154,7 @@ def test_latin_term_original_spelling_silent():
     assert _lint(_LATIN, "ОбщийМодуль", "РазборUrl") == []
 
 
-# --- 1.5 перечисление именуется словом "Вид" --------------------------------------------
+# --- 1.5 an enumeration is named with the word "Вид" --------------------------------------------
 
 @pytest.mark.parametrize(("name", "suggestion"), [
     ("ТипыСтатей", "ВидыСтатей"),
@@ -171,7 +172,7 @@ def test_enum_vid_correct_name_silent():
 
 
 def test_enum_vid_word_beginning_with_tip_silent():
-    # "Типизация" – слово целиком, а не приставленный к имени "Тип".
+    # "Типизация" is a whole word, not a "Тип" prepended to the name.
     assert _lint(_ENUM_VID, "Перечисление", "Типизация") == []
 
 
@@ -179,7 +180,7 @@ def test_enum_vid_only_for_enumerations():
     assert _lint(_ENUM_VID, "Справочник", "ТипыСтатей") == []
 
 
-# --- 1.8 вид элемента в имени -----------------------------------------------------------
+# --- 1.8 the element kind in the name -----------------------------------------------------------
 
 def test_kind_in_name_report():
     d = _lint(_KIND, "Отчет", "ОтчетЗависшиеЗадачи")
@@ -193,7 +194,7 @@ def test_kind_in_name_clean_silent():
 
 
 def test_kind_in_name_skips_interface_component():
-    # Компоненту интерфейса стандарт разрешает префикс-уточнение типа – правило его не проверяет.
+    # The standard allows an interface component a type-clarifying prefix - the rule skips it.
     assert _lint(_KIND, "КомпонентИнтерфейса", "ПолеВводаАдреса") == []
 
 
@@ -207,7 +208,7 @@ def test_kind_in_name_virtual_table_clean_silent():
     assert _lint(_KIND, "ВиртуальнаяТаблица", "Остатки") == []
 
 
-# --- 1.8 слово-пустышка -----------------------------------------------------------------
+# --- 1.8 filler word -----------------------------------------------------------------
 
 def test_filler_word_report():
     d = _lint(_FILLER, "ОбщийМодуль", "УправлениеЦветами")
@@ -221,21 +222,21 @@ def test_filler_word_clean_silent():
 
 
 def test_filler_word_needs_a_word_boundary():
-    # 'РаботаСЦветами' - это "работа с цветами" (пустышка), а 'РаботаСотрудника' -
-    # "работа сотрудника": те же буквы, другое слово (проверка на боевом корпусе)
+    # 'РаботаСЦветами' is "работа с цветами" (a filler), while 'РаботаСотрудника' is
+    # "работа сотрудника": the same letters, a different word (checked on the production corpus)
     assert len(_lint(_FILLER, "ОбщийМодуль", "РаботаСJson")) == 1
     assert _lint(_FILLER, "Структура", "РаботаСотрудника") == []
 
 
 def test_filler_word_inside_a_compound_term_is_silent():
-    # стандарт говорит о ПРЕФИКСАХ и постфиксах; внутри составного термина
-    # ('контент-менеджер' - должность) слово пустышкой не является
+    # the standard speaks of PREFIXES and postfixes; inside a compound term
+    # ('контент-менеджер' is a job title) the word is not a filler
     assert _lint(_FILLER, "КомпонентИнтерфейса", "ПанельКонтентМенеджера") == []
-    # а постфиксом - является
+    # as a postfix - it is
     assert len(_lint(_FILLER, "ОбщийМодуль", "ОбменДаннымиМеханизм")) == 1
 
 
-# --- постфикс окружения у общего модуля -------------------------------------------------
+# --- the environment postfix of a common module -------------------------------------------------
 
 @pytest.mark.parametrize(("name", "suggestion"), [
     ("ОбщееКлиент", "Общее"),
@@ -253,11 +254,11 @@ def test_module_suffix_clean_silent():
 
 
 def test_module_suffix_only_for_common_modules():
-    # Постфикс окружения ищется только у общих модулей: у справочника это часть имени.
+    # The environment postfix concerns only common modules: on a Справочник it is part of the name.
     assert _lint(_MODULE, "Справочник", "ОбщееКлиент") == []
 
 
-# --- число имени по виду элемента (нужна морфология) ------------------------------------
+# --- the number of a name by element kind (morphology needed) ------------------------------------
 
 def test_number_catalog_must_be_plural(morph):
     d = _lint(_NUMBER, "Справочник", "Акция")
@@ -271,8 +272,9 @@ def test_number_catalog_plural_silent(morph):
 
 
 def test_number_exempt_heads_silent(morph):
-    # стандарт сам оговаривает исключения: у этих терминов числа не выбирают - изменение числа
-    # исказило бы смысл (справочник Номенклатура, регистр ОчередьСообщений, структура ДанныеЗадачи)
+    # the standard itself lists the exceptions: these terms get no choice of number - changing
+    # it would distort the meaning (справочник Номенклатура, регистр ОчередьСообщений,
+    # структура ДанныеЗадачи)
     assert _lint(_NUMBER, "Справочник", "Номенклатура") == []
     assert _lint(_NUMBER, "РегистрСведений", "ОчередьСообщений") == []
     assert _lint(_NUMBER, "Структура", "ДанныеЗадачи") == []
@@ -290,24 +292,24 @@ def test_number_enumeration_singular_silent(morph):
 
 
 def test_number_tabular_section_must_be_plural(morph):
-    # Табличная часть – во множественном; вторая ТЧ названа верно и молчит.
+    # A tabular section is plural; the second one is named correctly and stays silent.
     tail = _section("ТабличныеЧасти", ("Цена", ""), ("Скидки", ""))
     d = _lint(_NUMBER, "Справочник", "Товары", tail)
     assert len(d) == 1
     assert "табличная часть" in d[0].message
-    assert d[0].line == 7  # строка имени первой табличной части
+    assert d[0].line == 7  # the name line of the first tabular section
 
 
 def test_number_silent_without_morphology(monkeypatch):
-    # Без pymorphy3 правило молчит: гадать число по окончаниям нельзя.
+    # Without pymorphy3 the rule stays silent: guessing the number by endings is not allowed.
     monkeypatch.setattr(naming, "_morph", lambda: None)
     assert _lint(_NUMBER, "Справочник", "Акция") == []
 
 
-# --- 1.9 имя булева реквизита -----------------------------------------------------------
+# --- 1.9 the name of a boolean attribute -----------------------------------------------------------
 
 def test_boolean_negation():
-    # Отрицание ловится без морфологии – по приставкам Не/Нет.
+    # Negation is caught without morphology - by the Не/Нет prefixes.
     tail = _section("Реквизиты", ("НетОшибок", "Булево"))
     d = _lint(_BOOLEAN, "Справочник", "Загрузки", tail)
     assert len(d) == 1
@@ -319,7 +321,7 @@ def test_boolean_noun(morph):
     tail = _section("Реквизиты", ("Администратор", "Булево"))
     d = _lint(_BOOLEAN, "Справочник", "Пользователи", tail)
     assert len(d) == 1
-    assert "ЭтоАдминистратор" in d[0].message  # подсказка – имя с приставкой
+    assert "ЭтоАдминистратор" in d[0].message  # the suggestion is the name with a prefix
 
 
 def test_boolean_prefixed_name_silent(morph):
@@ -328,12 +330,12 @@ def test_boolean_prefixed_name_silent(morph):
 
 
 def test_boolean_only_boolean_attributes(morph):
-    # То же имя-существительное, но реквизит не булев – правило его не касается.
+    # The same noun name, but the attribute is not boolean - the rule leaves it alone.
     tail = _section("Реквизиты", ("Администратор", "Строка"))
     assert _lint(_BOOLEAN, "Справочник", "Пользователи", tail) == []
 
 
-# --- 2.1 представление элемента (нужна метамодель) --------------------------------------
+# --- 2.1 the element presentation (metamodel needed) --------------------------------------
 
 @pytest.mark.needs_data
 def test_presentation_missing():
@@ -363,11 +365,11 @@ def test_presentation_deprecated_marked_silent():
 
 @pytest.mark.needs_data
 def test_presentation_skips_kind_without_property():
-    # У общего модуля свойства Представление нет – требовать нечего.
+    # A common module has no Представление property - nothing to require.
     assert _lint(_PRESENTATION, "ОбщийМодуль", "Общее") == []
 
 
-# --- обязательные префиксы и постфиксы по видам -----------------------------------------
+# --- mandatory prefixes and postfixes by kind -----------------------------------------
 
 @pytest.mark.parametrize("name", ["ApiСайта", "WebСайт"])
 def test_http_service_forbidden_word(name):
@@ -400,14 +402,14 @@ def test_suffix_by_kind_present_silent():
     assert _lint(_PREFIX, "ЛокализованныеСтроки", "СайтЛокализация") == []
 
 
-# --- хвостовой комментарий и кавычки в строке Имя ----------------------------------------
+# --- a trailing comment and quotes on the Имя line ----------------------------------------
 
 def test_trailing_comment_not_part_of_name():
-    # По YAML комментарий после значения не является его частью: раньше такая строка вовсе
-    # не совпадала с регексом имён, и вся группа naming/ молчала об этом имени.
+    # Per YAML a comment after the value is not a part of it: previously such a line did not
+    # match the name regex at all, and the whole naming/ group kept silent about this name.
     d = _lint(_YO, "Справочник", "ПересчётТоваров # комментарий")
     assert len(d) == 1
-    assert "ПересчётТоваров" in d[0].message  # имя без хвоста
+    assert "ПересчётТоваров" in d[0].message  # the name without the tail
 
 
 def test_trailing_comment_in_section_name():
@@ -418,7 +420,7 @@ def test_trailing_comment_in_section_name():
 
 
 def test_trailing_comment_number(morph):
-    # Репро исходного ложного минуса: имя регистра в единственном числе + комментарий.
+    # A repro of the original false negative: a register name in the singular + a comment.
     d = _lint(_NUMBER, "РегистрСведений", "КешТокенов # закэшированные токены")
     assert len(d) == 1
     assert "КешТокенов" in d[0].message
@@ -431,7 +433,7 @@ def test_quoted_name_with_comment():
     )
     d = engine.run_sources([source], select={_YO})
     assert len(d) == 1
-    assert "ПересчётТоваров" in d[0].message  # без кавычек и без хвоста
+    assert "ПересчётТоваров" in d[0].message  # without the quotes and the tail
 
 
 def test_comment_only_value_is_no_name():
@@ -441,11 +443,12 @@ def test_comment_only_value_is_no_name():
     assert engine.run_sources([source], select={_YO}) == []
 
 
-# --- группа целиком ---------------------------------------------------------------------
+# --- the group as a whole ---------------------------------------------------------------------
 
 def test_structural_yaml_skipped():
-    # Файл без ВидЭлемента (Проект, Подсистема) не описывает элемент – имена в нём не проверяются,
-    # хотя "Управление_Сайтом" нарушило бы и naming/underscore, и naming/filler-word.
+    # A file without ВидЭлемента (Проект, Подсистема) does not describe an element - its names
+    # are not checked, though "Управление_Сайтом" would violate both naming/underscore and
+    # naming/filler-word.
     source = engine.load_text("Подсистема.yaml", "Имя: Управление_Сайтом\nСодержимое:\n    - Акции\n")
     assert engine.run_sources([source], select={"naming"}) == []
 

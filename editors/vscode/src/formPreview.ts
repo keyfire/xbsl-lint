@@ -1,14 +1,14 @@
-// Предпросмотр формы 1С:Элемент – ДВЕ самостоятельные webview-панели:
-//  * "Предпросмотр" – каркас формы по yaml (рендер – formPreviewCore.ts): следует за
-//    активным yaml-редактором, живое обновление, масштаб и тема (светлая/тёмная/редактора)
-//    в тулбаре, переключаемые вкладки; клик выделяет компонент, Ctrl+клик ведёт к yaml.
-//  * "Свойства" – панель выбранного компонента, как в веб-редакторе платформы: открывается
-//    отдельной вкладкой (можно перетащить вниз или в сторону), перечисления – списками,
-//    Растягивать* – Авто/Истина/Ложь, остальное текстом; правки применяются к yaml
-//    точечными заменами (undo работает).
-// Выбор компонента и каждая правка позиционируют курсор в yaml-редакторе на изменяемой
-// строке (не забирая фокус). Кнопка в заголовке редактора видна только у yaml форм –
-// контекст-ключ xbsl.formYaml.
+// 1C:Element form preview - TWO standalone webview panels:
+//  * "Preview" - the form wireframe from yaml (rendering - formPreviewCore.ts): follows the
+//    active yaml editor, live updates, zoom and theme (light/dark/editor) in the toolbar,
+//    switchable tabs; a click selects a component, Ctrl+click leads to yaml.
+//  * "Properties" - the panel of the selected component, like in the platform's web editor:
+//    opens as a separate tab (can be dragged down or aside), enumerations - as dropdowns,
+//    Растягивать* - Авто/Истина/Ложь, the rest as text; edits are applied to yaml as
+//    targeted replacements (undo works).
+// Component selection and every edit position the cursor in the yaml editor on the line
+// being changed (without stealing focus). The editor title button is visible only for form
+// yamls - the xbsl.formYaml context key.
 
 import * as vscode from "vscode";
 import { describeNode, esc, NodeDescription, propertyEdit, renderFormPreview } from "./formPreviewCore";
@@ -19,7 +19,7 @@ const DEBOUNCE_MS = 300;
 const STATE_KEY = "xbsl.formPreview.view";
 
 interface ViewState {
-  zoom: number; // проценты
+  zoom: number; // percent
   theme: "light" | "dark" | "editor";
 }
 
@@ -32,7 +32,7 @@ let timer: NodeJS.Timeout | undefined;
 let view: ViewState = DEFAULT_VIEW;
 let lastDesc: NodeDescription | undefined;
 
-// Похоже ли содержимое на форму: компонент интерфейса с наследованием и содержимым.
+// Whether the content looks like a form: an interface component with inheritance and content.
 function looksLikeForm(doc: vscode.TextDocument): boolean {
   if (doc.languageId !== "yaml") {
     return false;
@@ -41,7 +41,7 @@ function looksLikeForm(doc: vscode.TextDocument): boolean {
   return head.includes("КомпонентИнтерфейса") && doc.getText().includes("Наследует");
 }
 
-// -- панель предпросмотра ---------------------------------------------------------------------
+// -- preview panel ----------------------------------------------------------------------------
 
 function shell(body: string, nonce: string): string {
   const themeOptions = [
@@ -103,7 +103,7 @@ function shell(body: string, nonce: string): string {
   .dd { opacity: .6; }
   .chk { display: inline-block; }
   .btn { border: 1px solid var(--fp-border); background: transparent; color: var(--fp-fg); border-radius: 4px; padding: 5px 14px; font-size: inherit; cursor: pointer; }
-  /* Основная кнопка – нативный жёлтый Элемента (--themeColorPrimaryBtnBg #fd0, текст #1c1c1f). */
+  /* Primary button - the native Element yellow (--themeColorPrimaryBtnBg #fd0, text #1c1c1f). */
   .btn.primary { background: var(--fp-btn-bg); color: var(--fp-btn-fg); border-color: var(--fp-btn-bg); }
   .btn.link { border-color: transparent; color: var(--fp-link); padding-left: 4px; padding-right: 4px; }
   .img { width: 110px; height: 74px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--fp-border); border-radius: 4px; font-size: 24px; background: var(--fp-soft); }
@@ -183,7 +183,7 @@ function shell(body: string, nonce: string): string {
     }
   });
 
-  // После перерисовки: вернуть активные вкладки и выделение из сохранённого состояния.
+  // After a re-render: restore active tabs and the selection from the saved state.
   for (const [owner, idx] of Object.entries(state.tabs || {})) {
     const tabs = document.querySelector('#canvas .tabs[data-off="' + owner + '"]');
     if (!tabs) { continue; }
@@ -196,7 +196,7 @@ function shell(body: string, nonce: string): string {
 </script></body></html>`;
 }
 
-// -- панель свойств -----------------------------------------------------------------------------
+// -- properties panel ---------------------------------------------------------------------------
 
 function propsShell(nonce: string): string {
   const labels = {
@@ -376,8 +376,8 @@ function scheduleRender(): void {
   }, DEBOUNCE_MS);
 }
 
-// Показать место в yaml-редакторе. При выборе и правках фокус остаётся в панели
-// (preserveFocus), по явному "Показать в yaml" / Ctrl+клику – переходит в редактор.
+// Show a location in the yaml editor. On selection and edits the focus stays in the panel
+// (preserveFocus); on an explicit "Show in yaml" / Ctrl+click it moves to the editor.
 async function revealOffset(offset: number, preserveFocus: boolean): Promise<void> {
   if (!target) {
     return;
@@ -394,8 +394,8 @@ async function revealOffset(offset: number, preserveFocus: boolean): Promise<voi
   editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 }
 
-// Панель свойств: отдельная вкладка рядом с предпросмотром; пересоздаётся по клику,
-// если пользователь её закрыл.
+// Properties panel: a separate tab next to the preview; recreated on click
+// if the user has closed it.
 function ensurePropsPanel(context: vscode.ExtensionContext): void {
   if (propsPanel) {
     if (!propsPanel.visible) {
@@ -427,7 +427,7 @@ function ensurePropsPanel(context: vscode.ExtensionContext): void {
   }, undefined, context.subscriptions);
 }
 
-// Выбор компонента: свойства в панель + курсор на строку узла в yaml (фокус не забираем).
+// Component selection: properties into the panel + cursor on the node's yaml line (no focus steal).
 function selectNode(context: vscode.ExtensionContext, offset: number): void {
   const doc = targetDocument();
   if (!doc) {
@@ -450,8 +450,8 @@ function deselectNode(): void {
   }
 }
 
-// Правка свойства из панели: точечная замена в документе (undo работает) и курсор
-// на изменяемой строке в редакторе.
+// Property edit from the panel: a targeted replacement in the document (undo works) and
+// the cursor on the line being changed in the editor.
 async function applyProp(offset: number, key: string, value: string | null): Promise<void> {
   const doc = targetDocument();
   if (!doc) {
@@ -465,7 +465,7 @@ async function applyProp(offset: number, key: string, value: string | null): Pro
   we.replace(doc.uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.newText);
   await vscode.workspace.applyEdit(we);
   await revealOffset(Math.min(edit.start + Math.max(edit.newText.length - 1, 0), doc.getText().length), true);
-  // Свойства обновляем сразу; каркас перерисуется через onDidChangeTextDocument.
+  // Properties are refreshed immediately; the wireframe re-renders via onDidChangeTextDocument.
   lastDesc = describeNode(doc.getText(), offset);
   if (propsPanel && lastDesc) {
     void propsPanel.webview.postMessage({ type: "props", desc: lastDesc });
@@ -477,8 +477,9 @@ function isViewState(v: unknown): v is ViewState {
   return !!s && typeof s.zoom === "number" && (s.theme === "light" || s.theme === "dark" || s.theme === "editor");
 }
 
-// uri задаётся при вызове из дерева (форма уже открыта слева) – тогда цель берём из него, а не из
-// активного редактора; из кнопки заголовка uri нет, цель – активный yaml.
+// uri is passed when called from the tree (the form is already open on the left) - then the
+// target is taken from it, not from the active editor; the title button passes no uri, the
+// target is the active yaml.
 function openPreview(context: vscode.ExtensionContext, uri?: vscode.Uri): void {
   let docUri = uri;
   if (!docUri) {
@@ -510,7 +511,7 @@ function openPreview(context: vscode.ExtensionContext, uri?: vscode.Uri): void {
       } else if (m.type === "deselect") {
         deselectNode();
       } else if (m.type === "view") {
-        // Масштаб и тема применяются в самом webview; здесь только запоминаем выбор.
+        // Zoom and theme are applied inside the webview; here we only remember the choice.
         const next = { zoom: Number(m.zoom), theme: m.theme } as ViewState;
         if (isViewState(next)) {
           view = next;
@@ -540,7 +541,7 @@ export function registerFormPreview(context: vscode.ExtensionContext): void {
     ),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       updateContext(editor);
-      // Панель следует за активным yaml формы – как предпросмотр Markdown.
+      // The panel follows the active form yaml - like the Markdown preview.
       if (panel && editor && looksLikeForm(editor.document)) {
         if (target?.toString() !== editor.document.uri.toString()) {
           target = editor.document.uri;

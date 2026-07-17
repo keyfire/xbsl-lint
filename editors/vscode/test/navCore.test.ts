@@ -57,7 +57,7 @@ test("parseIndex: минимальный индекс нормализуется
   assert.strictEqual(idx.meta.root, "/tmp/p");
   assert.deepStrictEqual(idx.methods, []);
   assert.deepStrictEqual(idx.components, []);
-  assert.deepStrictEqual(idx.references, []); // старый линтер без references – поиск использований молчит
+  assert.deepStrictEqual(idx.references, []); // an old linter without references - find-usages stays silent
 });
 
 // --- chainAt ----------------------------------------------------------------
@@ -260,7 +260,7 @@ function labels(entries: { label: string }[] | null): string[] {
 
 test("isInQuery: внутри Запрос{...} истина, вне/после закрытия – ложь", () => {
   assert.strictEqual(isInQuery("исп Р = Запрос{ ВЫБРАТЬ Товар."), true);
-  assert.strictEqual(isInQuery("var R = Query{ SELECT Item."), true); // англ. форма ключевого слова
+  assert.strictEqual(isInQuery("var R = Query{ SELECT Item."), true); // the English form of the keyword
   assert.strictEqual(isInQuery("Запрос{ ВЫБРАТЬ Х ИЗ Т }.Выполнить(); Товар."), false);
   assert.strictEqual(isInQuery("Данные = Товар."), false);
 });

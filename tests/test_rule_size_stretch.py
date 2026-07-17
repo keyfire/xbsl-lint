@@ -1,4 +1,4 @@
-"""Проверки правила yaml/size-needs-no-stretch (фикс. размер без Растягивать*: Ложь)."""
+"""Checks of the yaml/size-needs-no-stretch rule (a fixed size without Растягивать*: Ложь)."""
 
 from xbsl import engine
 
@@ -10,7 +10,7 @@ def _lint(name, content, **kw):
 
 
 def _form(body: str) -> str:
-    """Минимальный yaml-объект интерфейса с заданным содержимым."""
+    """A minimal interface yaml object with the given content."""
     return (
         "ВидЭлемента: КомпонентИнтерфейса\n"
         "Ид: 1e0e26f1-1111-4111-8111-111111111111\n"
@@ -43,7 +43,7 @@ def test_height_without_stretch_flagged():
     assert len(d) == 1
     assert d[0].severity.value == "info"
     assert "РастягиватьПоВертикали" in d[0].message
-    assert (d[0].line, d[0].col) == (10, 13)  # строка ключа 'Высота'
+    assert (d[0].line, d[0].col) == (10, 13)  # the line of the 'Высота' key
 
 
 def test_height_with_stretch_false_ok():
@@ -57,7 +57,7 @@ def test_height_with_stretch_false_ok():
 
 
 def test_explicit_stretch_value_is_deliberate():
-    # Явно записанные Авто/Истина – осознанный выбор автора, не подсказываем
+    # An explicitly written Авто/Истина is the author's deliberate choice, no hint given
     content = _form(
         "        -\n"
         "            Тип: КонтейнерHtml\n"
@@ -68,8 +68,8 @@ def test_explicit_stretch_value_is_deliberate():
 
 
 def test_width_without_stretch_flagged_separately():
-    # Оси независимы: Ширина без РастягиватьПоГоризонтали ловится,
-    # Высота с РастягиватьПоВертикали: Ложь – нет
+    # The axes are independent: Ширина without РастягиватьПоГоризонтали is caught,
+    # Высота with РастягиватьПоВертикали: Ложь is not
     content = _form(
         "        -\n"
         "            Тип: КонтейнерHtml\n"
@@ -94,7 +94,7 @@ def test_both_axes_flagged():
 
 
 def test_non_fixed_sizes_skipped():
-    # Авто, привязка и ноль – не фиксированный размер
+    # Авто, a binding and zero are not a fixed size
     content = _form(
         "        -\n"
         "            Тип: КонтейнерHtml\n"
@@ -110,7 +110,7 @@ def test_non_fixed_sizes_skipped():
 
 
 def test_other_component_types_skipped():
-    # У Картинка/Группа/Надпись собственный размер – Авто надёжен, не проверяем
+    # Картинка/Группа/Надпись have an intrinsic size - Авто is reliable, not checked
     content = _form(
         "        -\n"
         "            Тип: Картинка\n"
@@ -124,7 +124,7 @@ def test_other_component_types_skipped():
 
 
 def test_same_value_in_two_nodes_positions_only_violator():
-    # Одинаковое значение в двух узлах: позицию получает именно узел-нарушитель
+    # The same value in two nodes: the position goes to the violating node specifically
     content = _form(
         "        -\n"
         "            Тип: КонтейнерHtml\n"
@@ -151,7 +151,7 @@ def test_crlf_positions():
 
 
 def test_non_object_yaml_skipped():
-    # Файл без ВидЭлемента (структурный) не проверяется
+    # A file without ВидЭлемента (structural) is not checked
     content = (
         "Имя: Фрагмент\n"
         "Содержимое:\n"

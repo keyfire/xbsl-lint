@@ -1,6 +1,6 @@
-// Установка недостающих инструментов прямо из расширения: терминальная задача VS Code
-// (ход установки виден пользователю), по успешному завершению вызывается команда
-// продолжения (перезапуск проверки или перезагрузка окна для LSP-режима).
+// Installing missing tools right from the extension: a VS Code terminal task (the install
+// progress is visible to the user), on successful completion a continuation command is
+// invoked (restarting the check or reloading the window for LSP mode).
 
 import * as vscode from "vscode";
 
@@ -31,7 +31,7 @@ export function runInstallTask(name: string, commandLine: string, onSuccessComma
   });
 }
 
-// Команда pip с учётом настройки интерпретатора: задан xbsl.linter.pythonPath - ставим в него.
+// pip command honoring the interpreter setting: xbsl.linter.pythonPath set - install into it.
 export function pipInstallCommand(spec: string): string {
   const python = (vscode.workspace.getConfiguration("xbsl").get<string>("linter.pythonPath") || "").trim();
   return python ? `"${python}" -m pip install --upgrade "${spec}"` : `pip install --upgrade "${spec}"`;

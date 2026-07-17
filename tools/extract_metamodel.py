@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Извлечь метамодель свойств элементов конфигурации 1С:Элемент из дистрибутива.
+"""Extract the metamodel of 1C:Element configuration element properties from the distribution.
 
-Метамодель лежит в главном .car (element-server-with-ide) в виде EMF-файлов `.xcore`
-внутри вложенных jar-плагинов `*.designtime` / `*.model`. Каждый класс объявляет свойства
-аннотацией `@PropertyInfo(ru="Имя", en="Name")` – ru-имя совпадает с ключом в yaml. Классы
-наследуются (`class X extends A, B`), свойства собираются по всей цепочке.
+The metamodel lives in the main .car (element-server-with-ide) as EMF `.xcore` files inside
+nested jar plugins `*.designtime` / `*.model`. Each class declares its properties with the
+`@PropertyInfo(ru="Имя", en="Name")` annotation - the ru name matches the yaml key. Classes
+inherit (`class X extends A, B`); properties are collected along the whole chain.
 
-Результат – xbsl/data/element/<версия>/metamodel.json:
-    { "classes": { "<Class>": {"props": [ru-имена], "ext": [базовые классы]} },
-      "vid2class": { "<ВидЭлемента>": "<корневой класс>" },
-      "common": [универсальные ключи оболочки элемента проекта] }
+The result is xbsl/data/element/<version>/metamodel.json:
+    { "classes": { "<Class>": {"props": [ru names], "ext": [base classes]} },
+      "vid2class": { "<ВидЭлемента>": "<root class>" },
+      "common": [universal keys of the project element envelope] }
 
-vid2class перечисляет ТОЛЬКО выверенные виды (для остальных правило проверку не делает –
-это исключает ложные на непроверенных видах). common – ключи, общие всем видам (оболочка
-элемента проекта), которые у части видов не выражены в их классе.
+vid2class lists ONLY the verified kinds (for the rest the rule performs no check - that
+rules out false positives on unverified kinds). common holds the keys shared by all kinds
+(the project element envelope) that some kinds do not express in their class.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _distro  # noqa: E402
 
-# jar-плагины, несущие .xcore
+# jar plugins that carry .xcore
 _JAR_RE = re.compile(r"designtime|\.model|mdd|dmf|metamodel", re.I)
 _HEADER_RE = re.compile(
     r"(?:abstract\s+)?(?:class|interface)\s+(\w+)\s*(?:<[^>]*>)?\s*(?:extends\s+([^{]+?))?\s*\{"
@@ -37,8 +37,8 @@ _HEADER_RE = re.compile(
 _PROP_RE = re.compile(r"@PropertyInfo\d?\(([^)]*)\)")
 _RU_RE = re.compile(r"\bru\s*=\s*\"([^\"]+)\"")
 
-# Соответствие ВидЭлемента (yaml) -> корневой класс метамодели. Только выверенные виды:
-# правило работает лишь для перечисленных, для прочих молчит (0 ложных на непроверенном).
+# Mapping ВидЭлемента (yaml) -> metamodel root class. Verified kinds only: the rule works
+# just for those listed and stays silent for the rest (0 false positives on the unverified).
 VID2CLASS = {
     "Справочник": "CatalogNativeDescriptor",
     "Документ": "DocumentNativeDescriptor",
@@ -47,7 +47,7 @@ VID2CLASS = {
     "ОбщийМодуль": "CommonModuleDescriptor",
     "КомпонентИнтерфейса": "ComponentModel",
 }
-# Универсальные ключи оболочки элемента проекта (общие всем видам).
+# Universal keys of the project element envelope (shared by all kinds).
 COMMON = ["ВидЭлемента", "Ид", "Имя", "ОбластьВидимости", "Импорт"]
 
 
@@ -68,7 +68,7 @@ def _parse_xcore(text: str, classes: dict) -> None:
                 base = re.sub(r"<[^>]*>", "", part).strip()
                 if base:
                     ext.append(base)
-        # тело класса по балансу фигурных скобок от '{'
+        # the class body by curly-brace balance from '{'
         i = m.end() - 1
         depth = 0
         j = i
@@ -94,7 +94,7 @@ def _parse_xcore(text: str, classes: dict) -> None:
 
 
 def extract(dist: Path) -> dict:
-    """Собрать { класс -> {props, ext} } из всех .xcore главного .car."""
+    """Collect { class -> {props, ext} } from every .xcore of the main .car."""
     car = _distro.find_car(dist)
     classes: dict = {}
     with zipfile.ZipFile(car) as z:
@@ -127,7 +127,7 @@ def main() -> int:
 
     version = _distro.detect_version(dist, args.element_version)
     classes = extract(dist)
-    # проверка: все корневые классы vid2class присутствуют
+    # sanity check: all vid2class root classes are present
     missing = sorted(c for c in VID2CLASS.values() if c not in classes)
     if missing:
         print(f"ПРЕДУПРЕЖДЕНИЕ: не найдены корневые классы: {missing}", file=sys.stderr)

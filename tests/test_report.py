@@ -1,4 +1,4 @@
-"""Форма машиночитаемого отчёта (report.report) – без зависимости от данных Элемента."""
+"""Shape of the machine-readable report (report.report) - no dependency on the Element data."""
 
 import json
 
@@ -21,16 +21,16 @@ def test_report_shape_counts_and_order():
     assert set(payload) == {"diagnostics", "summary"}
     assert payload["summary"] == {"files": 1, "diagnostics": 3, "errors": 1, "warnings": 2}
 
-    # Отсортировано по (path, line, col, rule)
+    # Sorted by (path, line, col, rule)
     positions = [(d["line"], d["col"]) for d in payload["diagnostics"]]
     assert positions == sorted(positions)
 
-    # Поля одного замечания
+    # Fields of a single finding
     first = payload["diagnostics"][0]
     assert set(first) == {"path", "line", "col", "rule", "severity", "message"}
     assert first["severity"] in {"error", "warning", "info"}
 
-    # Сериализуется в JSON без потерь
+    # Serializes to JSON without loss
     assert json.loads(json.dumps(payload, ensure_ascii=False)) == payload
 
 
@@ -50,6 +50,6 @@ def test_fix_span_emitted_when_present():
     payload = report.report([d], 1)
     first = payload["diagnostics"][0]
     assert first["fix"] == {"start": 20, "end": 23, "newText": ""}
-    # без правки ключ отсутствует
+    # without a fix the key is absent
     plain = report.report([_d(1, 1, "code/unused-loop-var", Severity.WARNING)], 1)
     assert "fix" not in plain["diagnostics"][0]

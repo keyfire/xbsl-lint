@@ -1,36 +1,36 @@
-// Правила линтера, за которыми стоит документированное требование платформы, связаны со
-// страницей документации Элемента: id страницы (для локальной панели + дерева) и якорь
-// раздела. Код такой диагностики в "Проблемах" становится ссылкой, открывающей нужный раздел
-// ВНУТРИ VS Code. Правила без страницы (типографика, пробелы, кодировка, парность файлов,
-// неиспользуемые переменные, проверки существования по каталогу, эмпирические ограничения
-// apply) ссылок не получают: лучше без ссылки, чем ссылка не по адресу.
+// Linter rules backed by a documented platform requirement are linked to an Element
+// documentation page: the page id (for the local panel + tree) and the section anchor. The
+// code of such a diagnostic in "Problems" becomes a link opening the relevant section
+// INSIDE VS Code. Rules without a page (typography, whitespace, encoding, file pairing,
+// unused variables, catalog-based existence checks, empirical apply restrictions) get no
+// links: better no link than a link to the wrong place.
 
 import * as vscode from "vscode";
 
 const DOCS_ORIGIN = "https://1cmycloud.com/docs/help/";
 
-// Стандарты (обязательны к применению).
+// Standards (mandatory).
 const NAMES = "topics/project-element-names-standard";
 const PROPS = "topics/project-properties-standard";
-// Раздел "Рекомендации по написанию кода".
+// The "Рекомендации по написанию кода" section.
 const DESIGN = "topics/general-design";
 const NAMING = "topics/naming-convention";
 const TYPES = "topics/type-description-and-initialization";
 const WRAP = "topics/split-expressions";
 const CONCAT = "topics/string-concatenation";
-// Язык и модель выполнения.
+// Language and the execution model.
 const METHODS = "topics/methods-in-built-in-script-language";
 const EXEC = "topics/module-execution";
 const MODULAR = "topics/modular-development";
 const ENUM = "topics/enumeration-properties";
 
-// Соответствие правило/группа -> страница документации + якорь раздела (id заголовка на
-// странице). Конкретные правила раньше групповых. Якоря – id заголовков в docs.sqlite
-// (см. extract_docs); все пары проверены на существование.
+// Mapping rule/group -> documentation page + section anchor (heading id on the page).
+// Specific rules go before group ones. Anchors are heading ids in docs.sqlite
+// (see extract_docs); every pair is verified to exist.
 const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string; anchor?: string }> = [
-  // --- имена элементов проекта (стандарт) ---
+  // --- project element names (standard) ---
   { match: (r) => r === "naming/presentation", page: NAMES, anchor: "2-представления-элементов-проекта" },
-  // Постфикс окружения, число в имени и префикс по виду описаны в разделе 3, а не в общем 1.
+  // Environment postfix, number in a name and per-kind prefix live in section 3, not in general 1.
   {
     match: (r) => r === "naming/module-suffix",
     page: NAMES,
@@ -43,30 +43,30 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   },
   { match: (r) => r.startsWith("naming/"), page: NAMES, anchor: "1-общие-правила-наименования" },
 
-  // --- свойства проекта (стандарт) ---
+  // --- project properties (standard) ---
   { match: (r) => r === "project/presentation", page: PROPS, anchor: "представление" },
   { match: (r) => r === "project/version", page: PROPS, anchor: "версия" },
   { match: (r) => r.startsWith("project/"), page: PROPS, anchor: "поставщик" }, // Поставщик + Имя
 
-  // --- рекомендации по написанию кода: общее оформление ---
+  // --- code writing recommendations: general layout ---
   { match: (r) => r === "style/tab-indent", page: DESIGN, anchor: "синтаксический-отступ" },
   { match: (r) => r === "style/line-length", page: DESIGN, anchor: "длина-строки" },
   { match: (r) => r === "style/semicolon-line" || r === "code/blocks", page: DESIGN, anchor: "составные-инструкции" },
 
-  // --- рекомендации: имена в коде ---
+  // --- recommendations: names in code ---
   { match: (r) => r === "style/camel-case", page: NAMING, anchor: "общие-рекомендации" },
   { match: (r) => r === "style/abbreviation-case", page: NAMING, anchor: "аббревиатуры" },
   { match: (r) => r === "style/const-case", page: NAMING, anchor: "константы" },
   { match: (r) => r === "style/enum-name-vid", page: NAMING, anchor: "перечисления" },
   { match: (r) => r === "style/exception-prefix", page: NAMING, anchor: "исключения" },
 
-  // --- рекомендации: типы и инициализация ---
+  // --- recommendations: types and initialization ---
   { match: (r) => r === "style/type-colon-space", page: TYPES, anchor: "синтаксис" },
   { match: (r) => r === "style/union-spaces", page: TYPES, anchor: "составной-тип" },
   { match: (r) => r === "style/nullable-shorthand", page: TYPES, anchor: "тип-неопределено" },
   { match: (r) => r === "style/redundant-type", page: TYPES, anchor: "инициализация" },
 
-  // --- рекомендации: переносы, строки, коллекции ---
+  // --- recommendations: line wrapping, strings, collections ---
   { match: (r) => r === "style/wrap-comma", page: WRAP, anchor: "перенос-параметров" },
   { match: (r) => r === "style/wrap-operator", page: WRAP, anchor: "перенос-выражений" },
   { match: (r) => r === "style/interpolation", page: CONCAT, anchor: "интерполяция" },
@@ -77,13 +77,13 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   },
   { match: (r) => r === "style/collection-literal", page: "topics/collection-literals-usage" },
 
-  // --- рекомендации: операции и инструкции ---
+  // --- recommendations: operations and statements ---
   { match: (r) => r === "style/optional-params-last", page: "topics/method-declarations" },
   { match: (r) => r === "style/boolean-compare", page: "topics/check-logical-values" },
   { match: (r) => r === "style/undefined-is", page: "topics/check-if-undefined" },
   { match: (r) => r === "style/negated-is", page: "topics/is-operator" },
 
-  // --- язык: конструкции ---
+  // --- language: constructs ---
   { match: (r) => r === "code/parse-error", page: DESIGN },
   { match: (r) => r === "code/param-type-required", page: METHODS, anchor: "определение-метода" },
   { match: (r) => r === "code/loop-header", page: "topics/for-in-loop", anchor: "синтаксис" },
@@ -95,7 +95,7 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   { match: (r) => r === "code/catch-non-exception", page: "topics/exceptions" },
   { match: (r) => r === "code/unknown-enum-value", page: ENUM, anchor: "элементы" },
 
-  // --- модель выполнения и модульность ---
+  // --- execution model and modularity ---
   {
     match: (r) => r === "code/client-annotation-in-server-module"
       || r === "code/client-module-in-http-service"
@@ -109,7 +109,7 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   },
   { match: (r) => r === "yaml/missing-import", page: MODULAR, anchor: "импорт-пространств-имен" },
 
-  // --- запросы, формы, yaml ---
+  // --- queries, forms, yaml ---
   {
     match: (r) => r === "query/in-subquery-composite",
     page: "topics/in-expression",
@@ -132,9 +132,9 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
 ];
 
 export interface RuleDoc {
-  page: string; // id страницы для xbsl.docs.open (панель + позиционирование дерева)
-  anchor?: string; // id заголовка раздела на странице (прокрутка к нужному месту)
-  url: string; // канонический адрес на сайте документации
+  page: string; // page id for xbsl.docs.open (panel + tree positioning)
+  anchor?: string; // section heading id on the page (scroll to the right place)
+  url: string; // canonical address on the documentation site
 }
 
 export function ruleDoc(rule: string | undefined): RuleDoc | undefined {
@@ -145,9 +145,9 @@ export function ruleDoc(rule: string | undefined): RuleDoc | undefined {
   return hit ? { page: hit.page, anchor: hit.anchor, url: DOCS_ORIGIN + hit.page + "/" } : undefined;
 }
 
-// Код диагностики: у правила со стандартом значок правила в "Проблемах" становится ссылкой,
-// открывающей нужный РАЗДЕЛ ВНУТРИ VS Code (панель "Документация" + дерево + прокрутка к якорю)
-// командой xbsl.docs.open, а не внешний сайт. У прочих правил – просто идентификатор.
+// Diagnostic code: for a rule backed by a standard the rule badge in "Problems" becomes a link
+// opening the relevant SECTION INSIDE VS Code (the Documentation panel + tree + scroll to the
+// anchor) via the xbsl.docs.open command, not an external site. Other rules get a plain id.
 export function docCode(rule: string): string | { value: string; target: vscode.Uri } {
   const doc = ruleDoc(rule);
   if (!doc) {
@@ -157,7 +157,7 @@ export function docCode(rule: string): string | { value: string; target: vscode.
   return { value: rule, target: vscode.Uri.parse(`command:xbsl.docs.open?${args}`) };
 }
 
-// Идентификатор правила из кода диагностики (строка или объект {value, target}).
+// Rule id from a diagnostic code (a string or a {value, target} object).
 export function ruleOfCode(code: vscode.Diagnostic["code"]): string | undefined {
   if (typeof code === "string") {
     return code;

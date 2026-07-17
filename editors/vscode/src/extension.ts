@@ -24,9 +24,9 @@ let output: vscode.OutputChannel;
 const debounceTimers = new Map<string, NodeJS.Timeout>();
 let warnedOnce = false;
 
-// Последние исправимые находки по каждому документу со штампом версии (uri -> снимок) – для
-// Quick Fix. Устаревшую запись (версия не совпала) провайдер игнорирует, поэтому смещение
-// исправления никогда не применяется к тексту, изменившемуся после породившего его прогона.
+// The latest fixable findings per document, stamped with a version (uri -> snapshot) - for Quick
+// Fix. A stale entry (version mismatch) is ignored by the provider, so a fix offset is never
+// applied to text that changed after the run which produced it.
 const fixStore = new Map<string, FixSnapshot>();
 
 function setFixSnapshot(uri: vscode.Uri, version: number, diags: RawDiag[]): void {
@@ -38,30 +38,30 @@ function setFixSnapshot(uri: vscode.Uri, version: number, diags: RawDiag[]): voi
   }
 }
 
-// --- Состояние прогона по воркспейсу -----------------------------------------------------
-// Одна коллекция находок, два поставщика:
-//  * быстрый прогон `--stdin` владеет находками редактируемого (грязного) буфера;
-//  * прогон по всему воркспейсу (при сохранении, с задержкой, по одному за раз) заменяет
-//    находки всех остальных файлов – ему видны проектные правила, недоступные одному буферу.
+// --- Workspace run state -----------------------------------------------------------------
+// One diagnostic collection, two producers:
+//  * the fast `--stdin` run owns the findings of the edited (dirty) buffer;
+//  * the whole-workspace run (on save, debounced, one at a time) replaces the findings of all
+//    other files - it sees project rules that are out of reach for a single buffer.
 
-// Доля одного файла в последнем завершённом прогоне по воркспейсу: находки, преобразованные
-// для коллекции, и исходные, из которых они получены – по исходным восстанавливается снимок
-// Quick Fix, когда файл открывают уже после прогона.
+// One file's share of the last completed workspace run: the findings converted for the collection,
+// and the raw ones they came from - the raw ones restore the Quick Fix snapshot when the file is
+// opened after the run.
 interface WorkspaceEntry {
   uri: vscode.Uri;
   diags: vscode.Diagnostic[];
   raw: RawDiag[];
 }
 
-// Последний завершённый прогон по каждой папке воркспейса: uri файла -> его запись.
+// The last completed run per workspace folder: file uri -> its entry.
 const workspaceResults = new Map<string, Map<string, WorkspaceEntry>>();
-// Таймеры задержки запланированных прогонов по воркспейсу, по папкам.
+// Debounce timers of scheduled workspace runs, per folder.
 const workspaceTimers = new Map<string, NodeJS.Timeout>();
-// Прогоны, ожидающие в цепочке (ещё не начатые), по папкам – убирают дубли частых сохранений.
+// Runs waiting in the chain (not started yet), per folder - they deduplicate frequent saves.
 const queuedRuns = new Map<string, Promise<void>>();
-// Единственный выполняющийся прогон; новое сохранение той же папки его отменяет.
+// The single currently executing run; a new save of the same folder cancels it.
 let activeRun: { folderKey: string; handle: RunHandle } | undefined;
-// Прогоны по воркспейсу выполняются строго один за другим.
+// Workspace runs execute strictly one after another.
 let runChain: Promise<void> = Promise.resolve();
 
 const WORKSPACE_DEBOUNCE_MS = 500;
@@ -86,9 +86,9 @@ function readSettings(resource?: vscode.Uri): Settings {
       dataDir: (c.get<string>("linter.dataDir") || "").trim() || undefined,
       lang: lang || undefined,
       select: (c.get<string>("linter.select") || "").trim() || undefined,
-      // Правила и группы, выключенные в настройках (off), не запускаются вовсе.
+      // Rules and groups switched off in the settings (off) are not run at all.
       ignore: mergeOffRules((c.get<string>("linter.ignore") || "").trim() || undefined, resource),
-      // Существующий файл базлайна: исключённые находки гасятся в каждом прогоне.
+      // An existing baseline file: excluded findings are suppressed in every run.
       baseline: baselineForLint(resource),
     },
     run: c.get<"onType" | "onSave" | "off">("linter.run") || "onType",
@@ -98,11 +98,10 @@ function readSettings(resource?: vscode.Uri): Settings {
   };
 }
 
-// Корень исходников для прогонов по проекту и для индекса навигации: настройка
-// xbsl.projectRoot (путь относительно папки воркспейса или абсолютный). Позволяет не
-// линтить посторонние каталоги репозитория (примеры, копии), из-за которых проектные
-// правила (уникальность Ид и т.п.) дают ложные срабатывания. Пусто или не существует –
-// сама папка воркспейса.
+// Source root for project-wide runs and for the navigation index: the xbsl.projectRoot setting
+// (a path relative to the workspace folder, or absolute). Lets us avoid linting unrelated
+// repository directories (examples, copies) that make project rules (Ид uniqueness and the like)
+// produce false positives. Empty or non-existent - the workspace folder itself.
 function projectRootFor(folder: vscode.WorkspaceFolder): string {
   const raw = (vscode.workspace.getConfiguration("xbsl", folder.uri).get<string>("projectRoot") || "").trim();
   if (!raw) {
@@ -124,7 +123,7 @@ function cwdFor(uri: vscode.Uri): string | undefined {
   return uri.scheme === "file" ? path.dirname(uri.fsPath) : undefined;
 }
 
-// Файлы, понятные линтеру: модули .xbsl и описания элементов .yaml.
+// Files the linter understands: .xbsl modules and .yaml element descriptions.
 function isLintableUri(uri: vscode.Uri): boolean {
   if (uri.scheme !== "file") {
     return false;
@@ -138,8 +137,8 @@ async function lintDocument(doc: vscode.TextDocument): Promise<void> {
     return;
   }
   const settings = readSettings(doc.uri);
-  // Путь относительно папки воркспейса (cwd прогона), а не голое имя: по нему находки
-  // сопоставляются с записями базлайна, а structure/xbsl-pair видит настоящего соседа.
+  // A path relative to the workspace folder (the run's cwd), not a bare name: it is what matches
+  // findings against baseline entries, and structure/xbsl-pair sees the real neighbor.
   const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
   const filename =
     doc.uri.scheme !== "file"
@@ -153,7 +152,7 @@ async function lintDocument(doc: vscode.TextDocument): Promise<void> {
     reportProblem(result.error, result.notFound);
     return;
   }
-  // Отбрасываем устаревший результат: буфер изменился, пока работал линтер.
+  // Discard a stale result: the buffer changed while the linter was running.
   if (doc.version !== version) {
     return;
   }
@@ -195,10 +194,10 @@ function scheduleLint(doc: vscode.TextDocument, delay: number): void {
   );
 }
 
-// --- Прогон по воркспейсу ----------------------------------------------------------------
+// --- Workspace run -----------------------------------------------------------------------
 
-// Результат последнего завершённого прогона для файла: запись (возможно, без находок), если
-// папку файла уже проверяли, и undefined, если ни один прогон ещё не завершился.
+// The last completed run's result for a file: an entry (possibly with no findings) if the file's
+// folder has already been checked, and undefined if no run has completed yet.
 function workspaceBaseline(uri: vscode.Uri): Pick<WorkspaceEntry, "diags" | "raw"> | undefined {
   const folder = vscode.workspace.getWorkspaceFolder(uri);
   if (!folder) {
@@ -211,7 +210,7 @@ function workspaceBaseline(uri: vscode.Uri): Pick<WorkspaceEntry, "diags" | "raw
   return store.get(uri.toString()) ?? { diags: [], raw: [] };
 }
 
-// Точка входа с задержкой: повторные сохранения внутри окна схлопываются в один прогон.
+// Debounced entry point: repeated saves within the window collapse into a single run.
 function scheduleWorkspaceLint(folder: vscode.WorkspaceFolder): void {
   const key = folder.uri.toString();
   const prev = workspaceTimers.get(key);
@@ -227,16 +226,16 @@ function scheduleWorkspaceLint(folder: vscode.WorkspaceFolder): void {
   );
 }
 
-// По одному прогону за раз: прогоны выстраиваются в цепочку, папка стоит в очереди не более
-// одного раза, а сохранение во время проверки её папки отменяет ставший неактуальным прогон.
+// One run at a time: runs line up into a chain, a folder is queued at most once, and a save
+// while its folder is being checked cancels the now-outdated run.
 function enqueueWorkspaceRun(folder: vscode.WorkspaceFolder, notify = false): Promise<void> {
   const key = folder.uri.toString();
   const queued = queuedRuns.get(key);
   if (queued) {
-    return queued; // ещё не начат – он и так возьмёт с диска свежие файлы
+    return queued; // not started yet - it will pick up the fresh files from disk anyway
   }
   if (activeRun && activeRun.folderKey === key) {
-    activeRun.handle.cancel(); // его результат описывал бы файлы, которых в таком виде уже нет
+    activeRun.handle.cancel(); // its result would describe files that no longer exist in that shape
   }
   const run = runChain.then(() => {
     queuedRuns.delete(key);
@@ -259,8 +258,8 @@ async function runWorkspaceLint(folder: vscode.WorkspaceFolder, notify: boolean)
     return;
   }
   if (result.error) {
-    // Мягкий отказ: огромный воркспейс или сломанный линтер не должны при каждом сохранении
-    // сыпать всплывающими окнами.
+    // A soft failure: a huge workspace or a broken linter must not spray popup windows
+    // on every save.
     if (notify) {
       reportProblem(result.error, result.notFound);
     } else {
@@ -276,9 +275,9 @@ async function runWorkspaceLint(folder: vscode.WorkspaceFolder, notify: boolean)
   }
 }
 
-// Раскладывает находки прогона по файлам папки, заменяя всё, что было там раньше. Исключение –
-// грязные буферы: их находки принадлежат живому прогону `--stdin`, пока буфер не сохранён
-// (прогон по файлам на диске их попросту не видит).
+// Distributes the run's findings across the folder's files, replacing whatever was there before.
+// The exception is dirty buffers: their findings belong to the live `--stdin` run until the buffer
+// is saved (a run over the files on disk simply does not see them).
 function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport): void {
   const folderKey = folder.uri.toString();
   const openDocs = new Map<string, vscode.TextDocument>();
@@ -310,13 +309,13 @@ function applyWorkspaceReport(folder: vscode.WorkspaceFolder, report: RawReport)
       continue;
     }
     collection.set(entry.uri, entry.diags);
-    // Смещения дискового прогона годятся только для чистого открытого буфера; штампуем его версией.
+    // Offsets of the disk run only fit a clean open buffer; stamp it with the buffer's version.
     if (doc) {
       setFixSnapshot(entry.uri, doc.version, entry.raw);
     }
   }
-  // Файлы, у которых находок не осталось: всё в этой папке, чего свежий прогон не упомянул,
-  // теперь чисто.
+  // Files with no findings left: everything in this folder that the fresh run did not mention
+  // is now clean.
   const stale: vscode.Uri[] = [];
   collection.forEach((uri) => {
     const key = uri.toString();
@@ -346,7 +345,7 @@ function scheduleWorkspaceLintAll(): void {
   }
 }
 
-// Ручная команда: проверить все папки воркспейса, с индикатором хода и видимой ошибкой.
+// Manual command: check all workspace folders, with a progress indicator and a visible error.
 async function lintProject(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
@@ -369,7 +368,7 @@ function lintOpenDocuments(): void {
   }
 }
 
-// Забыть всё и начать заново: используется командой перезапуска и при изменении настроек.
+// Forget everything and start over: used by the restart command and on settings changes.
 function resetAndRelint(): void {
   warnedOnce = false;
   activeRun?.handle.cancel();
@@ -389,14 +388,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   output = vscode.window.createOutputChannel("XBSL");
   context.subscriptions.push(collection, output);
 
-  // Общие для обоих режимов: палитра, настройка правил с находки, деплой на стенд,
-  // предпросмотр форм.
+  // Shared by both modes: the palette, rule configuration from a finding, deploy to a stand,
+  // form preview.
   registerPalettePicker(context);
   registerRuleConfig(context);
-  // Исключение находки в базлайн (лампочка). После записи: в CLI-режиме перечитываем всё
-  // с нуля; в LSP-режиме сервер перечитывает базлайн на каждом прогоне - достаточно
-  // xbsl/relint, а если файла при старте сервера не было, перезапускаем его с новым
-  // аргументом --baseline.
+  // Excluding a finding into the baseline (the light bulb). After writing: in the CLI mode
+  // everything is re-read from scratch; in the LSP mode the server re-reads the baseline on
+  // every run - xbsl/relint is enough, and if the file did not exist at server start, the
+  // server is restarted with the new --baseline argument.
   registerExcludeAction(context, async (uri) => {
     if (lspActive()) {
       if (lspBaselinePassed()) {
@@ -412,26 +411,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerFormPreview(context);
   const metadataTree = registerMetadataTree(context, projectRootFor);
   registerMetadataProps(context, metadataTree.typeCandidates);
-  // Документация Элемента: дерево справки, поиск и показ страницы по символу под курсором.
-  // Данные тянет от LSP-сервера линтера; в CLI-режиме (сервер не поднят) команды сообщают об этом.
+  // Element documentation: the help tree, search and showing the page for the symbol under the
+  // cursor. Data comes from the linter's LSP server; in the CLI mode (no server) the commands say so.
   registerDocs(context);
-  // Шаблоны кода: панель управления работает в обоих режимах (данные и запись – через движок),
-  // а предложение шаблонов по Ctrl+Space даёт LSP-сервер.
+  // Code templates: the management panel works in both modes (data and writes go through the
+  // engine), while template suggestions on Ctrl+Space come from the LSP server.
   registerTemplates(context);
-  // Версии расширения/линтера и режим дополнения в статус-баре (до LSP-ветки – виден в обоих режимах).
+  // Extension/linter versions and the completion mode in the status bar (before the LSP branch -
+  // visible in both modes).
   const statusBar = registerStatusBar(context, (resource) => readSettings(resource).linter);
 
-  // LSP-режим (по умолчанию): всё делает долгоживущий сервер xbsl-lsp - он же даёт hover и
-  // дополнение по типам. При неудачном старте продолжаем в обычном режиме (CLI); о неудаче
-  // сообщаем, только если режим выбран явно, иначе у поставивших линтер без extra [lsp] всплывало
-  // бы окно с ошибкой на ровном месте.
+  // LSP mode (the default): everything is done by the long-lived xbsl-lsp server - it also
+  // provides hover and type-based completion. On a failed start we continue in the plain (CLI)
+  // mode; the failure is reported only when the mode was chosen explicitly, otherwise those who
+  // installed the linter without the [lsp] extra would get an error popup out of nowhere.
   const lspSetting = vscode.workspace.getConfiguration("xbsl").inspect<boolean>("lsp.enabled");
   const lspChosen =
     lspSetting?.workspaceFolderValue ?? lspSetting?.workspaceValue ?? lspSetting?.globalValue;
   if (lspChosen ?? lspSetting?.defaultValue ?? true) {
     if (await activateLsp(context, output, lspChosen !== undefined)) {
       statusBar.setLspMode(true);
-      // Правку шаблонов сервер подхватывает по запросу - без перезапуска и потери индекса.
+      // The server picks up template edits on request - no restart, no index loss.
       setTemplatesReload(async () => {
         await lspRequest("xbsl/templatesReload", {});
       });
@@ -448,11 +448,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (settings.run === "off") {
         return;
       }
-      // Чистому буферу, чей файл уже покрыт прогоном по воркспейсу, проход `--stdin` не нужен:
-      // он увидел бы только пофайловые правила и стёр бы проектные. Снимок Quick Fix вместо
-      // этого восстанавливается из сохранённого прогона – прогон штампует только те документы,
-      // что были открыты в тот момент, а закрытие документа снимок удаляет. Буфер чист, поэтому
-      // дисковые смещения прогона для него верны.
+      // A clean buffer whose file is already covered by a workspace run needs no `--stdin` pass:
+      // it would only see the per-file rules and would wipe the project ones. Instead, the Quick
+      // Fix snapshot is restored from the stored run - a run stamps only the documents open at
+      // that moment, and closing a document deletes the snapshot. The buffer is clean, so the
+      // run's disk offsets are valid for it.
       if (settings.workspaceLint && !doc.isDirty) {
         const baseline = workspaceBaseline(doc.uri);
         if (baseline !== undefined) {
@@ -479,8 +479,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
       if (settings.workspaceLint && folder && isLintableUri(doc.uri)) {
-        // Файл на диске теперь актуален – прогон по всему воркспейсу заменит находки буфера
-        // полным набором (пофайловые и проектные правила вместе).
+        // The file on disk is now up to date - the whole-workspace run will replace the buffer's
+        // findings with the full set (per-file and project rules together).
         scheduleWorkspaceLint(folder);
         return;
       }
@@ -496,8 +496,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         debounceTimers.delete(key);
       }
       fixStore.delete(key);
-      // Файл по-прежнему часть проекта: возвращаем находки последнего прогона по воркспейсу
-      // (закрытый буфер мог быть грязным, его результаты `--stdin` умирают вместе с ним).
+      // The file is still part of the project: bring back the findings of the last workspace run
+      // (the closed buffer may have been dirty, its `--stdin` results die with it).
       const baseline = workspaceBaseline(doc.uri);
       if (baseline !== undefined && readSettings(doc.uri).workspaceLint) {
         collection.set(doc.uri, baseline.diags);

@@ -1,4 +1,4 @@
-"""Проверки правила yaml/choice-needs-static-list (данные платформы не нужны)."""
+"""Checks of the yaml/choice-needs-static-list rule (no platform data needed)."""
 
 from xbsl import engine
 
@@ -10,7 +10,7 @@ def _lint(content, name="Форма.yaml"):
 
 
 def _wrap(*components):
-    """Объект-форма с перечисленными компонентами в Содержимое."""
+    """A form object with the given components in Содержимое."""
     body = "".join(components)
     return (
         "ВидЭлемента: КомпонентИнтерфейса\n"
@@ -46,7 +46,7 @@ def test_missing_list_flagged_with_position():
     d = _lint(_wrap(_CHOICE_WITHOUT_LIST))
     assert len(d) == 1
     assert d[0].rule_id == "yaml/choice-needs-static-list"
-    # Позиция – строка узла `Тип: ВыборЗначения<Строка>` (8-я), колонка значения.
+    # The position is the line of the `Тип: ВыборЗначения<Строка>` node (8th), the value column.
     assert d[0].line == 8
     assert "СписокВыбора" in d[0].message
 
@@ -56,14 +56,14 @@ def test_static_list_ok():
 
 
 def test_mixed_nodes_only_bare_one_flagged():
-    # Два одинаковых типа: со списком и без – ловится только второй, по своей позиции.
+    # Two identical types: with a list and without - only the second is caught, at its own position.
     d = _lint(_wrap(_CHOICE_WITH_LIST, _CHOICE_WITHOUT_LIST))
     assert len(d) == 1
-    assert d[0].line == 17  # узел без списка идёт после узла со списком
+    assert d[0].line == 17  # the node without a list comes after the node with one
 
 
 def test_binding_value_counts_as_present():
-    # СписокВыбора биндингом – ключ есть, содержимое не проверяем.
+    # СписокВыбора as a binding - the key is present, the content is not checked.
     content = _wrap(
         "        -\n"
         "            Тип: ВыборЗначения<Строка>\n"
@@ -73,7 +73,7 @@ def test_binding_value_counts_as_present():
 
 
 def test_enum_and_project_types_skipped():
-    # Не-примитивный параметр (перечисление/проектный тип) – платформа строит список сама.
+    # A non-primitive parameter (an enum/project type) - the platform builds the list itself.
     content = _wrap(
         "        -\n"
         "            Тип: ВыборЗначения<ВидТовара>\n"
@@ -84,7 +84,7 @@ def test_enum_and_project_types_skipped():
 
 
 def test_bare_and_nullable_variants():
-    # Голый ВыборЗначения – пропуск (тип неизвестен); nullable-примитив – диагностика.
+    # A bare ВыборЗначения is skipped (the type is unknown); a nullable primitive - a diagnostic.
     content = _wrap(
         "        -\n"
         "            Тип: ВыборЗначения\n"
@@ -106,7 +106,7 @@ def test_array_primitive_flagged():
 
 
 def test_non_object_yaml_skipped():
-    # Файл без ВидЭлемента (структурный) не проверяется.
+    # A file without ВидЭлемента (structural) is not checked.
     content = "Имя: Проект\nСодержимое:\n    - Тип: ВыборЗначения<Строка>\n"
     assert _lint(content) == []
 
@@ -118,7 +118,7 @@ def test_crlf_position():
 
 
 def test_off_when_not_selected_by_default_run():
-    # Правило включено по умолчанию – без select тоже находится.
+    # The rule is on by default - it fires without select too.
     d = engine.run_sources([engine.load_text("Форма.yaml", _wrap(_CHOICE_WITHOUT_LIST))],
                            select={"yaml"})
     assert any(x.rule_id == "yaml/choice-needs-static-list" for x in d)

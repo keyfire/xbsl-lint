@@ -1,4 +1,4 @@
-"""Проверка MCP-адаптера через подставной FastMCP (не требует установленного mcp)."""
+"""MCP adapter check via a stub FastMCP (does not require mcp to be installed)."""
 
 import importlib
 import sys

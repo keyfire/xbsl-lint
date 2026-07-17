@@ -1,14 +1,14 @@
-"""Проверки правила yaml/dynlist-missing-field (полнота Источник.Поля динамического списка).
+"""Checks of the yaml/dynlist-missing-field rule (completeness of a dynamic list's Источник.Поля).
 
-Правило не зависит от данных платформы – работает по yaml проекта, поэтому файл
-не входит в список data-dependent модулей conftest.py.
+The rule does not depend on the platform data - it works off the project yaml, so this file
+is not in the data-dependent module list of conftest.py.
 """
 
 from xbsl import engine
 
 RULE = "yaml/dynlist-missing-field"
 
-# Справочник с тремя реквизитами; Наименование объявлено без Тип (стандартный реквизит).
+# A catalog with three attributes; Наименование is declared without Тип (a standard attribute).
 _ТОВАРЫ = """ВидЭлемента: Справочник
 Имя: Товары
 Реквизиты:
@@ -54,7 +54,7 @@ def _lint_form(form_yaml: str, obj_yaml: str = _ТОВАРЫ):
     return _lint(("Товары.yaml", obj_yaml), ("Ф.yaml", form_yaml))
 
 
-# --- Основной критерий -----------------------------------------------------------------
+# --- The main criterion ----------------------------------------------------------------
 
 def test_full_field_set_not_flagged():
     d = _lint_form(_форма(["Ссылка", "Наименование", "Цена", "Опубликован"]))
@@ -62,28 +62,28 @@ def test_full_field_set_not_flagged():
 
 
 def test_missing_attribute_flagged():
-    # реквизит Цена не выбран – типизированный автоформой список упадёт в рантайме
+    # the Цена attribute is not selected - a list typed by the auto-form will crash at runtime
     d = _lint_form(_форма(["Ссылка", "Наименование", "Опубликован"]))
     assert len(d) == 1
     assert d[0].rule_id == RULE
     assert "'Цена'" in d[0].message and "'Товары'" in d[0].message
-    assert d[0].line == 5  # строка со значением Тип: Таблица<ДинамическийСписок<...>>
+    assert d[0].line == 5  # the line with the value Тип: Таблица<ДинамическийСписок<...>>
 
 
 def test_new_attribute_without_form_update_flagged():
-    # сценарий грабли: в справочник добавлен реквизит, форма списка не обновлена
+    # the pitfall scenario: an attribute was added to the catalog, the list form was not updated
     расширенный = _ТОВАРЫ + "    -\n        Имя: Артикул\n        Тип: Строка\n"
     d = _lint_form(_форма(["Ссылка", "Наименование", "Цена", "Опубликован"]), расширенный)
     assert len(d) == 1 and "'Артикул'" in d[0].message
 
 
 def test_missing_ssylka_not_required():
-    # Ссылка не реквизит – правило требует только объявленное в Реквизиты
+    # Ссылка is not an attribute - the rule only requires what is declared in Реквизиты
     d = _lint_form(_форма(["Наименование", "Цена", "Опубликован"]))
     assert d == []
 
 
-# --- Списки, выводящие тип строки из объявления, не проверяются -------------------------
+# --- Lists that infer the row type from the declaration are not checked -----------------
 
 def test_untyped_list_not_flagged():
     d = _lint_form(_форма(["Ссылка", "Наименование"], тип_строки=None))
@@ -91,28 +91,28 @@ def test_untyped_list_not_flagged():
 
 
 def test_form_own_row_type_not_flagged():
-    # двухсегментный тип строки самой формы (ФормаX.ДанныеСтрокиСписка) – подмножество полей законно
+    # a two-segment row type of the form itself (ФормаX.ДанныеСтрокиСписка) - a field subset is legal
     d = _lint_form(_форма(["Наименование"], тип_строки="Ф.ДанныеСтрокиСписка"))
     assert d == []
 
 
-# --- Гарды нуля ложных ------------------------------------------------------------------
+# --- Zero-false-positive guards ---------------------------------------------------------
 
 def test_collection_attribute_not_required():
-    # реквизит-коллекция в выборку не берётся – из требуемого набора исключён
+    # a collection attribute is not selectable - excluded from the required set
     объект = _ТОВАРЫ + "    -\n        Имя: Файлы\n        Тип: Массив<ДвоичныйОбъект.Ссылка>\n"
     d = _lint_form(_форма(["Ссылка", "Наименование", "Цена", "Опубликован"]), объект)
     assert d == []
 
 
 def test_foreign_main_table_skipped():
-    # ОсновнаяТаблица не совпадает с объектом дженерика – семантика неясна, узел пропускается
+    # ОсновнаяТаблица does not match the generic's object - the semantics is unclear, the node is skipped
     d = _lint_form(_форма(["Ссылка"], таблица="Склады"))
     assert d == []
 
 
 def test_unknown_object_skipped():
-    # объекта нет в проекте (например, из внешней библиотеки) – не гадаем
+    # the object is not in the project (e.g. from an external library) - do not guess
     d = _lint(("Ф.yaml", _форма(["Ссылка"], тип_строки="Чужой.АвтоматическаяФормаСписка.ДанныеСтрокиСписка",
                                 таблица="Чужой")))
     assert d == []
@@ -121,7 +121,7 @@ def test_unknown_object_skipped():
 def test_field_without_expression_skips_node():
     form = _форма(["Наименование"])
     form += "                -\n                    Тип: ПолеДинамическогоСписка\n"
-    d = _lint_form(form)  # поле без Выражение – набору верить нельзя
+    d = _lint_form(form)  # a field without Выражение - the set cannot be trusted
     assert d == []
 
 

@@ -15,7 +15,7 @@ import {
 
 export interface RunResult {
   report?: RawReport;
-  // Исполняемый файл линтера не найден (ENOENT) – можно предложить установку.
+  // The linter executable was not found (ENOENT) - an install can be offered.
   notFound?: boolean;
   // A human-readable problem (spawn failure, non-JSON output, data error) – shown to the user once.
   error?: string;
@@ -153,7 +153,7 @@ export function makeDiagnostic(d: RawDiag, lineText: string | undefined): vscode
   const severity = over && over !== "off" ? severityFor(over) : severityCode(d.severity);
   const diag = new vscode.Diagnostic(range, d.message, severity);
   diag.source = "xbsl";
-  diag.code = docCode(d.rule); // у правила-стандарта значок правила становится ссылкой на документ
+  diag.code = docCode(d.rule); // for a standard-backed rule the rule badge becomes a document link
   return diag;
 }
 

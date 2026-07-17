@@ -1,6 +1,7 @@
-// Статус-бар (справа внизу): версия расширения и движка xbsl + режим дополнения (обычный CLI /
-// LSP). Нужно, чтобы при разработке сразу видеть, какая сборка активна, и не путать старую с новой.
-// Версию линтера получаем вызовом "<линтер> --version"; при неудаче показываем "?".
+// Status bar (bottom right): the extension and xbsl engine versions + the completion mode
+// (plain CLI / LSP). Needed to see at a glance during development which build is active and
+// not confuse an old one with a new one. The linter version comes from calling
+// "<linter> --version"; on failure "?" is shown.
 
 import * as vscode from "vscode";
 import { spawn } from "child_process";
@@ -12,9 +13,10 @@ import { LinterConfig } from "./report";
 const SHOW_INFO = "xbsl.showVersionInfo";
 const AGE_REFRESH_MS = 60_000;
 
-// Сборку опознаём коротким хешем установленного бандла: у всех дев-сборок одна версия (0.12.0),
-// а хеш меняется вместе с кодом. Дату и время сборки не показываем - статус-бар попадает в
-// скриншоты и гифки README, а знать нужно лишь одно: та же это сборка или уже новая.
+// A build is identified by a short hash of the installed bundle: all dev builds share one
+// version (0.12.0), while the hash changes with the code. Build date and time are not shown -
+// the status bar ends up in README screenshots and gifs, and only one thing matters: whether
+// this is the same build or a new one.
 function buildId(context: vscode.ExtensionContext): { hash: string; builtAt: number } | undefined {
   try {
     const file = path.join(context.extensionPath, "dist", "extension.js");
@@ -25,7 +27,7 @@ function buildId(context: vscode.ExtensionContext): { hash: string; builtAt: num
   }
 }
 
-// Свежесть сборки словами, без абсолютного времени: "только что", "12 мин назад", "3 ч назад".
+// Build freshness in words, without absolute time: "just now", "12 min ago", "3 h ago".
 function builtAgo(builtAt: number): string {
   const minutes = Math.max(0, Math.floor((Date.now() - builtAt) / 60_000));
   if (minutes < 1) {
@@ -53,7 +55,7 @@ function linterVersion(cfg: LinterConfig): Promise<string | undefined> {
       out += d.toString("utf8");
     };
     child.stdout.on("data", grab);
-    child.stderr.on("data", grab); // некоторые инструменты печатают версию в stderr
+    child.stderr.on("data", grab); // some tools print the version to stderr
     child.on("error", () => resolve(undefined));
     child.on("close", () => {
       const m = /(\d+\.\d+(?:\.\d+)?[A-Za-z0-9.+-]*)/.exec(out);
@@ -73,8 +75,9 @@ export function registerStatusBar(
   const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   item.command = SHOW_INFO;
   let linter = "…";
-  // Режим показываем ФАКТИЧЕСКИЙ, а не по настройке: сервер мог не подняться (нет extra [lsp]),
-  // и тогда дополнение идёт по-старому, через CLI-индекс. Ставит его extension после запуска.
+  // The ACTUAL mode is shown, not the configured one: the server may have failed to start
+  // (no [lsp] extra), and then completion works the old way, via the CLI index. It is set
+  // by extension.ts after startup.
   let lspOn = false;
 
   const line = (): string =>
@@ -88,8 +91,8 @@ export function registerStatusBar(
     );
 
   const render = (): void => {
-    // "engine", а не "lint": с 0.16 это инструментарий целиком (линт, LSP, скаффолдинг),
-    // и тултип рядом говорит "движок xbsl" - подписи должны совпадать.
+    // "engine", not "lint": since 0.16 this is the whole toolkit (lint, LSP, scaffolding),
+    // and the tooltip next to it says "engine xbsl" - the captions must match.
     item.text = `$(versions) XBSL ${extVersion} · ${hash} · engine ${linter}`;
     item.tooltip = line();
     item.show();
@@ -101,7 +104,7 @@ export function registerStatusBar(
     render();
   };
 
-  // Иначе свежесть в подсказке застынет на том, чем была при запуске окна.
+  // Otherwise the freshness in the tooltip would freeze at whatever it was at window startup.
   const ageTimer = setInterval(render, AGE_REFRESH_MS);
 
   context.subscriptions.push(

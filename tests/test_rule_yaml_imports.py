@@ -1,4 +1,4 @@
-"""Проверки правила yaml/missing-import (импорт чужой подсистемы в yaml)."""
+"""Checks of the yaml/missing-import rule (importing a foreign subsystem in yaml)."""
 
 import pytest
 
@@ -7,7 +7,7 @@ from xbsl.rules import semantics
 
 RULE = "yaml/missing-import"
 
-# Раскладка мини-проекта: подсистема А использует справочник Товары из подсистемы Б.
+# The mini-project layout: subsystem А uses the Товары catalog from subsystem Б.
 SUB_A = "Использование:\n    - Б\n"
 SUB_B = "Интерфейс:\n    ВключатьВАвтоИнтерфейс: Ложь\n"
 GOODS = (
@@ -61,11 +61,11 @@ def test_cross_subsystem_without_import_flagged():
     d = diags[0]
     assert d.rule_id == RULE
     assert "Товары.Ссылка" in d.message and "'Б'" in d.message
-    assert d.line == 8  # строка "        Тип: Товары.Ссылка?"
+    assert d.line == 8  # the line "        Тип: Товары.Ссылка?"
 
 
 def test_empty_import_section_flagged():
-    form = FORM_HEAD + "Импорт:\n" + FORM_BODY  # секция есть, но пустая
+    form = FORM_HEAD + "Импорт:\n" + FORM_BODY  # the section exists but is empty
     assert len(_lint(_project(form))) == 1
 
 
@@ -112,7 +112,7 @@ def test_same_subsystem_no_import_ok():
 
 
 def test_private_target_skipped():
-    # ВПодсистеме (и по умолчанию) объект снаружи невидим – это не пропавший импорт.
+    # With ВПодсистеме (and by default) the object is invisible from outside - not a missing import.
     private = "ВидЭлемента: Справочник\nИмя: Товары\nОбластьВидимости: ВПодсистеме\n"
     files = _project(FORM_HEAD + FORM_BODY)
     files["Б/Товары.yaml"] = private
@@ -124,21 +124,21 @@ def test_private_target_skipped():
 
 
 def test_xbsl_import_does_not_cover_yaml():
-    # Грабля: импорт в парном модуле есть, а в yaml – нет.
+    # The pitfall: the paired module has the import, but the yaml does not.
     files = _project(FORM_HEAD + FORM_BODY)
     files["А/Форма.xbsl"] = "импорт Б\n"
     assert len(_lint(files)) == 1
 
 
 def test_own_subsystem_name_wins():
-    # Имя есть и в своей подсистеме – короткое имя разрешается локально, импорт не нужен.
+    # The name also exists in its own subsystem - the short name resolves locally, no import needed.
     files = _project(FORM_HEAD + FORM_BODY)
     files["А/Товары.yaml"] = "ВидЭлемента: Справочник\nИмя: Товары\n"
     assert _lint(files) == []
 
 
 def test_stdlib_collision_skipped(monkeypatch):
-    # Имя совпадает с типом stdlib – без импорта оно разрешится в стандартное пространство.
+    # The name coincides with a stdlib type - without an import it resolves to the standard namespace.
     monkeypatch.setattr(semantics, "_stdlib_names", lambda: frozenset({"Товары"}))
     assert _lint(_project(FORM_HEAD + FORM_BODY)) == []
 
@@ -148,7 +148,7 @@ def test_stdlib_collision_skipped(monkeypatch):
     reason="нет данных Элемента – токенизация модулей недоступна",
 )
 def test_local_type_collision_skipped():
-    # Имя совпадает со структурой, объявленной в модуле, – ссылку в yaml не трогаем.
+    # The name coincides with a structure declared in the module - leave the yaml reference alone.
     files = _project(FORM_HEAD + FORM_BODY)
     files["А/Общий.xbsl"] = "структура Товары\n    поле Ссылка: Строка\n;\n"
     files["А/Общий.yaml"] = "ВидЭлемента: ОбщийМодуль\nИмя: Общий\n"

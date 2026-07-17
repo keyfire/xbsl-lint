@@ -1,8 +1,9 @@
-// Панель свойств объекта/поля метаданных 1С:Элемент – webview-view в сайдбаре расширения,
-// под деревом метаданных и документацией (как палитра свойств в конфигураторе/EDT): код не
-// затеняется вкладками. Описание строк даёт describeMetaNode (metadataCore), правки
-// применяются точечно через propertyEdit (formPreviewCore) – документ не переформатируется,
-// undo работает. Ид и ВидЭлемента показаны только для чтения; коллекции правятся через дерево.
+// Properties panel of a 1C:Element metadata object/field - a webview view in the extension
+// sidebar, below the metadata tree and the documentation (like the properties palette in the
+// Designer/EDT): the code is not obscured by tabs. Row descriptions come from describeMetaNode
+// (metadataCore), edits are applied as targeted replacements via propertyEdit (formPreviewCore) -
+// the document is not reformatted, undo works. Ид and ВидЭлемента are shown read-only;
+// collections are edited via the tree.
 
 import * as vscode from "vscode";
 import { propertyEdit } from "./formPreviewCore";
@@ -11,11 +12,11 @@ import { describeMetaNode, describeStandardAttr, findAttrOffset, insertItemEdit,
 const VIEW_TYPE = "xbslMetaProps";
 
 let view: vscode.WebviewView | undefined;
-// offset – смещение узла в yaml; std – стандартный реквизит (может быть синтетическим – тогда offset
-// игнорируется, а правка материализует запись в Реквизиты).
+// offset - node offset in yaml; std - a standard attribute (may be synthetic - then offset is
+// ignored and an edit materializes a record in Реквизиты).
 let target: { uri: vscode.Uri; offset: number; std?: { kind: string; name: string } } | undefined;
 let lastDesc: MetaNodeDescription | null = null;
-// Поставщик кандидатов типа (из провайдера дерева) для комбобокса Тип; может отсутствовать.
+// Supplier of type candidates (from the tree provider) for the Тип combobox; may be absent.
 let typeCandidatesFn: (() => Promise<string[]>) | undefined;
 
 function nonce(): string {
@@ -108,8 +109,8 @@ function shell(n: string): string {
       return sel;
     }
     if (row.control === "combo") {
-      // Свой комбобокс: по фокусу показываем ВСЕ кандидаты (нативный datalist фильтрует по текущему
-      // значению и показал бы только его), при наборе фильтруем; значение можно и ввести вручную.
+      // Custom combobox: on focus ALL candidates are shown (the native datalist filters by the
+      // current value and would show only it), typing filters; a value can also be typed manually.
       const wrap = document.createElement("div");
       wrap.className = "combo";
       const input = document.createElement("input");
@@ -117,7 +118,7 @@ function shell(n: string): string {
       const list = document.createElement("div");
       list.className = "combo-list"; list.style.display = "none";
       const opts = row.options || [];
-      let last = row.value; // защита от повторной отправки того же значения
+      let last = row.value; // guard against re-sending the same value
       const commit = (v) => { if (v !== last) { last = v; send(v === "" ? null : v); } };
       const build = (showAll) => {
         const q = showAll ? "" : input.value.trim().toLowerCase();
@@ -128,7 +129,7 @@ function shell(n: string): string {
           const it = document.createElement("div");
           it.className = "combo-opt" + (o === input.value ? " cur" : "");
           it.textContent = o;
-          // mousedown (до blur), чтобы клик успел выбрать пункт.
+          // mousedown (before blur) so the click manages to pick the item.
           it.addEventListener("mousedown", (e) => { e.preventDefault(); input.value = o; list.style.display = "none"; commit(o); });
           list.appendChild(it);
         }
@@ -212,7 +213,8 @@ async function render(): Promise<void> {
   lastDesc = !text || !target
     ? null
     : (target.std ? describeStandardAttr(text, target.std.kind, target.std.name) : describeMetaNode(text, target.offset)) ?? null;
-  // Строки-типы (комбобокс) наполняем кандидатами из провайдера дерева – ядро состав проекта не знает.
+  // Type rows (combobox) are filled with candidates from the tree provider - the core does not
+  // know the project contents.
   if (lastDesc && typeCandidatesFn && lastDesc.rows.some((r) => r.control === "combo")) {
     const candidates = await typeCandidatesFn();
     for (const row of lastDesc.rows) {
@@ -221,7 +223,7 @@ async function render(): Promise<void> {
       }
     }
   }
-  // У view заголовок секции задан манифестом; выбранный узел показываем описанием.
+  // The view's section title is set by the manifest; the selected node is shown as the description.
   view.description = lastDesc ? lastDesc.title : undefined;
   void view.webview.postMessage({ type: "props", desc: lastDesc });
 }
@@ -234,13 +236,13 @@ async function applyProp(key: string, value: string | null): Promise<void> {
   const text = doc.getText();
   const we = new vscode.WorkspaceEdit();
 
-  // Стандартный реквизит: материализован (есть в Реквизиты) – правим его запись; синтетический –
-  // при правке дописываем запись { Имя: <имя>, <ключ>: <значение> } в Реквизиты (материализация).
+  // Standard attribute: materialized (present in Реквизиты) - edit its record; synthetic - an
+  // edit appends a record { Имя: <name>, <key>: <value> } to Реквизиты (materialization).
   if (target.std) {
     const off = findAttrOffset(text, target.std.name);
     if (off === undefined) {
       if (value === null) {
-        return; // снимать у несуществующей записи нечего
+        return; // nothing to remove from a non-existent record
       }
       const ins = insertItemEdit(text, "Реквизиты", [`Имя: ${target.std.name}`, `${key}: ${value}`]);
       we.insert(target.uri, doc.positionAt(ins.start), ins.newText);
@@ -261,8 +263,8 @@ async function applyProp(key: string, value: string | null): Promise<void> {
     return;
   }
   we.replace(target.uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.newText);
-  // Сменили Тип на не-строковый – убрать строкоспецифичное свойство Многострочная (правка по тому же
-  // исходному тексту, на другой строке – с правкой типа не пересекается).
+  // Тип changed to a non-string one - remove the string-specific Многострочная property (an edit
+  // over the same source text, on a different line - it does not overlap the type edit).
   const newIsString = value === "Строка" || value === "Строка?";
   if (key === "Тип" && value !== null && !newIsString) {
     const strip = propertyEdit(text, target.offset, "Многострочная", null);
@@ -279,7 +281,7 @@ async function revealTarget(): Promise<void> {
     return;
   }
   const doc = await vscode.workspace.openTextDocument(target.uri);
-  // Синтетический стандартный реквизит (нет узла) – показываем начало объекта; иначе строку узла.
+  // A synthetic standard attribute (no node) - show the object start; otherwise the node's line.
   const offset = target.std ? findAttrOffset(doc.getText(), target.std.name) ?? 0 : Math.max(target.offset, 0);
   const pos = doc.positionAt(offset);
   const editor = await vscode.window.showTextDocument(doc, { preview: false });
@@ -322,18 +324,18 @@ class MetaPropsViewProvider implements vscode.WebviewViewProvider {
 
 async function ensureView(): Promise<void> {
   if (view) {
-    // Разворачиваем секцию в сайдбаре, не забирая фокус у дерева.
+    // Expand the sidebar section without stealing focus from the tree.
     view.show(true);
     return;
   }
-  // View ещё не создан – фокусировка секции заставит VS Code вызвать провайдера;
-  // содержимое приедет по сообщению "ready" из webview.
+  // The view is not created yet - focusing the section makes VS Code call the provider;
+  // the content arrives with the "ready" message from the webview.
   await vscode.commands.executeCommand(`${VIEW_TYPE}.focus`);
 }
 
 type PropsNode = { yamlPath?: string; offset?: number; stdKind?: string; stdName?: string };
 
-// Узел годится в цель панели: объект/поле с offset либо стандартный реквизит.
+// The node qualifies as a panel target: an object/field with an offset or a standard attribute.
 function setTarget(node: PropsNode): boolean {
   if (!node.yamlPath) {
     return false;
@@ -349,9 +351,9 @@ function setTarget(node: PropsNode): boolean {
   return false;
 }
 
-// Тихое обновление по смене выделения в дереве (мышь, стрелки, программный reveal):
-// панель следует за выделением, только когда уже видна – выделение не открывает
-// файлы и не дёргает сайдбар.
+// Silent update on tree selection change (mouse, arrows, programmatic reveal):
+// the panel follows the selection only when already visible - selecting does not
+// open files and does not disturb the sidebar.
 export function updatePropsFromSelection(node: PropsNode | undefined): void {
   if (!node || !view || !view.visible) {
     return;
@@ -361,8 +363,8 @@ export function updatePropsFromSelection(node: PropsNode | undefined): void {
   }
 }
 
-// Открыть панель свойств для узла дерева (yamlPath + offset). typeCandidates (из провайдера
-// дерева) наполняет комбобокс Тип; без него поле Тип остаётся вводом текста.
+// Open the properties panel for a tree node (yamlPath + offset). typeCandidates (from the tree
+// provider) fills the Тип combobox; without it the Тип field stays a plain text input.
 export function registerMetadataProps(
   context: vscode.ExtensionContext,
   typeCandidates?: () => Promise<string[]>

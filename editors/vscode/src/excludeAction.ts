@@ -1,8 +1,8 @@
-// "Исключить проверку" с лампочки находки: спрашивает причину и записывает идентичность
-// находки (файл + правило + сообщение) в файл базлайна – тот же, которым CI гасит
-// исключённое (`xbsl ... --baseline`). Работает в обоих режимах: и над диагностикой
-// CLI-прогонов, и над диагностикой LSP-сервера – провайдеру достаточно самой находки и
-// документа, а обновление картины делает переданный колбэк relint.
+// "Exclude the finding" from the finding's lightbulb: asks for a reason and records the
+// finding's identity (file + rule + message) into the baseline file - the same one CI uses
+// to mute exclusions (`xbsl ... --baseline`). Works in both modes: over CLI run diagnostics
+// and over LSP server diagnostics - the provider only needs the finding itself and the
+// document, and the picture is refreshed by the passed relint callback.
 
 import * as vscode from "vscode";
 import * as fs from "fs";
@@ -13,17 +13,17 @@ import { isXbslSource } from "./report";
 const EXCLUDE_COMMAND = "xbsl.excludeFinding";
 const DEFAULT_BASELINE = ".xbsllint-baseline";
 
-// Файл базлайна папки воркспейса: настройка xbsl.baseline (абсолютная или относительно
-// папки), пустая настройка – <папка>/.xbsllint-baseline. Путь возвращается всегда:
-// писать исключение можно и в ещё не существующий файл.
+// Baseline file of a workspace folder: the xbsl.baseline setting (absolute or relative to
+// the folder), an empty setting - <folder>/.xbsllint-baseline. A path is always returned:
+// an exclusion can be written into a file that does not exist yet.
 export function baselineTarget(folder: vscode.WorkspaceFolder): string {
   const raw = (vscode.workspace.getConfiguration("xbsl", folder.uri).get<string>("baseline") || "").trim();
   const rel = raw || DEFAULT_BASELINE;
   return path.isAbsolute(rel) ? rel : path.join(folder.uri.fsPath, rel);
 }
 
-// Файл базлайна для прогонов линтера: только существующий (линтер на отсутствующий файл
-// отвечает ошибкой, а до первого исключения файла может не быть вовсе).
+// Baseline file for linter runs: only an existing one (the linter responds to a missing
+// file with an error, and before the first exclusion the file may not exist at all).
 export function baselineForLint(resource?: vscode.Uri): string | undefined {
   const folder = resource
     ? vscode.workspace.getWorkspaceFolder(resource)
@@ -64,8 +64,8 @@ class ExcludeActionProvider implements vscode.CodeActionProvider {
       if (!rule) {
         continue;
       }
-      // "Эту находку", а не "проверку": исключается одна идентичность (файл + правило +
-      // сообщение), правило продолжает действовать на весь остальной проект.
+      // "This finding", not "the check": a single identity is excluded (file + rule +
+      // message), the rule keeps applying to the rest of the project.
       const action = new vscode.CodeAction(
         vscode.l10n.t("Exclude this finding (to the baseline): {0}", rule),
         vscode.CodeActionKind.QuickFix
@@ -103,7 +103,7 @@ async function excludeFinding(
       value.trim() === "" ? vscode.l10n.t("An exclusion needs a reason – the next reader will look for it.") : undefined,
   });
   if (reason === undefined) {
-    return; // отменили ввод - исключение не записываем
+    return; // input cancelled - the exclusion is not recorded
   }
   const target = baselineTarget(folder);
   const relPath = toPosix(path.relative(path.dirname(target), uri.fsPath));
@@ -124,8 +124,9 @@ async function excludeFinding(
   await relint(uri);
 }
 
-// relint: как обновить диагностику после записи исключения (в CLI-режиме - полный перезапуск
-// прогонов, в LSP-режиме - запрос xbsl/relint либо перезапуск сервера, если базлайна ещё не было).
+// relint: how to refresh diagnostics after recording an exclusion (in CLI mode - a full rerun
+// of the runs, in LSP mode - an xbsl/relint request or a server restart when there was no
+// baseline yet).
 export function registerExcludeAction(
   context: vscode.ExtensionContext,
   relint: (uri: vscode.Uri) => void | Promise<void>

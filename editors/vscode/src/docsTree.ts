@@ -1,8 +1,8 @@
-// Вид "Документация" на панели действий 1С:Элемент: дерево "Содержание" справки Элемента
-// (разделы -> типы -> члены) плюс команды поиска, открытия страницы и показа документации по
-// символу под курсором. Данные приходят от LSP-сервера линтера (docsClient), страницы
-// показывает docsPanel. Дерево строится из плоского списка узлов (id, parent) один раз и
-// перечитывается по кнопке обновления.
+// The "Documentation" view in the 1C:Element activity bar: the "Contents" tree of the Element
+// help (sections -> types -> members) plus commands for search, opening a page and showing
+// documentation for the symbol under the cursor. Data comes from the linter's LSP server
+// (docsClient), pages are shown by docsPanel. The tree is built from a flat node list
+// (id, parent) once and is re-read by the refresh button.
 
 import * as vscode from "vscode";
 import { DocNode, docsSearch, docsTree } from "./docsClient";
@@ -17,10 +17,10 @@ const KIND_ICON: Record<string, string> = {
   heading: "symbol-string",
 };
 
-// Узлы-заголовки (разделы внутри страницы) выделяем цветом, чтобы отличать от страниц и категорий.
+// Heading nodes (sections inside a page) are colored to tell them apart from pages and categories.
 const HEADING_COLOR = new vscode.ThemeColor("charts.blue");
 
-const ROOT = -1; // ключ группы разделов-вкладок (у них parent = null)
+const ROOT = -1; // key of the top-level tab sections group (their parent = null)
 
 class DocsTreeProvider implements vscode.TreeDataProvider<number> {
   private readonly changed = new vscode.EventEmitter<void>();
@@ -49,7 +49,7 @@ class DocsTreeProvider implements vscode.TreeDataProvider<number> {
     this.byPage.clear();
     for (const n of await docsTree()) {
       this.nodes.set(n.node, n);
-      // Для позиционирования (reveal) страница -> узел-ССЫЛКА, а не её заголовки (у них та же page).
+      // For positioning (reveal): page -> the LINK node, not its headings (they share the same page).
       if (n.page && n.kind !== "heading") {
         this.byPage.set(n.page, n.node);
       }
@@ -64,27 +64,27 @@ class DocsTreeProvider implements vscode.TreeDataProvider<number> {
     this.loaded = true;
   }
 
-  // getParent обязателен для reveal: VS Code раскрывает предков по цепочке до узла.
+  // getParent is required for reveal: VS Code expands the chain of ancestors down to the node.
   async getParent(id: number): Promise<number | undefined> {
     await this.ensure();
     const n = this.nodes.get(id);
     return n && n.parent != null ? n.parent : undefined;
   }
 
-  // Спозиционировать дерево на странице (если оно открыто и такой узел есть).
+  // Position the tree on a page (when it is open and such a node exists).
   async revealPage(pageId: string): Promise<void> {
     if (!this.view || !this.view.visible) {
-      return; // дерево не открыто – не навязываем его
+      return; // the tree is not open - do not force it upon the user
     }
     await this.ensure();
     const node = this.byPage.get(pageId);
     if (node === undefined) {
-      return; // страницы нет в дереве (напр. член типа) – позиционировать не на что
+      return; // the page is not in the tree (e.g. a type member) - nothing to position on
     }
     try {
       await this.view.reveal(node, { select: true, focus: false, expand: true });
     } catch {
-      // узел мог исчезнуть при обновлении – молча пропускаем
+      // the node may have vanished on refresh - silently skip
     }
   }
 
@@ -105,8 +105,8 @@ class DocsTreeProvider implements vscode.TreeDataProvider<number> {
       KIND_ICON[kind] ?? "symbol-file",
       kind === "heading" ? HEADING_COLOR : undefined
     );
-    // Клик открывает страницу у узлов-ссылок и заголовков (заголовок – на своём якоре);
-    // категория/раздел лишь разворачивается.
+    // A click opens the page for link and heading nodes (a heading - at its anchor);
+    // a category/section merely expands.
     if (node?.page) {
       item.command = {
         command: "xbsl.docs.open",
@@ -118,7 +118,7 @@ class DocsTreeProvider implements vscode.TreeDataProvider<number> {
   }
 }
 
-// Поиск по документации: строка запроса -> ранжированные попадания -> выбор -> открытие страницы.
+// Documentation search: query string -> ranked hits -> a pick -> opening the page.
 async function searchDocs(context: vscode.ExtensionContext): Promise<void> {
   const query = await vscode.window.showInputBox({
     prompt: vscode.l10n.t("Search the Element documentation"),
@@ -146,7 +146,7 @@ async function searchDocs(context: vscode.ExtensionContext): Promise<void> {
   }
 }
 
-// Действие на диагностике правила-стандарта: открыть его документ в панели (и в дереве).
+// Action on a standard-backed rule diagnostic: open its document in the panel (and the tree).
 class RuleDocActionProvider implements vscode.CodeActionProvider {
   provideCodeActions(
     _doc: vscode.TextDocument,
@@ -157,7 +157,7 @@ class RuleDocActionProvider implements vscode.CodeActionProvider {
     const seen = new Set<string>();
     for (const d of context.diagnostics) {
       if (!isXbslSource(d)) {
-        continue; // только диагностики линтера
+        continue; // linter diagnostics only
       }
       const rule = ruleOfCode(d.code);
       const doc = ruleDoc(rule);
@@ -181,11 +181,11 @@ export function registerDocs(context: vscode.ExtensionContext): void {
   const provider = new DocsTreeProvider();
   const view = vscode.window.createTreeView("xbslDocs", { treeDataProvider: provider });
   provider.attach(view);
-  // Открытие страницы в панели позиционирует дерево на этом документе.
+  // Opening a page in the panel positions the tree on that document.
   setDocsOpenListener((id) => void provider.revealPage(id));
   context.subscriptions.push(
     view,
-    // Правила naming/* и project/* срабатывают на .yaml, поэтому провайдер и для yaml.
+    // The naming/* and project/* rules fire on .yaml, hence the provider also covers yaml.
     vscode.languages.registerCodeActionsProvider(
       [{ language: "xbsl" }, { language: "yaml" }],
       new RuleDocActionProvider(),

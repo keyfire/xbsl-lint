@@ -1,4 +1,4 @@
-"""Проверки сгенерированных языковых данных (language.json)."""
+"""Checks of the generated language data (language.json)."""
 
 from xbsl.lexer import _keyword_forms, _language, _operators
 
@@ -16,5 +16,5 @@ def test_operators_have_multichar_and_sorted_longest_first():
     ops = _operators()
     for op in ("??", "?.", "::", "->", "==", "!="):
         assert op in ops, f"оператор {op} отсутствует"
-    # по убыванию длины (для максимального откуса в лексере)
+    # in decreasing length order (for the longest-match bite in the lexer)
     assert len(ops[0]) >= len(ops[-1])

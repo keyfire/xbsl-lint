@@ -1,4 +1,4 @@
-"""Шаблоны кода: разбор имени, компиляция паттерна в сниппет, чтение конверта."""
+"""Code templates: name parsing, pattern-to-snippet compilation, envelope reading."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def t(name: str, pattern: str = "x", **kw) -> tpl.Template:
     return tpl.Template(name=name, pattern=pattern, **kw)
 
 
-# ------------------------------------------------------------------ имя: аббревиатура и заголовок
+# ------------------------------------------------------------------ name: abbreviation and title
 
 def test_name_splits_into_trigger_and_title():
     x = t("мет[од] - Метод")
@@ -52,7 +52,7 @@ def test_category_is_the_description_without_the_leaf():
     assert t("а", description="").category == ""
 
 
-# ------------------------------------------------------------------------------- переменные
+# ------------------------------------------------------------------------------- variables
 
 def test_variables_are_found_in_order_with_their_arguments():
     found = tpl.parse_variables('если ${Редактировать("Условие")} / ${Выбрать("а", "б")}')
@@ -86,7 +86,7 @@ def test_unbalanced_variable_is_literal_text():
     assert tpl.parse_variables("${Редактировать(") == []
 
 
-# ------------------------------------------------------------------------------- компиляция
+# ------------------------------------------------------------------------------- compilation
 
 def test_edit_point_becomes_a_numbered_placeholder():
     assert tpl.expand('если ${Редактировать("Условие")}') == "если ${1:Условие}"
@@ -110,12 +110,12 @@ def test_choice_without_variants_degrades_to_an_edit_point():
 
 
 def test_interpolation_dollar_of_xbsl_is_escaped():
-    # "Здравствуйте, $Имя" - иначе редактор проглотит $Имя как свою переменную.
+    # "Здравствуйте, $Имя" - otherwise the editor would swallow $Имя as its own variable.
     assert tpl.expand('знч С = "Привет, $Имя"') == 'знч С = "Привет, \\$Имя"'
 
 
 def test_collection_literal_braces_are_escaped():
-    # }, закрывающая литерал, закрыла бы табстоп.
+    # the } closing the literal would close the tab stop.
     assert tpl.expand("знч С = {:}") == "знч С = {:\\}"
 
 
@@ -131,7 +131,7 @@ def test_unknown_variable_becomes_an_edit_point_named_after_itself():
     assert tpl.expand("${НоваяПеременная()}") == "${1:НоваяПеременная}"
 
 
-# ---------------------------------------------------------------- объекты проекта в переменных
+# ---------------------------------------------------------------- project objects in variables
 
 def test_object_name_uses_the_resolver_variants():
     out = tpl.expand(
@@ -146,7 +146,7 @@ def test_object_name_without_resolver_prompts_for_the_kind():
 
 
 def test_object_name_with_empty_project_prompts_instead_of_offering_nothing():
-    # Пустой choice невозможно ни выбрать, ни заполнить руками - точка ввода полезнее.
+    # An empty choice can be neither picked nor filled by hand - an edit point is more useful.
     out = tpl.expand("${ИмяОбъектаМетаданного(Справочник)}", resolver=lambda name, kind: [])
     assert out == "${1:Справочник}"
 
@@ -160,14 +160,14 @@ def test_resolver_gets_the_variable_and_its_kind():
     assert seen == [("ПолноеИмяОбъектаМетаданного", "ОбщаяФорма")]
 
 
-# --------------------------------------------------------------------------------- предпросмотр
+# --------------------------------------------------------------------------------- preview
 
 def test_preview_shows_the_code_without_snippet_syntax():
     out = tpl.preview('если ${Редактировать("Условие")}\n    ${Выбрать("а", "б")}\n;')
     assert out == "если Условие\n    а\n;"
 
 
-# ------------------------------------------------------------------------------------- конверт
+# ------------------------------------------------------------------------------------- envelope
 
 def _envelope(**over) -> str:
     item = {
@@ -200,9 +200,10 @@ def test_missing_context_means_everywhere():
 
 
 def test_a_dump_of_edt_templates_is_rejected_by_its_contexts():
-    """Формат у нас общий с 1С:EDT, а содержимое - нет: там код BSL, он в XBSL не компилируется.
+    """We share the format with 1С:EDT, but not the content: that is BSL code, which does not
+    compile as XBSL.
 
-    Молчаливый приём такой выгрузки дал бы набор шаблонов, вставляющих негодный код.
+    Silently accepting such an export would yield a set of templates inserting unusable code.
     """
     with pytest.raises(tpl.TemplateError, match="неизвестный контекст"):
         tpl.loads(_envelope(context={
@@ -233,7 +234,7 @@ def test_envelope_without_the_list_is_rejected():
         tpl.loads('{"иное": []}')
 
 
-# ------------------------------------------------------------------------------- набор и отбор
+# ------------------------------------------------------------------------------- set and selection
 
 def test_custom_template_overrides_the_builtin_one_by_name():
     builtin = [t("если - Если", "старый"), t("для - Для", "для")]
@@ -254,7 +255,7 @@ def test_offered_filters_by_prefix_and_context():
 
 
 def test_offered_outside_a_query_shows_both_code_contexts():
-    # Отличить "внутри метода" от "уровня модуля" в недописанном коде нельзя - показываем оба.
+    # In unfinished code "inside a method" and "module level" cannot be told apart - show both.
     items = [
         t("метод - Метод", contexts=(tpl.DECLARATION_CONTEXT,)),
         t("если - Если", contexts=(tpl.STATEMENT_CONTEXT,)),
@@ -264,15 +265,15 @@ def test_offered_outside_a_query_shows_both_code_contexts():
     assert [x.title for x in tpl.offered(items, contexts=(tpl.QUERY_CONTEXT,))] == ["ВЫБРАТЬ"]
 
 
-# --------------------------------------------------------------------------- встроенный набор
+# --------------------------------------------------------------------------- the built-in set
 
 def test_builtin_set_loads_and_is_not_empty():
     assert len(tpl.load_builtin()) > 0
 
 
 def test_builtin_names_are_unique():
-    # Имя - ключ слияния с пользовательским файлом: дубль сделал бы замещение непредсказуемым.
-    # Аббревиатуры при этом намеренно повторяются ("мет" ведёт ко всем видам метода).
+    # The name is the merge key with the user file: a duplicate would make overriding unpredictable.
+    # Abbreviations, however, repeat deliberately ("мет" leads to all the method flavors).
     seen: dict[str, str] = {}
     for x in tpl.load_builtin():
         assert x.name not in seen, f"имя '{x.name}' повторяется"
@@ -291,7 +292,7 @@ def test_builtin_templates_are_described_by_a_category_path():
 
 
 def _as_module(x: tpl.Template) -> str:
-    """Шаблон как исходник модуля: операторы обёрнуты методом, запросные - литералом."""
+    """The template as module source: statements wrapped in a method, query ones in a literal."""
     code = tpl.preview(x.pattern)
     if tpl.DECLARATION_CONTEXT in x.contexts:
         return code
@@ -312,10 +313,11 @@ def _parse_errors(text: str) -> list:
 
 @pytest.mark.needs_data
 def test_builtin_patterns_parse_as_xbsl():
-    """Развёрнутый шаблон обязан быть кодом, который принимает парсер платформы.
+    """An expanded template must be code the platform parser accepts.
 
-    Это единственная защита от идиомы из 1С:Предприятия ("Тогда", "КонецЕсли", "умолчание"
-    веткой выбора): шаблон вставляет такой код молча, и ошибка всплыла бы уже при компиляции.
+    This is the only defense against idioms from 1С:Предприятие ("Тогда", "КонецЕсли",
+    "умолчание" as a case branch): the template inserts such code silently, and the error
+    would only surface at compile time.
     """
     broken = []
     for x in tpl.load_builtin():
@@ -326,7 +328,7 @@ def test_builtin_patterns_parse_as_xbsl():
 
 @pytest.mark.needs_data
 def test_the_parse_check_actually_catches_a_broken_template():
-    # Контроль на ложный ноль: проверка выше зелёная не потому, что парсер молчит всегда.
+    # A false-zero control: the check above is green not because the parser is always silent.
     assert _parse_errors(_as_module(tpl.Template(
         name="плохой - Плохой", pattern='если ${Редактировать("Х")}', contexts=(tpl.STATEMENT_CONTEXT,),
     )))

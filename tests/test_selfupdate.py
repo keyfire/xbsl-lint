@@ -1,8 +1,9 @@
-"""Самообновление (`xbsl self-update`): распаковка колеса без сети (urllib замокан).
+"""Self-update (`xbsl self-update`): wheel extraction with no network (urllib is mocked).
 
-Команда обязана заменять и пакет xbsl, и пакет-псевдоним xbsllint из того же колеса,
-не трогая dist-info переходного метапакета xbsllint, и отказываться работать в
-editable-установке (там обновляет git, а распаковка испортила бы репозиторий).
+The command must replace both the xbsl package and the xbsllint alias package from the same
+wheel, without touching the dist-info of the transitional xbsllint metapackage, and refuse
+to run in an editable install (there git does the updating, and extraction would wreck the
+repository).
 """
 
 from __future__ import annotations
@@ -42,14 +43,14 @@ class _FakeResp:
 
 @pytest.fixture()
 def fake_site(tmp_path, monkeypatch):
-    """Поддельный site-packages со старой установкой xbsl + метапакетом xbsllint."""
+    """A fake site-packages with an old xbsl install + the xbsllint metapackage."""
     site = tmp_path / "site-packages"
     (site / "xbsl").mkdir(parents=True)
     (site / "xbsl" / "__init__.py").write_text('__version__ = "0.0.1"\n', encoding="utf-8")
     (site / "xbsllint").mkdir()
     (site / "xbsllint" / "__init__.py").write_text("import xbsl\n", encoding="utf-8")
     (site / "xbsl-0.0.1.dist-info").mkdir()
-    # dist-info переходного МЕТАпакета xbsllint – чужая поставка, не трогается.
+    # the dist-info of the transitional xbsllint METApackage is a foreign delivery, left alone.
     (site / "xbsllint-0.16.0.dist-info").mkdir()
     monkeypatch.setattr(selfupdate, "_site_packages", lambda: site)
     return site
@@ -66,10 +67,10 @@ def test_self_update_extracts_wheel(fake_site, monkeypatch):
     assert new == "9.9.9" and old == xbsl.__version__
     text = (fake_site / "xbsl" / "__init__.py").read_text(encoding="utf-8")
     assert '__version__ = "9.9.9"' in text
-    assert (fake_site / "xbsllint" / "__init__.py").is_file()  # псевдоним заменён вместе с пакетом
-    assert not (fake_site / "xbsl-0.0.1.dist-info").exists()  # старый dist-info снесён
+    assert (fake_site / "xbsllint" / "__init__.py").is_file()  # the alias is replaced with the package
+    assert not (fake_site / "xbsl-0.0.1.dist-info").exists()  # the old dist-info is removed
     assert (fake_site / "xbsl-9.9.9.dist-info").exists()
-    assert (fake_site / "xbsllint-0.16.0.dist-info").exists()  # метапакет не тронут
+    assert (fake_site / "xbsllint-0.16.0.dist-info").exists()  # the metapackage is untouched
 
 
 def test_self_update_noop_when_current(fake_site, monkeypatch):
@@ -84,7 +85,7 @@ def test_self_update_noop_when_current(fake_site, monkeypatch):
 
 
 def test_self_update_refuses_editable(monkeypatch, tmp_path):
-    # Каталог пакета не site-packages – значит editable из репозитория.
+    # The package directory is not site-packages - so it is an editable install from the repo.
     monkeypatch.setattr(selfupdate, "_site_packages", lambda: tmp_path / "xbsl-lint-public")
     with pytest.raises(selfupdate.SelfUpdateError, match="editable"):
         selfupdate.self_update(log=lambda *a: None)

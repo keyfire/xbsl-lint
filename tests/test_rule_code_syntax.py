@@ -1,7 +1,8 @@
-"""Базовый синтаксис (xbsl/rules/code_syntax.py): параметры без типа и заголовок цикла.
+"""Basic syntax (xbsl/rules/code_syntax.py): untyped parameters and the loop header.
 
-Правила намеренно узкие: доказательство их безопасности – молчание на формах, которые
-платформа допускает (параметр без типа, но со значением по умолчанию; оба вида цикла `для`).
+The rules are deliberately narrow: the proof of their safety is silence on the forms the
+platform allows (a parameter without a type but with a default value; both kinds of the
+`для` loop).
 """
 
 import pytest
@@ -17,7 +18,7 @@ def _diags(code: str, rule: str) -> list:
 pytestmark = pytest.mark.needs_data
 
 
-# --- параметр без типа --------------------------------------------------------------------
+# --- untyped parameter --------------------------------------------------------------------
 
 
 def test_param_without_type_and_default_is_error():
@@ -28,13 +29,13 @@ def test_param_without_type_and_default_is_error():
 
 
 def test_param_without_type_but_with_default_is_allowed():
-    # Тип выводится из значения по умолчанию – так пишет рабочий код.
+    # The type is inferred from the default value - this is how real-world code is written.
     code = "метод Тест(Имя: Строка, ЭтоЛК = Истина, Флаг=Ложь)\n    возврат\n;\n"
     assert _diags(code, "code/param-type-required") == []
 
 
 def test_typed_params_and_keyword_named_params_are_quiet():
-    # Имя параметра может совпадать с ключевым словом: `Запрос`, `Метод`.
+    # A parameter name may coincide with a keyword: `Запрос`, `Метод`.
     code = (
         "метод Пинг(Запрос: HttpСервисЗапрос)\n    возврат\n;\n\n"
         "метод Вызов(Метод: Строка, Тело: Строка = \"\"): Строка\n    возврат Метод\n;\n"
@@ -47,7 +48,7 @@ def test_constructor_params_checked_too():
     assert len(diags) == 1
 
 
-# --- заголовок цикла ----------------------------------------------------------------------
+# --- loop header --------------------------------------------------------------------------
 
 
 def test_for_in_and_for_counter_are_quiet():
@@ -82,7 +83,7 @@ def test_for_without_in_is_error():
 
 
 def test_query_dsl_for_is_not_touched():
-    # Внутри Запрос{...} слова языка запросов не разбираются как цикл.
+    # Inside Запрос{...} the query-language words are not parsed as a loop.
     code = (
         "метод Тест()\n"
         "    знч Р = Запрос{ ВЫБРАТЬ Т.Ссылка ИЗ Товары КАК Т }\n"

@@ -1,37 +1,36 @@
-// Чистая логика навигации (без импорта vscode), чтобы её можно было покрыть модульными тестами
-// на обычном Node: модель индекса проекта, который строит линтер, разбор контекста строки
-// (регулярные выражения, без полноценного парсера) и поиск по индексу для перехода к определению
-// и дополнения.
+// Pure navigation logic (no vscode import) so it can be covered by unit tests on plain Node:
+// the model of the project index built by the linter, line context parsing (regular expressions,
+// no full-blown parser) and index lookups for go-to-definition and completion.
 //
-// Схема индекса (зафиксирована): { meta: {root, version}, objects: [...], methods: [...],
-// components: [...] }. Все пути – POSIX и относительно meta.root; строки нумеруются с единицы;
-// "values" заполняется только у перечислений.
+// Index schema (fixed): { meta: {root, version}, objects: [...], methods: [...],
+// components: [...] }. All paths are POSIX and relative to meta.root; lines are numbered from one;
+// "values" is filled only for enumerations.
 
 export interface IndexTabular {
   name: string;
-  line: number; // нумерация с единицы, внутри yaml объекта
+  line: number; // one-based, inside the object's yaml
 }
 
 export interface IndexLocalType {
   name: string;
-  path: string; // POSIX, относительно meta.root
+  path: string; // POSIX, relative to meta.root
   line: number;
 }
 
 export interface IndexValue {
   name: string;
-  line: number; // нумерация с единицы, внутри yaml перечисления
+  line: number; // one-based, inside the enumeration's yaml
 }
 
 export interface IndexObject {
   name: string;
   kind: string; // "Справочник" | "Перечисление" | "РегистрСведений" | ...
-  path: string; // yaml объекта
+  path: string; // the object's yaml
   line: number;
   tabular: IndexTabular[];
   local_types: IndexLocalType[];
   family: string[]; // "Ссылка", "Объект", ...
-  values: IndexValue[]; // только у перечислений
+  values: IndexValue[]; // enumerations only
 }
 
 export interface IndexMethod {
@@ -46,17 +45,17 @@ export interface IndexComponent {
   form: string;
   name: string;
   type: string;
-  path: string; // yaml формы
+  path: string; // the form's yaml
   line: number;
 }
 
 export interface IndexReference {
-  name: string; // имя используемого символа
-  qualifier: string; // идентификатор перед точкой ("" – корень цепочки или голый вызов)
-  module: string; // модуль, в котором встречено использование (стем файла)
-  path: string; // POSIX, относительно meta.root
-  line: number; // нумерация с единицы
-  col: number; // нумерация с нуля (для диапазона в редакторе)
+  name: string; // name of the used symbol
+  qualifier: string; // identifier before the dot ("" - chain root or a bare call)
+  module: string; // module where the usage occurs (file stem)
+  path: string; // POSIX, relative to meta.root
+  line: number; // one-based
+  col: number; // zero-based (for the range in the editor)
 }
 
 export interface ProjectIndex {
@@ -67,9 +66,9 @@ export interface ProjectIndex {
   references: IndexReference[];
 }
 
-// Точное написание команды индексации в CLI со стороны линтера ещё может измениться.
-// Оно задано ТОЛЬКО здесь, упорядоченным списком кандидатов: загрузчик пробует их по очереди,
-// и если ни один не дал корректного индекса, навигация просто молчит.
+// The exact spelling of the linter-side CLI indexing command may still change.
+// It is defined ONLY here, as an ordered list of candidates: the loader tries them in turn,
+// and if none produced a valid index, navigation just stays silent.
 export const INDEX_COMMAND_VARIANTS: ReadonlyArray<(root: string) => string[]> = [
   (root) => ["index", root],
   (root) => ["--index", root],
@@ -89,8 +88,8 @@ function named(entry: unknown): entry is { name: string } {
   return !!e && typeof e.name === "string" && e.name.length > 0;
 }
 
-// Строги к оболочке (чтобы отчёт линтера или страница ошибки были отвергнуты и вызывающий
-// перешёл к следующему варианту команды) и снисходительны к отдельным записям.
+// Strict about the envelope (so that a linter report or an error page is rejected and the caller
+// moves on to the next command variant) and lenient about individual entries.
 export function parseIndex(text: string): ProjectIndex {
   const data = JSON.parse(text) as {
     meta?: { root?: unknown; version?: unknown };
@@ -147,7 +146,7 @@ export function parseIndex(text: string): ProjectIndex {
         line: num(raw.line),
       };
     });
-  // references необязательны: старый линтер их не выдаёт – тогда "найти использования" молчит.
+  // references are optional: an old linter does not emit them - then "find usages" stays silent.
   const references: IndexReference[] = list((data as { references?: unknown }).references)
     .filter(named)
     .map((r) => {
@@ -179,7 +178,7 @@ function push<T>(map: Map<string, T[]>, key: string, value: T): void {
   }
 }
 
-// Заранее посчитанные структуры поиска по разобранному индексу.
+// Precomputed lookup structures over the parsed index.
 export class IndexLookup {
   readonly index: ProjectIndex;
   private readonly objectMap = new Map<string, IndexObject>();
@@ -223,8 +222,8 @@ export class IndexLookup {
     return this.methodsByModule(module).find((m) => m.name === name);
   }
 
-  // Метод по пути файла модуля (POSIX относительно meta.root) – надёжный способ сказать
-  // "в текущем файле", не зависящий от того, как выводится имя модуля.
+  // A method by its module file path (POSIX relative to meta.root) - a reliable way to say
+  // "in the current file" that does not depend on how the module name is derived.
   methodInFile(path: string, name: string): IndexMethod | undefined {
     return (this.fileMethods.get(path) ?? []).find((m) => m.name === name);
   }
@@ -243,21 +242,21 @@ export class IndexLookup {
 }
 
 // ---------------------------------------------------------------------------
-// Разбор контекста строки
+// Line context parsing
 // ---------------------------------------------------------------------------
 
 const IDENT = "[A-Za-zА-Яа-яЁё_][A-Za-z0-9А-Яа-яЁё_]*";
-// Символ, который не может непосредственно предшествовать распознаваемой цепочке
-// идентификаторов (иначе мы смотрим на середину чего-то большего).
+// A character that cannot immediately precede a recognized identifier chain
+// (otherwise we are looking at the middle of something bigger).
 const NOT_BEFORE = "[^.0-9A-Za-zА-Яа-яЁё_]";
 
 export interface ChainHit {
-  parts: string[]; // цепочка идентификаторов через точку, покрывающая позицию
-  at: number; // номер сегмента под курсором
+  parts: string[]; // dot-separated identifier chain covering the position
+  at: number; // index of the segment under the cursor
 }
 
-// Находит цепочку идентификаторов через точку, покрывающую `character` (нумерация с нуля), и
-// сегмент, на котором стоит курсор. Возвращает null, если позиция не на идентификаторе.
+// Finds the dot-separated identifier chain covering `character` (zero-based) and the segment
+// the cursor is on. Returns null if the position is not on an identifier.
 export function chainAt(lineText: string, character: number): ChainHit | null {
   const re = new RegExp(`${IDENT}(?:\\.${IDENT})*`, "g");
   for (let m = re.exec(lineText); m; m = re.exec(lineText)) {
@@ -276,7 +275,7 @@ export function chainAt(lineText: string, character: number): ChainHit | null {
       if (character <= segmentEnd) {
         return { parts, at: i };
       }
-      offset = segmentEnd + 1; // пропускаем точку
+      offset = segmentEnd + 1; // skip the dot
     }
     return { parts, at: parts.length - 1 };
   }
@@ -284,20 +283,20 @@ export function chainAt(lineText: string, character: number): ChainHit | null {
 }
 
 // ---------------------------------------------------------------------------
-// Переход к определению
+// Go to definition
 // ---------------------------------------------------------------------------
 
 export interface Target {
-  path: string; // POSIX, относительно meta.root
-  line: number; // нумерация с единицы
+  path: string; // POSIX, relative to meta.root
+  line: number; // one-based
 }
 
 export interface DefinitionQuery {
   languageId: string; // "xbsl" | "yaml"
   lineText: string;
-  character: number; // колонка курсора, нумерация с нуля
-  fileStem: string; // имя файла без расширения ("ФормаСписка")
-  filePath?: string; // путь текущего файла (POSIX относительно meta.root), если известен
+  character: number; // cursor column, zero-based
+  fileStem: string; // file name without the extension ("ФормаСписка")
+  filePath?: string; // path of the current file (POSIX relative to meta.root), when known
 }
 
 interface HandlerValue {
@@ -306,7 +305,7 @@ interface HandlerValue {
   end: number;
 }
 
-// Строка обработчика в yaml: `Обработчик: ИмяМетода`.
+// A handler line in yaml: `Обработчик: ИмяМетода`.
 function matchHandlerLine(lineText: string): HandlerValue | null {
   const m = new RegExp(`^(\\s*Обработчик\\s*:\\s*)(${IDENT})\\s*$`).exec(lineText);
   if (!m) {
@@ -322,23 +321,23 @@ function pairedModulePath(filePath: string | undefined): string | undefined {
   return filePath.replace(/\.yaml$/i, ".xbsl");
 }
 
-// Вид разрешённого символа. Использования (resolveReferences) поддержаны для method/object/component.
+// Kind of a resolved symbol. Usages (resolveReferences) are supported for method/object/component.
 export type SymbolKind = "object" | "method" | "component" | "tabular" | "localType" | "enumValue";
 
 export interface SymbolDescriptor {
   kind: SymbolKind;
   name: string;
-  module: string; // у метода – его модуль, иначе ""
-  form: string; // у компонента – его форма, иначе ""
-  path: string; // место определения (POSIX относительно meta.root)
-  line: number; // нумерация с единицы
+  module: string; // for a method - its module, otherwise ""
+  form: string; // for a component - its form, otherwise ""
+  path: string; // definition site (POSIX relative to meta.root)
+  line: number; // one-based
 }
 
-// Разрешает символ под позицией в описатель (что это и где определено) или null, если контекст не
-// распознан – лучше промолчать, чем прыгнуть не туда. Общая основа перехода к определению и поиска
-// использований.
+// Resolves the symbol under the position into a descriptor (what it is and where it is defined),
+// or null when the context is not recognized - better to stay silent than jump to the wrong place.
+// The shared foundation of go-to-definition and find-usages.
 export function resolveSymbol(lookup: IndexLookup, q: DefinitionQuery): SymbolDescriptor | null {
-  // yaml: значение `Обработчик:` – это метод парного модуля .xbsl.
+  // yaml: the value of `Обработчик:` is a method of the paired .xbsl module.
   if (q.languageId === "yaml") {
     const handler = matchHandlerLine(q.lineText);
     if (handler) {
@@ -361,12 +360,12 @@ export function resolveSymbol(lookup: IndexLookup, q: DefinitionQuery): SymbolDe
   const word = hit.parts[hit.at];
 
   if (hit.at === 0) {
-    // Одиночное слово или корень цепочки, называющий объект проекта -> его yaml.
+    // A single word or a chain root naming a project object -> its yaml.
     const obj = lookup.objectByName(word);
     if (obj) {
       return { kind: "object", name: word, module: "", form: "", path: obj.path, line: obj.line };
     }
-    // Одиночное имя метода внутри его же модуля.
+    // A bare method name inside its own module.
     if (hit.parts.length === 1 && q.languageId === "xbsl") {
       const method =
         (q.filePath ? lookup.methodInFile(q.filePath, word) : undefined) ?? lookup.method(q.fileStem, word);
@@ -377,14 +376,14 @@ export function resolveSymbol(lookup: IndexLookup, q: DefinitionQuery): SymbolDe
     return null;
   }
 
-  // Компоненты.X -> узел компонента в yaml текущей формы.
+  // Компоненты.X -> the component node in the current form's yaml.
   if (hit.at === 1 && hit.parts[0] === "Компоненты") {
     const component = lookup.component(q.fileStem, word);
     return component
       ? { kind: "component", name: word, module: "", form: q.fileStem, path: component.path, line: component.line }
       : null;
   }
-  // Компоненты.X.Метод -> метод модуля X.
+  // Компоненты.X.Метод -> a method of module X.
   if (hit.at === 2 && hit.parts[0] === "Компоненты") {
     const method = lookup.method(hit.parts[1], word);
     return method
@@ -392,7 +391,7 @@ export function resolveSymbol(lookup: IndexLookup, q: DefinitionQuery): SymbolDe
       : null;
   }
   if (hit.at !== 1) {
-    return null; // более глубокие цепочки требуют вывода типов – за рамками этого разбора
+    return null; // deeper chains require type inference - beyond the scope of this parsing
   }
 
   const qualifier = hit.parts[hit.at - 1];
@@ -411,33 +410,33 @@ export function resolveSymbol(lookup: IndexLookup, q: DefinitionQuery): SymbolDe
       return { kind: "enumValue", name: word, module: "", form: "", path: obj.path, line: value.line };
     }
   }
-  // Модуль.Метод (покрывает модули менеджера, чьё имя совпадает с именем объекта).
+  // Модуль.Метод (covers manager modules whose name matches an object name).
   const method = lookup.method(qualifier, word);
   return method
     ? { kind: "method", name: word, module: method.module, form: "", path: method.path, line: method.line }
     : null;
 }
 
-// Определяет цель перехода для заданной позиции или возвращает null, если контекст не распознан.
+// Determines the navigation target for the given position, or returns null when the context is not recognized.
 export function resolveDefinition(lookup: IndexLookup, q: DefinitionQuery): Target | null {
   const d = resolveSymbol(lookup, q);
   return d ? { path: d.path, line: d.line } : null;
 }
 
 export interface RefLocation {
-  path: string; // POSIX, относительно meta.root
-  line: number; // нумерация с единицы
-  col: number; // нумерация с нуля
-  length: number; // длина выделяемого имени (0 – для строки объявления)
+  path: string; // POSIX, relative to meta.root
+  line: number; // one-based
+  col: number; // zero-based
+  length: number; // length of the highlighted name (0 - for the declaration line)
 }
 
 export interface ReferencesQuery extends DefinitionQuery {
   includeDeclaration?: boolean;
 }
 
-// Все использования символа под позицией. Поддержаны методы (вызовы в своём модуле, `Модуль.Метод`,
-// `Компоненты.Модуль.Метод`, yaml-обработчики), объекты (корень цепочки) и компоненты
-// (`Компоненты.Имя`). Сайт объявления исключается; при includeDeclaration добавляется отдельно.
+// All usages of the symbol under the position. Supported: methods (calls within their own module,
+// `Модуль.Метод`, `Компоненты.Модуль.Метод`, yaml handlers), objects (chain root) and components
+// (`Компоненты.Имя`). The declaration site is excluded; with includeDeclaration it is added separately.
 export function resolveReferences(lookup: IndexLookup, q: ReferencesQuery): RefLocation[] {
   const d = resolveSymbol(lookup, q);
   if (!d) {
@@ -471,12 +470,12 @@ export function resolveReferences(lookup: IndexLookup, q: ReferencesQuery): RefL
     return [];
   }
 
-  // Исключаем сайт объявления из использований; при необходимости добавляем его отдельной записью.
+  // Exclude the declaration site from the usages; when requested, add it back as a separate entry.
   let out = hits.filter((h) => !(h.path === d.path && h.line === d.line));
   if (q.includeDeclaration) {
     out.push({ path: d.path, line: d.line, col: 0, length: 0 });
   }
-  // Уникализируем и упорядочиваем по (path, line, col).
+  // Deduplicate and order by (path, line, col).
   const seen = new Set<string>();
   const uniq: RefLocation[] = [];
   for (const h of out.sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line || a.col - b.col)) {
@@ -490,7 +489,7 @@ export function resolveReferences(lookup: IndexLookup, q: ReferencesQuery): RefL
 }
 
 // ---------------------------------------------------------------------------
-// Дополнение
+// Completion
 // ---------------------------------------------------------------------------
 
 export type CompletionKind =
@@ -512,22 +511,23 @@ export interface CompletionEntry {
 
 export interface CompletionQuery {
   languageId: string; // "xbsl" | "yaml"
-  linePrefix: string; // текст строки до курсора
+  linePrefix: string; // line text up to the cursor
   fileStem: string;
-  textBefore?: string; // текст документа до курсора – для распознавания контекста запроса
-  attributesOf?: (objectName: string) => string[] | undefined; // реквизиты объекта из yaml (инъекция)
+  textBefore?: string; // document text up to the cursor - to recognize a query context
+  attributesOf?: (objectName: string) => string[] | undefined; // object attributes from yaml (injected)
 }
 
-// Стандартные (выбираемые в запросе) поля по виду объекта; реквизиты и табличные части добавляются
-// отдельно (реквизиты знает вызывающий – через attributesOf, они не входят в индекс).
+// Standard (selectable in a query) fields by object kind; attributes and tabular sections are added
+// separately (attributes are known to the caller - via attributesOf, they are not in the index).
 const STANDARD_QUERY_FIELDS: Record<string, string[]> = {
   Справочник: ["Ссылка", "Код", "Наименование", "ПометкаУдаления", "Предопределённый"],
   Документ: ["Ссылка", "Номер", "Дата", "Проведён", "ПометкаУдаления"],
 };
 
-// Курсор внутри блока запроса? Берём последнее ключевое слово запроса до курсора и считаем баланс
-// скобок после него. Ключевое слово двуязычно (Запрос / Query); это эвристика для обычного режима
-// (без лексера) – в LSP-режиме контекст запроса определяет лексер линтера (canonical QUERY).
+// Is the cursor inside a query block? Take the last query keyword before the cursor and count the
+// brace balance after it. The keyword is bilingual (Запрос / Query); this is a heuristic for the
+// plain mode (no lexer) - in the LSP mode the query context is determined by the linter's lexer
+// (canonical QUERY).
 export function isInQuery(textBefore: string): boolean {
   const re = /(?:Запрос|Query)\s*\{/g;
   let open = -1;
@@ -552,8 +552,8 @@ export function isInQuery(textBefore: string): boolean {
   return true;
 }
 
-// Поля таблицы для дополнения в запросе: стандартные поля вида + реквизиты + табличные части.
-// Дубли по имени убираем (реквизит может дублировать стандартное имя, напр. Наименование).
+// Table fields for completion inside a query: standard fields of the kind + attributes + tabular
+// sections. Name duplicates are removed (an attribute may duplicate a standard name, e.g. Наименование).
 export function queryFieldEntries(kind: string, attributes: string[], tabular: string[]): CompletionEntry[] {
   const seen = new Set<string>();
   const entries: CompletionEntry[] = [];
@@ -617,17 +617,17 @@ function objectMemberEntries(lookup: IndexLookup, name: string): CompletionEntry
   return entries;
 }
 
-// Возвращает варианты дополнения для распознанного контекста или null, если позиция нам
-// непонятна (тогда работают встроенные подсказки по словам).
+// Returns completion entries for a recognized context, or null when the position is not understood
+// (then the built-in word-based suggestions take over).
 export function resolveCompletions(lookup: IndexLookup, q: CompletionQuery): CompletionEntry[] | null {
   const prefix = q.linePrefix;
 
-  // Компоненты.X.<...> -> методы модуля X.
+  // Компоненты.X.<...> -> methods of module X.
   let m = matchEnd(prefix, `Компоненты\\.(${IDENT})\\.(?:${IDENT})?`);
   if (m) {
     return lookup.methodsByModule(m[1]).map(methodEntry);
   }
-  // Компоненты.<...> -> компоненты текущей формы.
+  // Компоненты.<...> -> components of the current form.
   m = matchEnd(prefix, `Компоненты\\.(?:${IDENT})?`);
   if (m) {
     return lookup.componentsByForm(q.fileStem).map((c) => ({
@@ -636,22 +636,23 @@ export function resolveCompletions(lookup: IndexLookup, q: CompletionQuery): Com
       detail: c.type,
     }));
   }
-  // <Объект>.<...> / <Модуль>.<...> -> семейство типов + табличные части + локальные типы
-  // (+ методы модуля); для перечисления – его значения.
+  // <Объект>.<...> / <Модуль>.<...> -> the type family + tabular sections + local types
+  // (+ module methods); for an enumeration - its values.
   m = matchEnd(prefix, `(${IDENT})\\.(?:${IDENT})?`);
   if (m) {
-    // В блоке Запрос{...} после <Таблица>. – поля таблицы (стандартные + реквизиты + ТЧ), а не члены
-    // объекта/менеджера. Реквизиты подаёт вызывающий (attributesOf), их нет в индексе.
+    // Inside a Запрос{...} block after <Таблица>. - table fields (standard + attributes + tabular
+    // sections), not object/manager members. Attributes are supplied by the caller (attributesOf),
+    // they are not in the index.
     if (q.textBefore && isInQuery(q.textBefore)) {
       const table = lookup.objectByName(m[1]);
       if (!table) {
-        return null; // неизвестная таблица – молчим (не показываем члены объекта)
+        return null; // unknown table - stay silent (do not show object members)
       }
       return queryFieldEntries(table.kind, q.attributesOf?.(m[1]) ?? [], table.tabular.map((t) => t.name));
     }
     return objectMemberEntries(lookup, m[1]);
   }
-  // yaml: `Тип: <...>` -> имена объектов проекта.
+  // yaml: `Тип: <...>` -> project object names.
   if (q.languageId === "yaml" && new RegExp(`(?:^|\\s)Тип\\s*:\\s*(?:${IDENT})?$`).test(prefix)) {
     return lookup.objects().map((o) => ({
       label: o.name,

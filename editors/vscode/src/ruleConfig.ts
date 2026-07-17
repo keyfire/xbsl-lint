@@ -1,11 +1,11 @@
-// Переопределения уровней находок из двух настроек. xbsl.groups.<группа> – выпадающие
-// списки в UI настроек по типам находок (default = собственные уровни правил, off =
-// выключить группу, иначе единый уровень). xbsl.rules – тонкая надстройка: ключ –
-// идентификатор правила ("whitespace/trailing") или целая группа ("style"), значение –
-// off | error | warning | info | hint. "off" скрывает находки и исключает правило из
-// прогона, уровень заменяет собственную важность правила. Приоритет: точное имя правила >
-// группа в xbsl.rules > xbsl.groups. Плюс действие "Настроить правило ..." на каждой
-// находке – управление не отходя от строки.
+// Finding level overrides from two settings. xbsl.groups.<group> - dropdowns in the
+// settings UI by finding type (default = the rules' own levels, off = disable the group,
+// otherwise a single level). xbsl.rules - a fine-grained overlay: the key is a rule id
+// ("whitespace/trailing") or a whole group ("style"), the value is
+// off | error | warning | info | hint. "off" hides the findings and excludes the rule from
+// the run, a level replaces the rule's own severity. Priority: exact rule name >
+// group in xbsl.rules > xbsl.groups. Plus a "Configure rule ..." action on every
+// finding - management without leaving the line.
 
 import * as vscode from "vscode";
 import { isXbslSource } from "./report";
@@ -21,15 +21,16 @@ function rulesMap(resource?: vscode.Uri): Record<string, unknown> {
   return vscode.workspace.getConfiguration("xbsl", resource ?? null).get<Record<string, unknown>>("rules") ?? {};
 }
 
-// Значения xbsl.groups.* одним объектом {группа: уровень}. Значение "default" не проходит
-// isLevel и потому не считается переопределением. Ключи вне объявленных в манифесте тоже
-// читаются – группа правила-плагина, вписанная в settings.json руками, работает так же.
+// xbsl.groups.* values as one {group: level} object. The "default" value does not pass
+// isLevel and is therefore not counted as an override. Keys beyond those declared in the
+// manifest are read too - a plugin rule's group written into settings.json by hand works
+// the same way.
 function groupsMap(resource?: vscode.Uri): Record<string, unknown> {
   return vscode.workspace.getConfiguration("xbsl", resource ?? null).get<Record<string, unknown>>("groups") ?? {};
 }
 
-// Переопределение для правила: точный ключ xbsl.rules, затем группа (часть до "/") –
-// сперва в xbsl.rules, затем в настройках групп.
+// Override for a rule: the exact xbsl.rules key, then the group (the part before "/") -
+// first in xbsl.rules, then in the group settings.
 export function ruleOverride(rule: string, resource?: vscode.Uri): RuleLevel | undefined {
   const map = rulesMap(resource);
   const exact = map[rule];
@@ -64,9 +65,9 @@ export function severityFor(level: Exclude<RuleLevel, "off">): vscode.Diagnostic
   }
 }
 
-// Правила и группы со значением off дополняют список ignore линтера – выключенное не
-// запускается. Группа из xbsl.groups не попадает в ignore, если xbsl.rules задал ей
-// явный уровень: та настройка сильнее, находки группы должны остаться.
+// Rules and groups set to off extend the linter's ignore list - what is disabled does not
+// run. A group from xbsl.groups does not go into ignore when xbsl.rules gave it an
+// explicit level: that setting is stronger, the group's findings must stay.
 export function mergeOffRules(ignore: string | undefined, resource?: vscode.Uri): string | undefined {
   const rules = rulesMap(resource);
   const off = Object.entries(rules)
@@ -94,7 +95,7 @@ function ruleOf(diag: vscode.Diagnostic): string | undefined {
   return undefined;
 }
 
-// Применяет переопределение к готовой диагностике (LSP-мидлвара): null = скрыть.
+// Applies an override to a ready diagnostic (LSP middleware): null = hide.
 export function applyOverride(diag: vscode.Diagnostic, resource?: vscode.Uri): vscode.Diagnostic | null {
   const rule = ruleOf(diag);
   if (!rule) {
@@ -113,7 +114,7 @@ export function applyOverride(diag: vscode.Diagnostic, resource?: vscode.Uri): v
 
 const CONFIGURE_COMMAND = "xbsl.configureRule";
 
-// Пункт "Настроить правило ..." на каждой находке xbsl (поверх quick-fix-правок).
+// A "Configure rule ..." entry on every xbsl finding (on top of quick-fix edits).
 class ConfigureRuleProvider implements vscode.CodeActionProvider {
   provideCodeActions(
     document: vscode.TextDocument,
@@ -201,8 +202,8 @@ async function configureRule(rule: string, resource?: vscode.Uri): Promise<void>
       : vscode.l10n.t('XBSL: rule "{0}" is set to {1}', rule, picked.value),
     4000
   );
-  // Перепроверка тем же привычным механизмом: в CLI-режиме это resetAndRelint,
-  // в LSP-режиме – перезапуск сервера (подхватит и off-правила в --ignore).
+  // Re-check via the same familiar mechanism: in CLI mode this is resetAndRelint,
+  // in LSP mode - a server restart (it also picks up off rules in --ignore).
   void vscode.commands.executeCommand("xbsl.restartLinter");
 }
 

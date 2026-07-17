@@ -1,7 +1,7 @@
-"""Поверхности скаффолдинга: MCP-инструменты meta_*, CLI-подкоманды и LSP-методы xbsl/meta*.
+"""Scaffolding surfaces: meta_* MCP tools, CLI subcommands and xbsl/meta* LSP methods.
 
-MCP грузится через подставной FastMCP (как в test_mcp.py) – extra [mcp] не нужен;
-LSP-часть проверяет обработчики напрямую, если установлен pygls, иначе пропускается.
+MCP is loaded via a stub FastMCP (as in test_mcp.py) - the [mcp] extra is not needed;
+the LSP part checks the handlers directly when pygls is installed, otherwise it is skipped.
 """
 
 import importlib
@@ -132,7 +132,7 @@ def _server_features():
     from xbsl import lsp as lsp_module
 
     server = lsp_module._make_server()
-    # У pygls разных версий реестр обработчиков лежит в fm.features протокола.
+    # Across pygls versions the handler registry lives in the protocol's fm.features.
     fm = getattr(server.lsp, "fm", None) or getattr(server.lsp, "_features", None)
     features = getattr(fm, "features", fm)
     return server, features
@@ -159,7 +159,7 @@ def test_lsp_meta_capabilities_and_new_object(tmp_path):
     files = result["files"]
     assert files[0]["path"].endswith("Товары.yaml")
     assert files[0]["content"].startswith("ВидЭлемента: Справочник")
-    # LSP только вычисляет: на диск ничего не записано – применяет редактор.
+    # LSP only computes: nothing is written to disk - the editor applies the changes.
     assert not (tmp_path / "Товары.yaml").exists()
 
 
@@ -182,7 +182,7 @@ def test_mcp_meta_rename_object(mcp_module, tmp_path):
         {"from": str(tmp_path / "Склады.yaml"), "to": str(tmp_path / "Хранилища.yaml")}
     ]
     assert all("content" not in f for f in plan["files"])
-    assert (tmp_path / "Склады.yaml").is_file()  # dry_run ничего не пишет
+    assert (tmp_path / "Склады.yaml").is_file()  # dry_run writes nothing
 
     res = mcp_module.meta_rename_object(str(tmp_path), "Склады", "Хранилища")
     assert res["renames"] and "lint" in res
@@ -280,7 +280,7 @@ def test_cli_set_access(capsys, tmp_path):
     assert code == 2 and "ПРАВО=СПОСОБ" in err["error"]
 
 
-@pytest.mark.needs_data  # линт записанного Проект.xbsl токенизирует - нужен language.json
+@pytest.mark.needs_data  # linting the written Проект.xbsl tokenizes it - needs language.json
 def test_mcp_meta_add_dependency(mcp_module, tmp_path):
     mcp_module.meta_new_project(str(tmp_path), "vendor", "Приложение")
     res = mcp_module.meta_add_dependency(str(tmp_path), "acme", "CurrencyConverter", "9.0.2")

@@ -1,8 +1,8 @@
-"""Точки расширения: внешние правила и внешний корень данных.
+"""Extension points: external rules and an external data root.
 
-Тесты не зависят от сгенерированных данных Элемента – корни собираются во временном каталоге.
-Окружение чистится фикстурой: иначе прогон с выставленным XBSL_DATA_DIR ломал бы проверки
-приоритетов.
+The tests do not depend on the generated Element data - the roots are built in a temporary
+directory. The environment is cleaned by a fixture: otherwise a run with XBSL_DATA_DIR set
+would break the priority checks.
 """
 
 import json
@@ -21,7 +21,7 @@ def _clean_env(monkeypatch):
     dataset.set_data_root(None)
     yield
     dataset.set_data_root(None)
-    i18n.set_lang("ru")  # cli.main(--where) сбрасывает язык на locale – вернуть для других модулей
+    i18n.set_lang("ru")  # cli.main(--where) resets the language to the locale - restore it for other modules
 
 
 def _make_root(path: Path, version="1.0.0", keyword="ПЕРВЫЙ") -> Path:
@@ -36,7 +36,7 @@ def _make_root(path: Path, version="1.0.0", keyword="ПЕРВЫЙ") -> Path:
 
 
 class _StubEP:
-    """Точка расширения с готовым объектом – без установки настоящего пакета."""
+    """An entry point with a pre-built object - no real package installation needed."""
 
     value = "стаб"
 
@@ -56,7 +56,7 @@ def _fake_entry_points(*eps):
     return fake
 
 
-# --- Корень данных -------------------------------------------------------------------
+# --- Data root -----------------------------------------------------------------------
 
 def test_bundled_root_by_default(monkeypatch):
     monkeypatch.setattr(plugins, "data_roots", list)
@@ -89,7 +89,7 @@ def test_plugin_data_root_without_index_ignored(tmp_path, monkeypatch):
 
 
 def test_load_json_isolated_per_root(tmp_path, monkeypatch):
-    """Смена корня без явного сброса кэша не должна отдавать данные прежнего корня."""
+    """Switching the root without an explicit cache reset must not serve the old root's data."""
     first = _make_root(tmp_path / "first", keyword="ПЕРВЫЙ")
     second = _make_root(tmp_path / "second", keyword="ВТОРОЙ")
 
@@ -106,10 +106,10 @@ def test_missing_index_names_the_root(tmp_path, monkeypatch):
         dataset.default_version()
 
 
-# --- Загрузка точек расширения -------------------------------------------------------
+# --- Loading of extension points -----------------------------------------------------
 
 def test_rule_plugin_is_imported(monkeypatch):
-    # Значение точки – модуль; его импорт и есть регистрация правил.
+    # The entry point value is a module; importing it is what registers the rules.
     ep = EntryPoint("модуль-правил", "json", plugins.RULES_GROUP)
     monkeypatch.setattr(plugins, "entry_points", _fake_entry_points(ep))
     assert plugins.load_rules() == ["модуль-правил"]
@@ -146,10 +146,10 @@ def test_disable_flag_parsing(monkeypatch, value, expected):
 
 
 def test_data_root_source_reports_origin(tmp_path, monkeypatch):
-    """data_root_source различает встроенные данные, плагин и --data-dir (для --where).
+    """data_root_source tells apart bundled data, a plugin and --data-dir (for --where).
 
-    Точки расширения подменяются фейком: на машине с установленным пакетом данных
-    настоящий плагин перебивал бы встроенные данные, и проверка зависела бы от окружения.
+    Entry points are replaced with a fake: on a machine with the data package installed
+    the real plugin would override the bundled data, making the check environment-dependent.
     """
     monkeypatch.setattr(plugins, "entry_points", _fake_entry_points())
     assert dataset.data_root_source() == "встроенные данные пакета"
@@ -163,7 +163,7 @@ def test_data_root_source_reports_origin(tmp_path, monkeypatch):
 
 
 def test_cli_where_shows_root(tmp_path, capsys):
-    """xbsl --where печатает корень данных, источник и версию."""
+    """xbsl --where prints the data root, its source and the version."""
     from xbsl import cli
 
     root = _make_root(tmp_path)
@@ -172,4 +172,4 @@ def test_cli_where_shows_root(tmp_path, capsys):
     out = capsys.readouterr().out
     assert str(root) in out
     assert "--data-dir" in out
-    assert "1.0.0" in out  # версия по умолчанию из index.json
+    assert "1.0.0" in out  # the default version from index.json

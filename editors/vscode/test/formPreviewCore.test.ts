@@ -1,4 +1,4 @@
-// Тесты каркасного рендера форм: yaml -> HTML. Запуск обычным node (см. npm test).
+// Tests of the form wireframe rendering: yaml -> HTML. Run with plain node (see npm test).
 
 import { describeNode, propertyEdit, renderFormPreview } from "../src/formPreviewCore";
 
@@ -96,7 +96,7 @@ check("не-форма распознана", !notForm.ok && notForm.reason === 
 const broken = renderFormPreview("Имя: [незакрытый\n  список");
 check("битый yaml: аккуратный отказ без исключения", !broken.ok);
 
-// -- панель свойств: описание узла и точечные правки --------------------------------------
+// -- properties panel: node description and targeted edits --------------------------------
 
 const apply = (text: string, edit: { start: number; end: number; newText: string } | undefined): string =>
   edit ? text.slice(0, edit.start) + edit.newText + text.slice(edit.end) : text;

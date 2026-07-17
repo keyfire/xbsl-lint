@@ -1,4 +1,4 @@
-"""Тесты правила code/call-arity: число аргументов вызова против сигнатуры метода модуля."""
+"""Tests of the code/call-arity rule: call argument count against the module method signature."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def test_named_arguments_are_skipped():
 
 
 def test_shadowed_name_is_skipped():
-    # переменная с лямбдой затеняет метод - арность лямбды правилу неизвестна
+    # a variable holding a lambda shadows the method - the lambda's arity is unknown to the rule
     diags = _lint(
         _SIG
         + "метод Тест()\n"

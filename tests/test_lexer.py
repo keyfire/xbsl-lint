@@ -1,4 +1,4 @@
-"""Проверки лексера XBSL."""
+"""XBSL lexer checks."""
 
 from xbsl.lexer import tokenize
 
@@ -37,6 +37,6 @@ def test_operators_do_not_produce_unknown():
 
 
 def test_capitalized_form_still_keyword_token():
-    # 'Выбор' лексически — форма ключевого слова CASE (различение по контексту — на уровне правил)
+    # 'Выбор' is lexically a form of the CASE keyword (context-based distinction is up to rules)
     toks = [t for t in tokenize("знч Выбор = 1\n") if t.kind == "KEYWORD"]
     assert any(t.canonical == "CASE" for t in toks)
