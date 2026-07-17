@@ -153,6 +153,32 @@ def page_members(raw: str) -> tuple[set[str], set[str]]:
     return props, methods
 
 
+_H1_OPEN_RE = re.compile(r"<h1[^>]*>")
+_H2_RE = re.compile(r"<h2[^>]*>(.*?)</h2>", re.S)
+
+
+def package_members(raw: str) -> set[str]:
+    """Члены страницы ПАКЕТА Стд (глобальный контекст): свойства и методы вместе.
+
+    У страниц пакетов (Стд, Стд::Интерфейс...) секции – заголовки H1 ("Свойства",
+    "Методы"), а сами члены – заголовки H2/H3; у страниц типов секции – H2 (их разбирает
+    page_members). Первая H1-секция – шапка страницы, она пропускается.
+    """
+    ma = _ARTICLE_RE.search(raw)
+    if not ma:
+        return set()
+    out: set[str] = set()
+    for section in _H1_OPEN_RE.split(ma.group(1))[1:]:
+        head = _plain_text(section[:200])
+        if not head.startswith(("Свойства", "Методы")):
+            continue
+        for m in list(_H2_RE.finditer(section)) + list(_H3_RE.finditer(section)):
+            name = _plain_text(m.group(1))
+            if _PROP_NAME_RE.match(name):
+                out.add(name)
+    return out
+
+
 def _english_from_path(entry: str) -> str | None:
     """Английское имя типа из сегмента пути `.../<Имя>_ru/index.html` (без точек)."""
     seg = entry[len(STD_BASE):].split("/")
@@ -167,13 +193,15 @@ def _english_from_path(entry: str) -> str | None:
 
 def extract(
     dist: Path,
-) -> tuple[set[str], dict[str, set[str]], dict[str, set[str]], dict[str, dict[str, set[str]]]]:
+) -> tuple[set[str], dict[str, set[str]], dict[str, set[str]], dict[str, dict[str, set[str]]], set[str], dict[str, set[str]]]:
     """Имена stdlib (двуязычно), порождаемые члены по видам, свойства компонентов, члены типов."""
     car = _distro.find_car(dist)
     names: set[str] = set()
     members: dict[str, set[str]] = {}
     components: dict[str, set[str]] = {}
     types: dict[str, dict[str, set[str]]] = {}
+    globals_: set[str] = set()
+    managers: dict[str, set[str]] = {}
     with zipfile.ZipFile(car) as z:
         entries = z.namelist()
         for n in (e for e in entries if e.startswith(STD_BASE) and e.endswith("/index.html")):
@@ -190,6 +218,15 @@ def extract(
             # Члены типа (доступ через точку) под ОБЕИМИ формами имени – для дополнения глобалей и типов
             # (напр. КонтекстДоступа./AccessContext., Массив./Array.). Имена с "::" (namespaced) не берём.
             props, methods = page_members(raw)
+            # Глобальный контекст: свойства и методы страницы самого Стд и страниц его
+            # ПАКЕТОВ (Стд::Интерфейс, Стд::Данные... – каталог верхнего уровня без
+            # суффикса _ru) доступны в коде голым именем (ПерейтиПоСсылке, Сообщить,
+            # ЗагрузкаФайлов) – пакеты авто-импортированы. У страниц пакетов своя
+            # структура секций – их разбирает package_members.
+            rest = n[len(STD_BASE):]
+            top = rest.split("/", 1)[0]
+            if rest == "index.html" or (rest.count("/") == 1 and not top.endswith("_ru")):
+                globals_ |= package_members(raw)
             if props or methods:
                 for key in (title if _PROP_NAME_RE.match(title) else "", eng or ""):
                     if not key:
@@ -206,9 +243,18 @@ def extract(
                     components[comp] = props
         for n in (e for e in entries if e.startswith(TEMPLATE_BASE) and e.endswith("/index.html")):
             dirname = n[len(TEMPLATE_BASE):].split("/")[0]
-            kind = _TEMPLATE_KINDS.get(dirname.split(".")[0])
-            if kind is None or "." not in dirname:
-                continue  # вид вне карты или страница самого типа (без члена)
+            kind = _TEMPLATE_KINDS.get(dirname.split(".")[0].removesuffix("_ru"))
+            if kind is None:
+                continue  # вид вне карты
+            if "." not in dirname:
+                # Страница самого шаблона (<Kind>Name_ru) – это МЕНЕДЖЕР вида: его методы
+                # (Записать, Заблокировать, НайтиПоКоду...) доступны голым именем в
+                # менеджерном модуле объекта.
+                raw = z.read(n).decode("utf-8", "replace")
+                props, methods = page_members(raw)
+                if props or methods:
+                    managers.setdefault(kind, set()).update(props | methods)
+                continue
             raw = z.read(n).decode("utf-8", "replace")
             mt = _TITLE_RE.search(raw)
             if not mt:
@@ -217,7 +263,7 @@ def extract(
             if len(segs) < 2 or not _CYRILLIC_NAME_RE.match(segs[1]):
                 continue  # член-плейсхолдер или латинский шаблон
             members.setdefault(kind, set()).add(segs[1])
-    return names, members, components, types
+    return names, members, components, types, globals_, managers
 
 
 def _members_json(members: dict[str, set[str]]) -> dict[str, list[str]]:
@@ -240,7 +286,7 @@ def main() -> int:
         raise SystemExit(f"Каталог дистрибутива не найден: {dist}")
 
     version = _distro.detect_version(dist, args.element_version)
-    names, members, components, types = extract(dist)
+    names, members, components, types, globals_, managers = extract(dist)
     data = {
         "meta": {
             "element_version": version,
@@ -256,6 +302,10 @@ def main() -> int:
         "object_members": {k: sorted(v) for k, v in sorted(members.items())},
         "component_props": {k: sorted(v) for k, v in sorted(components.items())},
         "type_members": {k: _members_json(v) for k, v in sorted(types.items())},
+        # Глобальный контекст: члены Стд и его пакетов первого уровня, доступные голым именем.
+        "globals": sorted(globals_),
+        # Методы менеджеров видов (страница шаблона <Kind>Name_ru): голые имена в модуле менеджера.
+        "manager_members": {k: sorted(v) for k, v in sorted(managers.items())},
     }
 
     out = Path(args.out) if args.out else _distro.version_dir(version) / "stdlib.json"
@@ -267,6 +317,8 @@ def main() -> int:
     print(f"  имён stdlib (двуязычно): {len(names)}")
     print(f"  видов с порождаемыми членами: {len(members)}")
     print(f"  компонентов интерфейса со свойствами: {len(components)}")
+    print(f"  глобальных имён контекста: {len(globals_)}")
+    print(f"  видов с членами менеджера: {len(managers)}")
     print(f"  типов с членами: {len(types)}"
           f" (со свойствами {sum(1 for v in types.values() if v['properties'])},"
           f" с методами {sum(1 for v in types.values() if v['methods'])})")

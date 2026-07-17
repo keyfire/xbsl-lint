@@ -109,7 +109,7 @@
 |---|---|---|---|---|---|
 | `yaml/choice-needs-static-list` | warning | вкл | файл | ВыборЗначения без статичного СпискаВыбора | [доки](https://1cmycloud.com/docs/help/stdlib/element/xbsl/Std/Interface/CommonComponents/ValueChoice_ru/) |
 | `code/unknown-type` | warning | вкл | проект | Неизвестный тип | – |
-| `code/undefined-name` | warning | выкл | проект | Неизвестное имя в выражении (опечатки вида `Адресар` вместо `Адреса`); включится по умолчанию после дособора stdlib-каталога | – |
+| `code/undefined-name` | error | вкл | проект | Неизвестное имя в выражении (опечатки вида `Адресар` вместо `Адреса`) – компилятор такой код отвергает | – |
 | `code/unknown-object-type` | warning | вкл | проект | Неизвестный тип объекта проекта | – |
 | `yaml/unknown-type` | warning | вкл | проект | Неизвестный тип в yaml | – |
 | `yaml/dynlist-missing-field` | warning | вкл | проект | Нет поля динамического списка | [доки](https://1cmycloud.com/docs/help/topics/dynamic-list/) |

@@ -6,6 +6,18 @@
 > documents them that way – so they are written here as they appear in the yaml; code keywords and stdlib
 > types use their English forms. See the [note on names](README.md#navigation-and-completion).
 
+## 0.21.0
+
+- Object properties from the metadata tree live in a sidebar view (below the tree and the
+  documentation, like the property palette of the configurator) instead of an editor tab:
+  clicking a node no longer covers the code. The editing mechanics are unchanged, undo works.
+- Status bar: the engine version is labeled "engine" instead of "lint" (since 0.16 it is
+  the whole toolkit; the tooltip already said "engine xbsl").
+- Engine 0.19.0: the full XBSL parser against the platform grammar with the
+  `code/parse-error` rule (syntax errors before a deploy, docs link from the Problems
+  panel), the `code/undefined-name` rule (name typos: zero false findings on the real corpus, on by default as error), a ~2.3x
+  faster run and the parallel `--jobs` mode.
+
 ## 0.20.0
 
 - Documentation links on every rule backed by a platform requirement (54 of 78): the

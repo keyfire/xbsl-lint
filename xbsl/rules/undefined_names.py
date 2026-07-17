@@ -49,17 +49,26 @@ MESSAGES = {
 }
 i18n.register(MESSAGES)
 
-# Контекстные корни, которые даёт сам вид модуля (не объявляются в коде): собраны
-# прогоном по корпусу и по документации соответствующих модулей.
+# Context roots the module kind itself provides (never declared in code): collected by
+# running over the corpus and from the documentation of the module kinds.
 _IMPLICIT = frozenset({
-    "Компоненты",   # модуль компонента интерфейса: доступ к именованным компонентам формы
-    "Это", "До",    # модуль объекта: запись после/до изменения в ПередЗаписью/ПослеЗаписи
-    "Сущность",     # пространство имён прав в обработчиках разрешений (Сущность.Право.Чтение)
+    "Компоненты", "Components",   # an interface-component module: access to the named form components
+    "Это", "До",    # an object module: the record after/before the change in ПередЗаписью/ПослеЗаписи
+    "Сущность",     # the rights namespace in permission handlers (Сущность.Право.Чтение)
 })
 
-# Стандартные реквизиты, доступные голым именем в модуле сущности (X.Объект.xbsl):
-# платформа даёт их без объявления в yaml (Наименование/Код у справочника, Номер/Дата
-# у документа, Период/Регистратор/ВидЗаписи у записей регистров) + Ссылка и методы записи.
+# Standard attributes available by bare name in an entity module (X.Объект.xbsl): the
+# platform provides them without a yaml declaration (Наименование/Код of a catalog,
+# Номер/Дата of a document, Период/Регистратор/ВидЗаписи of register records) plus
+# Ссылка and the write methods.
+# Members that exist on the platform but are absent from the distribution docs -
+# verified against real shipped code (БизКуб, the demo project). Kept deliberately tiny.
+_UNDOCUMENTED = frozenset({
+    "ВыполнитьЗаписать", "ВыполнитьЗаписатьИЗакрыть",  # ФормаОбъекта commands
+    "СобственнаяМодифицированность",                   # a form-component property
+    "Message",                                          # the English form of Сообщить
+})
+
 _ENTITY_COMMON = frozenset({
     "Наименование", "Код", "Номер", "Дата", "Ссылка",
     "Период", "Регистратор", "ВидЗаписи",
@@ -67,15 +76,15 @@ _ENTITY_COMMON = frozenset({
     "ЭтоНовый", "ПометкаУдаления", "РежимЗагрузкиДанных",
 })
 
-# Секции yaml, чьи элементы становятся голыми именами в модулях объекта.
+# The yaml sections whose items become bare names in the object modules.
 _FIELD_SECTIONS = (
     "Реквизиты", "Измерения", "Ресурсы", "Константы", "Свойства", "Параметры",
-    "ТабличныеЧасти",
+    "ТабличныеЧасти", "События", "Поля",
 )
 
 
 def _yaml_pair(source: SourceFile, by_dir: dict) -> SourceFile | None:
-    """Парный yaml модуля: X.xbsl -> X.yaml, X.Объект.xbsl -> X.yaml."""
+    """The paired yaml of a module: X.xbsl -> X.yaml, X.Объект.xbsl -> X.yaml."""
     parts = source.rel.replace("\\", "/").rsplit("/", 1)
     directory = parts[0] if len(parts) == 2 else ""
     stem = parts[-1]
@@ -108,10 +117,10 @@ def _base_type_root(data: dict) -> str | None:
 def _component_scope(
     data: dict, by_name: dict, type_members: dict, seen: set[str],
 ) -> set[str]:
-    """Имена, которые компонент даёт своему модулю: Свойства + члены базы по цепочке.
+    """The names a component gives its module: Свойства plus the base members up the chain.
 
-    База – либо тип платформы (члены из type_members), либо компонент проекта
-    (рекурсивно его Свойства и его база); цикл наследования обрывается по seen.
+    The base is either a platform type (members from type_members) or a project component
+    (its Свойства and its base, recursively); an inheritance cycle is cut by `seen`.
     """
     names = _section_names(data)
     root = _base_type_root(data)
@@ -127,27 +136,32 @@ def _component_scope(
     return names
 
 
-# Пока выключено по умолчанию: каталог stdlib не знает глобальных функций контекста
-# (Сообщить, ПерейтиПоСсылке, Пауза...) и методов менеджеров видов - на живом коде это
-# даёт ложные находки. Включается --select code/undefined-name; по умолчанию включится,
-# когда extract_stdlib дособерёт эти семейства (задача в бэклоге).
+# On by default (severity error - the compiler rejects such code) since the stdlib
+# catalog carries the global context (Сообщить, ПерейтиПоСсылке...) and the kind-manager
+# methods: the whole real-world corpus (site, БизКуб, chiriker, demo - 1600+ modules)
+# runs with zero false findings.
 @rule(
     "code/undefined-name", "code/undefined-name.title", "D",
-    scope="project", severity=Severity.WARNING, enabled_by_default=False,
+    scope="project", severity=Severity.ERROR,
 )
 def undefined_name(sources: list[SourceFile]) -> Iterable[Diagnostic]:
     stdlib = _stdlib_names()
     if not stdlib:
-        return  # без каталога stdlib «неизвестность» недоказуема
+        return  # without the stdlib catalog "unknown" cannot be proven
     try:
         catalog = dataset.load_json("stdlib.json")
     except dataset.DatasetError:
         return
     type_members = catalog.get("type_members", {})
     object_members = catalog.get("object_members", {})
-    known_global = set(stdlib) | _project_object_names(sources) | _IMPLICIT
+    manager_members = catalog.get("manager_members", {})
+    # The global context: members of Стд and its first-level packages (Сообщить,
+    # ПерейтиПоСсылке, ЗагрузкаФайлов...) are reachable by bare name everywhere.
+    context_globals = set(catalog.get("globals", ()))
+    known_global = (set(stdlib) | _project_object_names(sources) | _IMPLICIT
+                    | context_globals | _UNDOCUMENTED)
 
-    # Карты парных yaml: по (каталог, имя файла) и по имени объекта (для цепочки Наследует).
+    # Maps of the paired yaml: by (directory, file name) and by object name (for the Наследует chain).
     by_dir: dict[tuple[str, str], SourceFile] = {}
     by_name: dict[str, dict] = {}
     for s in sources:
@@ -165,10 +179,10 @@ def undefined_name(sources: list[SourceFile]) -> Iterable[Diagnostic]:
             continue
         module, errors = P.parse(source)
         if errors:
-            continue  # у битого файла свои диагностики (code/parse-error)
+            continue  # a broken file has its own diagnostics (code/parse-error)
         if any("::" in i.name for i in module.imports):
-            # импорт внешнего пространства (библиотеки): его состав правилу не виден,
-            # любое голое имя может приходить оттуда - файл не проверяется
+            # an import of an external namespace (a library): its contents are not
+            # visible to the rule, any bare name may come from there - skip the file
             continue
         scope = set(known_global)
         pair = _yaml_pair(source, by_dir)
@@ -179,17 +193,18 @@ def undefined_name(sources: list[SourceFile]) -> Iterable[Diagnostic]:
                 if isinstance(imports, list) and any(
                     isinstance(i, str) and "::" in i for i in imports
                 ):
-                    continue  # внешнее пространство в Импорт yaml - то же слепое пятно
+                    continue  # an external namespace in the yaml Импорт - the same blind spot
                 kind = data.get("ВидЭлемента")
                 if source.rel.endswith(".Объект.xbsl"):
-                    # модуль сущности: реквизиты + стандартные поля и методы записи
+                    # an entity module: the attributes plus the standard fields and write methods
                     scope |= _section_names(data) | _ENTITY_COMMON
                 elif kind == "КомпонентИнтерфейса":
                     scope |= _component_scope(data, by_name, type_members, set())
                 else:
-                    # модуль менеджера вида данных / общий модуль: поля yaml + члены менеджера
+                    # a data-kind manager module / common module: the yaml fields plus the manager members
                     scope |= _section_names(data)
                     scope |= set(object_members.get(kind, ()))
+                    scope |= set(manager_members.get(kind, ()))
         yield from _check_module(source, module, scope)
 
 
@@ -230,7 +245,7 @@ def _check_module(source: SourceFile, module: P.Module, known_global: set[str]) 
 
 
 def _walk_body(stmts: list[P.Stmt], scope: set[str], findings: list) -> None:
-    """Тело блока: операторы по порядку, объявление вводит имя ПОСЛЕ своего выражения."""
+    """A block body: statements in order, a declaration introduces its name AFTER its expression."""
     for st in stmts:
         if isinstance(st, P.VarDecl):
             if st.init is not None:
@@ -295,14 +310,14 @@ def _walk_expr(expr: P.Expr | None, scope: set[str], findings: list) -> None:
     if expr is None:
         return
     if isinstance(expr, P.Name):
-        # Квалифицированные корни (Подсистема::Имя) не проверяются: состав чужих
-        # пространств имён этому правилу не виден.
+        # Qualified roots (Подсистема::Имя) are not checked: the contents of foreign
+        # namespaces are not visible to this rule.
         if "::" not in expr.name and expr.name and expr.name not in scope:
             hint = _closest(expr.name, scope)
             findings.append((expr.start, expr.name, hint))
         return
     if isinstance(expr, P.Member):
-        _walk_expr(expr.obj, scope, findings)  # имя члена - этап вывода типов
+        _walk_expr(expr.obj, scope, findings)  # the member name is a type-inference stage
         return
     if isinstance(expr, P.Call):
         _walk_expr(expr.callee, scope, findings)
@@ -365,7 +380,7 @@ def _walk_expr(expr: P.Expr | None, scope: set[str], findings: list) -> None:
     if isinstance(expr, P.Throw):
         _walk_expr(expr.value, scope, findings)
         return
-    # Literal, This, GlobalAccess, MethodRef - атомы (ссылки на методы - этап 3)
+    # Literal, This, GlobalAccess, MethodRef are atoms (method references - stage 3)
 
 
 def _closest(name: str, scope: set[str]) -> str | None:

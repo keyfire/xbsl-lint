@@ -43,7 +43,10 @@ def test_line_length_string_literal_ok():
 
 def test_line_length_off_by_default():
     long_call = "    Вызвать(" + ", ".join(f"Параметр{i}" for i in range(15)) + ")\n"
-    assert engine.run_sources([engine.load_text("М.xbsl", "метод Ф()\n" + long_call + ";\n")]) == []
+    diags = engine.run_sources([engine.load_text("М.xbsl", "метод Ф()\n" + long_call + ";\n")])
+    # Только про длину строки: вызов несуществующего метода в фикстуре честно ловит
+    # code/undefined-name, он здесь не предмет проверки.
+    assert [d for d in diags if d.rule_id == "style/line-length"] == []
 
 
 def test_semicolon_on_own_line_ok():

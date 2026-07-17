@@ -94,7 +94,14 @@ _LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
 def _parsed(source: SourceFile):
-    """The parsed YAML (or None) and the parse error (or None), cached."""
+    """The parsed YAML (or None) and the parse error (or None), cached.
+
+    The platform parser is more lenient than PyYAML: real shipped sources carry `\\'`
+    inside double-quoted scalars (an HTML/JS onclick in БизКуб), which the platform
+    accepts as a plain apostrophe while PyYAML rejects the escape. The retry below
+    only runs when the strict parse has already failed, so no valid document can be
+    misread by it.
+    """
     if "yaml" not in source.cache:
         data = None
         err = None
@@ -102,6 +109,12 @@ def _parsed(source: SourceFile):
             data = yaml.load(source.text, Loader=_LOADER)
         except yaml.YAMLError as exc:  # noqa: BLE001
             err = exc
+            if "unknown escape character" in str(exc):
+                try:
+                    data = yaml.load(source.text.replace("\\'", "'"), Loader=_LOADER)
+                    err = None
+                except yaml.YAMLError:
+                    data = None
         source.cache["yaml"] = data
         source.cache["yaml_error"] = err
     return source.cache["yaml"], source.cache["yaml_error"]

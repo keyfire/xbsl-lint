@@ -81,16 +81,19 @@ def _stdlib_names() -> frozenset[str]:
         return frozenset()
 
 
-# Имя объекта ради _project_object_names добывается регексами, а не полным разбором yaml:
-# в профиле целопроектного прогона yaml.load всех описаний ради двух верхнеуровневых полей
-# был самой дорогой строкой (конструктор PyYAML остаётся питоньим даже с libyaml).
-_TOP_KIND_RE = re.compile(r"^ВидЭлемента:", re.M)
-_TOP_NAME_RE = re.compile(r"^Имя:[ \t]*(['\"]?)([^\r\n#]*?)\1[ \t]*(?:#.*)?\r?$", re.M)
+# The object name for _project_object_names comes from regexes, not a full yaml parse:
+# in the whole-project profile yaml.load of every description for the sake of two
+# top-level fields was the most expensive line (the PyYAML constructor stays pure
+# Python even with libyaml).
+# The yaml of the platform is bilingual: shipped code carries English keys too
+# (ElementKind/Name in БизКуб), so both spellings are recognized.
+_TOP_KIND_RE = re.compile(r"^(?:ВидЭлемента|ElementKind):", re.M)
+_TOP_NAME_RE = re.compile(r"^(?:Имя|Name):[ \t]*(['\"]?)([^\r\n#]*?)\1[ \t]*(?:#.*)?\r?$", re.M)
 _MISSING = object()
 
 
 def _object_name_fast(s: SourceFile) -> str | None:
-    """Имя объекта метаданных (файл с ВидЭлемента) без полного разбора yaml, с кэшем."""
+    """The metadata-object name (a file with ВидЭлемента) without a full yaml parse, cached."""
     cached = s.cache.get("object_name_fast", _MISSING)
     if cached is not _MISSING:
         return cached
@@ -131,8 +134,8 @@ def _file_local_type_decls(s: SourceFile) -> list[tuple[str, int]]:
                 if toks[j].kind == "IDENT":
                     decls.append((toks[j].value, toks[j].line))
                     break
-    # Кэш: объявления нужны нескольким проектным правилам, без него цикл по токенам
-    # повторялся на каждое (заметно на целопроектном прогоне).
+    # Cached: several project rules need the declarations - without the cache the token
+    # loop repeated per rule (visible in the whole-project profile).
     s.cache["local_type_decls"] = decls
     return decls
 
