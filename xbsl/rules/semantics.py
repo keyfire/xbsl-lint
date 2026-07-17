@@ -46,6 +46,7 @@ from xbsl import dataset, i18n
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
 from xbsl.lexer import tokens
+from xbsl.rules._syntax import code_tokens
 from xbsl.rules.yaml_schema import _HAVE_YAML, _parsed
 
 MESSAGES = {
@@ -436,7 +437,10 @@ def _type_token_facts(s: SourceFile) -> tuple[list, list]:
         return cached
     roots: list[tuple[str, int, int]] = []
     chains2: list[tuple[str, str, int, int]] = []
-    toks = tokens(s)
+    # Over code_tokens, not the raw ones: inside `Запрос{...}` the anchor words belong to the
+    # query language, where `КАК` names a column alias rather than casts to a type
+    # (`Количество(Идентификатор) как Количество`).
+    toks = code_tokens(s)
     for start in _type_ref_starts(toks):
         chains, _ = _type_chains(toks, start)
         for chain in chains:

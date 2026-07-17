@@ -262,6 +262,24 @@ def test_unknown_type_in_cast_flagged(tmp_path):
     assert any("Стркоа" in x.message for x in d)
 
 
+def test_query_alias_not_a_cast(tmp_path):
+    # внутри Запрос{...} КАК – псевдоним колонки языка запросов, а не приведение к типу
+    (tmp_path / "м.xbsl").write_text(
+        "метод Ф(): Число\n"
+        "    знч Запрос = Запрос{\n"
+        "        ВЫБРАТЬ\n"
+        "            Количество(Идентификатор) как Количество\n"
+        "        ИЗ\n"
+        "            Товар\n"
+        "    }\n"
+        "    возврат Запрос.Выполнить().ЕдинственныйИлиНеопределено().Количество\n"
+        ";\n",
+        encoding="utf-8",
+    )
+    d = engine.run(discover([str(tmp_path)]), select={"code/unknown-type"})
+    assert not [x for x in d if "Количество" in x.message]
+
+
 def test_generic_arg_unknown_flagged(tmp_path):
     # база (Массив) известна, аргумент (Стркоа) – нет
     (tmp_path / "м.xbsl").write_text(
