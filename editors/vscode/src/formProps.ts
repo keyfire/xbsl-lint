@@ -128,6 +128,8 @@ function labels(): Record<string, string> {
     compositeLocked: vscode.l10n.t("The value contains nested blocks – edit it in yaml."),
     typeOption: vscode.l10n.t("(type)"),
     valueOption: vscode.l10n.t("(value)"),
+    toBinding: vscode.l10n.t("Bind to data (=Объект.Поле)"),
+    toLiteral: vscode.l10n.t("Set a literal value"),
   };
 }
 
@@ -257,8 +259,10 @@ ${cspMeta(nonce)}
   }
 
   function textEditor(row, multiline) {
-    const input = document.createElement(multiline ? "textarea" : "input");
-    if (!multiline) { input.type = "text"; }
+    // Single-line literals grow the literal/binding toggle (hook 6); a multiline literal
+    // (a description, a long caption) is never a binding, so it stays a plain textarea.
+    if (!multiline) { return literalOrBinding(row, isBinding(row.value) ? "binding" : "literal"); }
+    const input = document.createElement("textarea");
     input.value = row.set ? row.value : "";
     if (!row.set && row.defaultValue) { input.placeholder = row.defaultValue; }
     wireText(input, input.value, (v) => commit(row.key, v), multiline);
@@ -558,16 +562,101 @@ ${cspMeta(nonce)}
     return line;
   }
 
-  function bindingEditor(row) {
+  // hook 6: a value is either a literal or a data binding (=Объект.Поле). isBinding tells them
+  // apart the same way the engine does - a leading "=".
+  function isBinding(v) { return typeof v === "string" && v.trim().charAt(0) === "="; }
+
+  function flipButton(label, title, onClick) {
+    const b = el("button", "rbtn", label);
+    b.title = title;
+    b.addEventListener("click", (e) => { e.preventDefault(); onClick(); });
+    return b;
+  }
+
+  // The binding half of a value cell: a mono input with a dropdown of the bindings already used
+  // in this form (model.formBindings), an "abc" flip back to a literal, and the yaml jump. Only
+  // a non-empty "=..." commits - a lone "=" or blank is ignored, so switching modes never writes.
+  function bindingCell(row, initial, toLiteral) {
     const line = el("div", "valline");
+    const wrap = el("div", "combo");
     const input = document.createElement("input");
     input.type = "text";
     input.className = "mono";
-    input.value = row.value;
-    input.readOnly = true;
-    line.appendChild(input);
-    line.appendChild(gotoButton(row));
-    return line;
+    input.value = initial;
+    input.placeholder = "=Объект.Поле";
+    const list = el("div", "combo-list");
+    list.style.display = "none";
+    const opts = (model && model.formBindings) || [];
+    let last = initial;
+    const commitBinding = (raw) => {
+      const v = (raw || "").trim();
+      if (v === last) { return; }
+      if (v === "" || v === "=" || v.charAt(0) !== "=") { return; }
+      last = v; commit(row.key, v);
+    };
+    const build = (showAll) => {
+      const q = showAll ? "" : input.value.trim().toLowerCase();
+      list.textContent = "";
+      const matches = opts.filter((o) => o !== input.value && o.toLowerCase().includes(q));
+      if (!matches.length) { list.style.display = "none"; return; }
+      for (const o of matches) {
+        const it = el("div", "combo-opt", o);
+        it.addEventListener("mousedown", (e) => { e.preventDefault(); input.value = o; list.style.display = "none"; commitBinding(o); });
+        list.appendChild(it);
+      }
+      list.style.display = "block";
+    };
+    input.addEventListener("focus", () => build(true));
+    input.addEventListener("click", () => build(true));
+    input.addEventListener("input", () => build(false));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { list.style.display = "none"; commitBinding(input.value); }
+      else if (e.key === "Escape") { list.style.display = "none"; input.value = initial; input.blur(); e.stopPropagation(); }
+    });
+    input.addEventListener("blur", () => { setTimeout(() => { list.style.display = "none"; commitBinding(input.value); }, 150); });
+    wrap.appendChild(input); wrap.appendChild(list);
+    line.appendChild(wrap);
+    line.appendChild(flipButton("abc", L.toLiteral, toLiteral));
+    return { line, input };
+  }
+
+  // A value cell that flips between a literal input and a binding field (hook 6). mode0 is the
+  // starting mode; the "=" / "abc" buttons switch it, re-rendering only this cell so the rest
+  // of the panel is untouched. focus is passed only on a user-initiated flip - the first render
+  // must NOT steal focus (it happens on every model refresh).
+  function literalOrBinding(row, mode0) {
+    const holder = el("div");
+    const renderLiteral = (focus) => {
+      holder.textContent = "";
+      const line = el("div", "valline");
+      const input = document.createElement("input");
+      input.type = "text";
+      const start = row.set && !isBinding(row.value) ? row.value : "";
+      input.value = start;
+      if (!start && row.defaultValue) { input.placeholder = row.defaultValue; }
+      wireText(input, start, (v) => commit(row.key, v), false);
+      line.appendChild(input);
+      line.appendChild(flipButton("=", L.toBinding, () => renderBinding(true)));
+      holder.appendChild(line);
+      if (focus) { input.focus(); }
+    };
+    const renderBinding = (focus) => {
+      holder.textContent = "";
+      const start = row.set && isBinding(row.value) ? row.value : "=";
+      const cell = bindingCell(row, start, () => renderLiteral(true));
+      holder.appendChild(cell.line);
+      if (focus) {
+        cell.input.focus();
+        const p = cell.input.value.length;
+        try { cell.input.setSelectionRange(p, p); } catch (e) { /* setSelectionRange guard */ }
+      }
+    };
+    if (mode0 === "binding") { renderBinding(false); } else { renderLiteral(false); }
+    return holder;
+  }
+
+  function bindingEditor(row) {
+    return literalOrBinding(row, "binding");
   }
 
   function readonlyEditor(row) {
@@ -626,9 +715,9 @@ ${cspMeta(nonce)}
     cap.appendChild(name);
     if (row.editor.control === "readonly") { cap.appendChild(el("span", "ro", "· " + L.readonly)); }
     cap.appendChild(el("span", "sp"));
-    // Handler rows keep the yaml jump here: their value line carries the method jump.
-    if (row.set && row.propSpan && row.editor.control !== "binding"
-        && row.editor.control !== "readonly") {
+    // The yaml jump lives in the caption for every editable set row (the value cell no longer
+    // carries its own - hook 6 made bindings and literals share one cell).
+    if (row.set && row.propSpan && row.editor.control !== "readonly") {
       cap.appendChild(gotoButton(row));
     }
     // Read-only rows (Ид, ВидЭлемента, slots) cannot be edited - deleting them from the

@@ -259,6 +259,8 @@
   "The value contains nested blocks – edit it in yaml.": "Значение содержит вложенные блоки – редактируйте его в yaml.",
   "(type)": "(тип)",
   "(value)": "(значение)",
+  "Bind to data (=Объект.Поле)": "Привязать к данным (=Объект.Поле)",
+  "Set a literal value": "Задать литеральное значение",
   "The value must be a number.": "Значение должно быть числом.",
   "The value must be one of the list.": "Значение должно быть из списка.",
   "The color must be in the #RRGGBB form.": "Цвет должен быть в форме #RRGGBB.",

@@ -194,6 +194,9 @@ export interface PanelModel {
   // #rrggbb of every АбсолютныйЦвет present anywhere in the form yaml - the color editor
   // offers them as one-click swatches (hook 7). Absent in metadata mode.
   formColors?: string[];
+  // Every binding expression already used in the form yaml - the binding editor offers them
+  // as autocomplete (hook 6). Absent in metadata mode.
+  formBindings?: string[];
   // true - the metadata mode of the unified panel (propsModes.buildMetaPanelModel): the
   // webview renders the rows flat, without the section chrome and the component legend.
   meta?: boolean;
@@ -573,6 +576,34 @@ export function collectFormColors(docText: string, limit = 16): string[] {
   return out;
 }
 
+// Every binding expression (=Объект.Поле, =не Активен, =Метод(Объект.Х) ...) present anywhere
+// in the form yaml, deduplicated, first-seen order, capped. The binding editor (hook 6) offers
+// them as autocomplete so a developer reuses the form's own data hookups instead of retyping.
+// A binding sits at a value position - right after a key colon, plain (Ключ: =...) or flow
+// ({Ключ: =...}) - and spells as "=" followed by expression characters (the engine's bare
+// scalar set: identifiers, dots, commas, parens, comparisons, slashes, single spaces).
+// Anchoring on the colon keeps a stray "=" in prose or a URL out of the suggestions.
+const BINDING_SCAN_RE = /:\s*(=[A-Za-zА-Яа-яЁё0-9_][A-Za-zА-Яа-яЁё0-9_.,()<>/ =-]*)/g;
+
+export function collectFormBindings(docText: string, limit = 24): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of docText.matchAll(BINDING_SCAN_RE)) {
+    // Trim a trailing run of ambiguous tail chars (spaces, an "=" from "== ...", a stray
+    // separator) so "=Объект.Срок " and "=Объект.Срок }" both fold to "=Объект.Срок".
+    const binding = m[1].replace(/[\s=]+$/, "");
+    if (binding.length < 2 || seen.has(binding)) {
+      continue;
+    }
+    seen.add(binding);
+    out.push(binding);
+    if (out.length >= limit) {
+      break;
+    }
+  }
+  return out;
+}
+
 // -- composite fragment assembly --------------------------------------------------------------
 
 // One fragment value as yaml: bare where unambiguous, JSON double quotes otherwise -
@@ -813,6 +844,7 @@ export function buildPanelModel(
     schemaAvailable: hasSchema,
     sections,
     formColors: collectFormColors(docText),
+    formBindings: collectFormBindings(docText),
   };
 }
 
@@ -851,6 +883,11 @@ export function prepareWrite(payload: WritePayload): WritePlan {
     }
     if (value.trim() === "") {
       return payload.wasSet ? { kind: "error", code: "empty" } : { kind: "noop" };
+    }
+    // A binding expression (=Объект.Поле ...) is written verbatim - the platform evaluates it
+    // at runtime, so the literal type checks (number/enum) below do not apply (hook 6).
+    if (value.trim().charAt(0) === "=") {
+      return { kind: "value", value };
     }
     if (payload.editor.control === "number" && !NUMBER_RE.test(value.trim())) {
       return { kind: "error", code: "number" };

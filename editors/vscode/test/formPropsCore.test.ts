@@ -14,6 +14,7 @@ import {
   buildCompositeYaml,
   buildPanelModel,
   chooseEditor,
+  collectFormBindings,
   collectFormColors,
   createSerialQueue,
   colorYaml,
@@ -243,6 +244,22 @@ test("collectFormColors gathers АбсолютныйЦвет shades, deduped in 
   // The cap bounds the list.
   const many = Array.from({ length: 20 }, (_, i) => `RGB(0000${i.toString(16).padStart(2, "0")})`).join(" ");
   assert.strictEqual(collectFormColors(many, 5).length, 5);
+});
+
+test("collectFormBindings gathers =-expressions at value positions, deduped (hook 6)", () => {
+  const doc = [
+    "        Заголовок: =Объект.Наименование",
+    "        Видимость: =не Объект.Скрыт",
+    "        Данные: {Данные: =Объект.Шаги}", // flow, trailing brace must be dropped
+    "        Ещё: =Объект.Наименование", // duplicate
+    '        Текст: "цена = 10"', // an "=" in a quoted literal, not a binding value',
+  ].join("\n");
+  assert.deepStrictEqual(collectFormBindings(doc), [
+    "=Объект.Наименование",
+    "=не Объект.Скрыт",
+    "=Объект.Шаги",
+  ]);
+  assert.deepStrictEqual(collectFormBindings("Метод: =Вычислить(Объект.Х, 2)"), ["=Вычислить(Объект.Х, 2)"]);
 });
 
 // -- fragment assembly ------------------------------------------------------------------------
@@ -580,6 +597,42 @@ test("prepareWrite color and composite", () => {
   assert.deepStrictEqual(
     prepareWrite({ form: "composite", fields: [{ key: "Размер", value: " " }] }),
     { kind: "error", code: "empty" }
+  );
+});
+
+test("prepareWrite scalar: a binding bypasses the literal type checks (hook 6)", () => {
+  // A number property flipped to a binding must write verbatim, not fail the number check.
+  assert.deepStrictEqual(
+    prepareWrite({
+      form: "scalar",
+      value: "=Объект.Ширина",
+      editor: { control: "number" },
+      wasSet: false,
+      oldValue: "",
+    }),
+    { kind: "value", value: "=Объект.Ширина" }
+  );
+  // An enum property flipped to a binding writes too, without the enum-membership check.
+  assert.deepStrictEqual(
+    prepareWrite({
+      form: "scalar",
+      value: "=Объект.Вид",
+      editor: { control: "enum", options: ["Карточка", "Баннер"] },
+      wasSet: true,
+      oldValue: "Карточка",
+    }),
+    { kind: "value", value: "=Объект.Вид" }
+  );
+  // A non-binding literal is still validated.
+  assert.deepStrictEqual(
+    prepareWrite({
+      form: "scalar",
+      value: "abc",
+      editor: { control: "number" },
+      wasSet: false,
+      oldValue: "",
+    }),
+    { kind: "error", code: "number" }
   );
 });
 
