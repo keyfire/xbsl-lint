@@ -1,8 +1,8 @@
 # Visual form designer – specification and roadmap
 
 Status: waves 1-3 delivered - stages 0-3 (ui schema, form model and operations,
-structure view, palette, properties v2) plus hooks 1, 2, 3, 4 and 12; hooks 5-11
-remain in the backlog below.
+structure view, palette, properties v2) plus hooks 1, 2, 3, 4, 7 and 12; hooks 5,
+6, 8-11 remain in the backlog below.
 Russian counterpart: [DESIGNER.ru.md](DESIGNER.ru.md). Keep the two files in sync.
 
 The toolkit grows a visual designer for 1C:Element interface components
@@ -179,7 +179,7 @@ linter would flag as an error.
 | 4 | Hover docs in the palette and properties, jump to the docs panel | S | folded into stages 2/3 |
 | 5 | Wireframe preview upgrades: selection highlight, follow structure selection | S/M | 4 |
 | 6 | Binding editor: literal/binding toggle per property, expression completion via LSP | M/L | 4+ |
-| 7 | Color editors with project palette presets | S | 4 |
+| 7 | Color editors with project palette presets (colors already used in the form plus recent picks, as one-click swatches) | S | delivered |
 | 8 | Block presets: save a subtree as a named snippet, insert from the palette | M | 4+ |
 | 9 | Multi-select mass property edit | S/M | 4+ |
 | 10 | Structural search across project forms (component type + property predicates) | M | 4+ |
