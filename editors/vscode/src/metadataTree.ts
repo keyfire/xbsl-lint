@@ -357,10 +357,22 @@ class XbslNode extends vscode.TreeItem {
   docsKind?: string; // category: the platform type whose docs page describes it (tooltip)
 }
 
-// Set parent links across the whole built tree (for reveal).
+// Set parent links across the whole built tree (for reveal), and give every node a STABLE, unique
+// TreeItem.id. Without an id VS Code identifies a node by its label, which is recreated on each
+// rebuild, so the expanded/collapsed state is lost on every refresh and window reload; a stable id
+// (the path of parent ids plus the node's own key) lets VS Code preserve the tree's open state.
 function setParents(nodes: XbslNode[], parent?: XbslNode): void {
+  const seen = new Map<string, number>();
   for (const node of nodes) {
     node.parent = parent;
+    const label = typeof node.label === "string" ? node.label : node.label?.label ?? "";
+    let key = node.yamlPath ?? node.modulePath ?? label ?? "";
+    const nth = (seen.get(key) ?? 0) + 1;
+    seen.set(key, nth);
+    if (nth > 1) {
+      key += "#" + nth; // disambiguate the rare same-key siblings
+    }
+    node.id = (parent?.id ? parent.id + "/" : "") + key;
     if (node.children) {
       setParents(node.children, node);
     }
