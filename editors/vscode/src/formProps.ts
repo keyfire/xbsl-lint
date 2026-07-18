@@ -662,7 +662,9 @@ ${cspMeta(nonce)}
         matches = opts.filter((o) => o !== input.value && o.toLowerCase().includes(q));
       }
       if (!matches.length) { list.style.display = "none"; return; }
-      for (const o of matches) {
+      // Cap the visible list: with component members merged in, the unfiltered set can be large;
+      // typing narrows it. The developer sees the first matches and keeps typing for the rest.
+      for (const o of matches.slice(0, 40)) {
         const it = el("div", "combo-opt", o);
         it.addEventListener("mousedown", (e) => { e.preventDefault(); input.value = o; list.style.display = "none"; commitBinding(o); });
         list.appendChild(it);
@@ -1103,22 +1105,27 @@ async function projectEnumsFor(): Promise<Record<string, string[]>> {
   return projectEnumsCache;
 }
 
-// hook 6: =Компоненты.<name> for the form's own components (via the engine's xbsl/bindingComplete).
-// Resolved once per form uri and reused, then merged into the binding autocomplete so a developer
-// completes component references after "=Компоненты.". Member chains (=Компоненты.<name>.<member>)
-// stay a follow-up - the endpoint already serves them, only the on-demand wiring is pending.
+// hook 6: the form's component bindings for the autocomplete (via the engine's xbsl/bindingComplete):
+// =Компоненты.<name> and, for each component, its type members =Компоненты.<name>.<member>. Resolved
+// once per form uri (the component prefix, then one member request per component, in parallel) and
+// reused; the binding editor's substring filter narrows them as the developer types. Bounded so a
+// huge form does not fan out without limit.
 const componentBindingsCache = new Map<string, string[]>();
+const MAX_MEMBER_COMPONENTS = 100; // fetch members for at most this many components
+const MAX_COMPONENT_BINDINGS = 1000; // cap the merged list
 async function componentBindingsFor(uri: vscode.Uri): Promise<string[]> {
   const key = uri.toString();
   const cached = componentBindingsCache.get(key);
   if (cached) {
     return cached;
   }
-  const res = await lspRequest<{ completions?: string[] }>("xbsl/bindingComplete", {
-    uri: key,
-    prefix: "=Компоненты.",
-  });
-  const list = res?.completions ?? [];
+  const bind = (prefix: string) =>
+    lspRequest<{ completions?: string[] }>("xbsl/bindingComplete", { uri: key, prefix }).then(
+      (r) => r?.completions ?? []
+    );
+  const names = await bind("=Компоненты.");
+  const memberLists = await Promise.all(names.slice(0, MAX_MEMBER_COMPONENTS).map((n) => bind(n + ".")));
+  const list = [...names, ...memberLists.flat()].slice(0, MAX_COMPONENT_BINDINGS);
   componentBindingsCache.set(key, list);
   return list;
 }
