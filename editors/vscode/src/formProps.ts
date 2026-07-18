@@ -244,6 +244,11 @@ ${cspMeta(nonce)}
   let model = null;
   let sticky = null;
   let recentColors = [];
+  // While a row is focused it must not jump between the "set" and "all" sections (setting Авto /
+  // resetting a value changes its section, and reflowing a focused field mid-edit is jarring). We
+  // pin the focused row to the section it is in; the move is deferred until focus leaves it.
+  let pinnedKey = null;
+  let pinnedSection = null;
   const pane = document.getElementById("pane");
   const titleBox = document.getElementById("title");
   const searchInput = document.getElementById("search");
@@ -776,8 +781,26 @@ ${cspMeta(nonce)}
     div.addEventListener("focusin", () => {
       post({ type: "sticky", key: row.key });
       markSticky(row.key);
+      // Pin this row to the section it is shown in, so an edit that changes its set-state does
+      // not fling it to the other section while the developer is still on it. Only in component
+      // mode (the metadata mode is a flat list with no sections - nothing to pin).
+      const sec = div.closest("details.sec");
+      pinnedKey = sec ? row.key : null;
+      pinnedSection = sec ? sec.dataset.sec : null;
     });
     return div;
+  }
+
+  // The row object for a key, wherever it sits in the model (the "set" and "all" sections repeat
+  // set rows) - used to keep a pinned row rendered in its section after an edit dropped it from
+  // the model's section list.
+  function rowInModel(key) {
+    if (!model) { return null; }
+    for (const section of model.sections) {
+      const hit = section.rows.find((r) => r.key === key);
+      if (hit) { return hit; }
+    }
+    return null;
   }
 
   function markSticky(key) {
@@ -810,7 +833,7 @@ ${cspMeta(nonce)}
     }
   }
 
-  function render() {
+  function render(refocus) {
     pane.textContent = "";
     titleBox.textContent = "";
     if (!model) {
@@ -843,12 +866,19 @@ ${cspMeta(nonce)}
     }
     const titles = { set: L.secSet, events: L.secEvents, all: L.secAll };
     for (const section of model.sections) {
-      if (!section.rows.length) { continue; }
+      let rows = section.rows;
+      // Keep a pinned row in its section even after an edit dropped it from the model's list here.
+      if (pinnedKey && pinnedSection === section.id && !rows.some((r) => r.key === pinnedKey)) {
+        const pinnedRow = rowInModel(pinnedKey);
+        if (pinnedRow) { rows = rows.concat([pinnedRow]); }
+      }
+      if (!rows.length) { continue; }
       const details = el("details", "sec");
+      details.dataset.sec = section.id;
       details.open = state.open[section.id] !== undefined ? state.open[section.id] : section.id !== "all";
       details.addEventListener("toggle", () => { state.open[section.id] = details.open; vsapi.setState(state); });
       details.appendChild(el("summary", null, titles[section.id] || section.id));
-      for (const row of section.rows) {
+      for (const row of rows) {
         details.appendChild(buildRow(row));
       }
       pane.appendChild(details);
@@ -857,11 +887,20 @@ ${cspMeta(nonce)}
     pane.appendChild(el("div", "legend", L.legend + " " + L.emptyNote));
     if (sticky) {
       markSticky(sticky);
-      const first = pane.querySelector(".row.sel");
-      if (first) {
-        first.scrollIntoView({ block: "nearest" });
+      // A pin-release render (focus already left the panel) must not yank focus back onto the row.
+      if (refocus === false) { applyFilter(); return; }
+      // Prefer the focused row's own section (the pinned one) so an edit does not pull focus to a
+      // repeated instance in another section; fall back to the first match.
+      let target = null;
+      if (pinnedKey === sticky && pinnedSection) {
+        const sec = pane.querySelector('details.sec[data-sec="' + pinnedSection + '"]');
+        target = sec ? sec.querySelector(".row.sel") : null;
+      }
+      target = target || pane.querySelector(".row.sel");
+      if (target) {
+        target.scrollIntoView({ block: "nearest" });
         if (document.hasFocus()) {
-          const control = first.querySelector("input, select, textarea, button");
+          const control = target.querySelector("input, select, textarea, button");
           if (control) { control.focus({ preventScroll: true }); }
         }
       }
@@ -869,14 +908,32 @@ ${cspMeta(nonce)}
     applyFilter();
   }
 
+  // Focus left the pinned row (a click elsewhere, tabbing out) - release the pin so the row can
+  // settle into its model section. Deferred a tick: an edit re-render briefly moves focus (the old
+  // control is destroyed, the new one is focused), and that must not count as leaving.
+  pane.addEventListener("focusout", () => {
+    if (!pinnedKey) { return; }
+    setTimeout(() => {
+      const active = document.activeElement;
+      const row = active && active.closest ? active.closest(".row") : null;
+      if (row && row.dataset.key === pinnedKey) { return; }
+      pinnedKey = null;
+      pinnedSection = null;
+      render(false);
+    }, 0);
+  });
+
   window.addEventListener("message", (e) => {
     const m = e.data;
     if (!m) { return; }
     if (m.type === "model") {
+      const prevNode = model && model.nodeId;
       model = m.model || null;
       sticky = m.sticky || null;
       recentColors = m.recent || [];
       window.__hint = m.hint || null;
+      // A different node (or none) starts fresh - the pin belongs to the node being edited.
+      if (!model || model.nodeId !== prevNode) { pinnedKey = null; pinnedSection = null; }
       render();
     } else if (m.type === "fieldError") {
       for (const r of pane.querySelectorAll(".row")) {
