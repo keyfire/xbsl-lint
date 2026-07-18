@@ -288,6 +288,11 @@ whole subtree under a name (kept across forms and sessions); the title-bar **+**
 preset* drops a saved preset into the current selection – a named, persistent version of copy/paste
 for the layouts you rebuild often. *Manage block presets* prunes the list.
 
+**Mass edit.** Select several components in the structure view and *Edit selected together* sets (or
+clears) one property on all of them at once – pick a key from the ones they already use or type a new
+one, then a value; empty clears it. Handy for aligning widths, toggling visibility, or rebinding a
+group of fields in one step.
+
 ## Metadata explorer
 
 ![Metadata explorer: the tree, the properties panel, grouping by subsystem](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/metadata-tree.gif)
@@ -465,6 +470,17 @@ linter's MCP server exposes.
 
 A workspace run that fails or exceeds `xbsl.workspaceLintTimeout` is reported to the *XBSL*
 output channel only – no popups on every save.
+
+## Feedback and bugs
+
+The extension is under active development, and bugs and rough edges are expected – the metadata
+explorer and the form designer especially. Please report anything that looks wrong, ideally with
+the steps to reproduce and the extension/engine versions from the status bar, in the project's
+GitHub issues:
+
+**https://github.com/keyfire/xbsl/issues**
+
+VS Code also offers *Report Issue* on the extension's page (from the manifest's `bugs` link).
 
 ## Development
 
