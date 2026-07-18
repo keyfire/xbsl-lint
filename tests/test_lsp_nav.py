@@ -729,6 +729,7 @@ def test_hover_component_carries_type_for_docs_link():
 
 def test_hover_doc_request_registered():
     # xbsl/hoverDoc (the doc link in the code-editor hover) is wired on the server.
+    pytest.importorskip("pygls", reason="LSP-методы проверяются при установленном extra [lsp]")
     from xbsl import lsp as lsp_module
 
     server = lsp_module._make_server()
@@ -743,6 +744,7 @@ def test_hover_doc_request_registered():
 def test_docs_by_name_request_registered():
     # xbsl/docsByName (the metadata-tree category tooltip) is wired and never raises. Without the
     # docs bundle for_symbol returns nothing -> an empty dict, not an exception.
+    pytest.importorskip("pygls", reason="LSP-методы проверяются при установленном extra [lsp]")
     from xbsl import lsp as lsp_module
 
     server = lsp_module._make_server()
@@ -756,6 +758,7 @@ def test_docs_by_name_request_registered():
 def test_search_forms_request_registered():
     # xbsl/searchForms (the structural search across forms, hook 10) is wired and zips its two
     # parallel arrays; an empty request yields an empty match list, never an exception.
+    pytest.importorskip("pygls", reason="LSP-методы проверяются при установленном extra [lsp]")
     from xbsl import lsp as lsp_module
 
     server = lsp_module._make_server()
@@ -772,6 +775,7 @@ def test_binding_complete_request_registered():
     # xbsl/bindingComplete (the form binding editor's component-reference completions) is wired
     # and never raises. Without a built index (a bare workspace) it yields an empty list, and a
     # garbage request yields one too – an empty result, never an exception.
+    pytest.importorskip("pygls", reason="LSP-методы проверяются при установленном extra [lsp]")
     from xbsl import lsp as lsp_module
 
     server = lsp_module._make_server()
