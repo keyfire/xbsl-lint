@@ -84,6 +84,14 @@
         {
           "id": "xbslDocs",
           "name": "%view.docs%"
+        },
+        {
+          "id": "xbslFormStructure",
+          "name": "%view.formStructure%"
+        },
+        {
+          "id": "xbslFormPalette",
+          "name": "%view.formPalette%"
         }
       ]
     },
@@ -349,12 +357,139 @@
         "command": "xbsl.docs.open",
         "title": "%cmd.docs.open%",
         "category": "XBSL"
+      },
+      {
+        "command": "xbsl.formStructure.refresh",
+        "title": "%cmd.formStructure.refresh%",
+        "category": "XBSL",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "xbsl.formStructure.select",
+        "title": "%cmd.formStructure.select%",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.formStructure.openInEditor",
+        "title": "%cmd.formStructure.openInEditor%",
+        "category": "XBSL",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "xbsl.formStructure.moveUp",
+        "title": "%cmd.formStructure.moveUp%",
+        "category": "XBSL",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "xbsl.formStructure.moveDown",
+        "title": "%cmd.formStructure.moveDown%",
+        "category": "XBSL",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "xbsl.formStructure.delete",
+        "title": "%cmd.formStructure.delete%",
+        "category": "XBSL",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "xbsl.formStructure.rename",
+        "title": "%cmd.formStructure.rename%",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.formStructure.duplicate",
+        "title": "%cmd.formStructure.duplicate%",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.formStructure.wrap",
+        "title": "%cmd.formStructure.wrap%",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.formStructure.unwrap",
+        "title": "%cmd.formStructure.unwrap%",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.formStructure.copyYaml",
+        "title": "%cmd.formStructure.copyYaml%",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.formStructure.focusSubtree",
+        "title": "%cmd.formStructure.focusSubtree%",
+        "category": "XBSL",
+        "icon": "$(target)"
+      },
+      {
+        "command": "xbsl.formStructure.resetFocus",
+        "title": "%cmd.formStructure.resetFocus%",
+        "category": "XBSL",
+        "icon": "$(close)"
+      },
+      {
+        "command": "xbsl.formStructure.filterNamed",
+        "title": "%cmd.formStructure.filterNamed%",
+        "category": "XBSL",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "xbsl.formStructure.filterAll",
+        "title": "%cmd.formStructure.filterAll%",
+        "category": "XBSL",
+        "icon": "$(filter-filled)"
+      },
+      {
+        "command": "xbsl.formPalette.refresh",
+        "title": "%cmd.formPalette.refresh%",
+        "category": "XBSL",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "xbsl.formPalette.activate",
+        "title": "%cmd.formPalette.activate%",
+        "category": "XBSL"
+      },
+      {
+        "command": "xbsl.formPalette.insert",
+        "title": "%cmd.formPalette.insert%",
+        "category": "XBSL",
+        "icon": "$(add)"
+      },
+      {
+        "command": "xbsl.formPalette.addFavorite",
+        "title": "%cmd.formPalette.addFavorite%",
+        "category": "XBSL",
+        "icon": "$(star-empty)"
+      },
+      {
+        "command": "xbsl.formPalette.removeFavorite",
+        "title": "%cmd.formPalette.removeFavorite%",
+        "category": "XBSL",
+        "icon": "$(star-full)"
+      },
+      {
+        "command": "xbsl.formPalette.openDocs",
+        "title": "%cmd.formPalette.openDocs%",
+        "category": "XBSL",
+        "icon": "$(book)"
       }
     ],
     "menus": {
       "commandPalette": [
         {
           "command": "xbsl.docs.open",
+          "when": "false"
+        },
+        {
+          "command": "xbsl.formStructure.select",
+          "when": "false"
+        },
+        {
+          "command": "xbsl.formPalette.activate",
           "when": "false"
         }
       ],
@@ -397,6 +532,31 @@
           "command": "xbsl.docs.refresh",
           "when": "view == xbslDocs",
           "group": "navigation@2"
+        },
+        {
+          "command": "xbsl.formStructure.resetFocus",
+          "when": "view == xbslFormStructure && xbsl.formStructure.focusedSubtree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "xbsl.formStructure.filterNamed",
+          "when": "view == xbslFormStructure && !xbsl.formStructure.namedOnly",
+          "group": "navigation@2"
+        },
+        {
+          "command": "xbsl.formStructure.filterAll",
+          "when": "view == xbslFormStructure && xbsl.formStructure.namedOnly",
+          "group": "navigation@2"
+        },
+        {
+          "command": "xbsl.formStructure.refresh",
+          "when": "view == xbslFormStructure",
+          "group": "navigation@3"
+        },
+        {
+          "command": "xbsl.formPalette.refresh",
+          "when": "view == xbslFormPalette",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -679,9 +839,113 @@
           "command": "xbsl.metadata.clearFilter",
           "when": "view == xbslMetadata && viewItem =~ /\\bfiltered\\b/",
           "group": "2_filter@2"
+        },
+        {
+          "command": "xbsl.formStructure.openInEditor",
+          "when": "view == xbslFormStructure && viewItem =~ /\\b(formNode|formSlot|formRoot)\\b/",
+          "group": "0_open@1"
+        },
+        {
+          "command": "xbsl.formStructure.rename",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformNode\\b/",
+          "group": "1_edit@1"
+        },
+        {
+          "command": "xbsl.formStructure.duplicate",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformNode\\b/",
+          "group": "1_edit@2"
+        },
+        {
+          "command": "xbsl.formStructure.copyYaml",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformNode\\b/",
+          "group": "1_edit@3"
+        },
+        {
+          "command": "xbsl.formStructure.moveUp",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformNode\\b/",
+          "group": "2_arrange@1"
+        },
+        {
+          "command": "xbsl.formStructure.moveDown",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformNode\\b/",
+          "group": "2_arrange@2"
+        },
+        {
+          "command": "xbsl.formStructure.wrap",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformNode\\b/",
+          "group": "3_wrap@1"
+        },
+        {
+          "command": "xbsl.formStructure.unwrap",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformContainer\\b/",
+          "group": "3_wrap@2"
+        },
+        {
+          "command": "xbsl.formStructure.focusSubtree",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformNode\\b/",
+          "group": "4_view@1"
+        },
+        {
+          "command": "xbsl.formStructure.delete",
+          "when": "view == xbslFormStructure && viewItem =~ /\\bformNode\\b/",
+          "group": "9_delete@1"
+        },
+        {
+          "command": "xbsl.formPalette.insert",
+          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettecomponent\\b/",
+          "group": "inline"
+        },
+        {
+          "command": "xbsl.formPalette.insert",
+          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettecomponent\\b/",
+          "group": "1_insert@1"
+        },
+        {
+          "command": "xbsl.formPalette.addFavorite",
+          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettenonfav\\b/",
+          "group": "2_favorites@1"
+        },
+        {
+          "command": "xbsl.formPalette.removeFavorite",
+          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettefav\\b/",
+          "group": "2_favorites@1"
+        },
+        {
+          "command": "xbsl.formPalette.openDocs",
+          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettecomponent\\b/",
+          "group": "3_docs@1"
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "xbsl.formStructure.moveUp",
+        "key": "alt+up",
+        "when": "focusedView == 'xbslFormStructure'"
+      },
+      {
+        "command": "xbsl.formStructure.moveDown",
+        "key": "alt+down",
+        "when": "focusedView == 'xbslFormStructure'"
+      },
+      {
+        "command": "xbsl.formStructure.delete",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == 'xbslFormStructure'"
+      },
+      {
+        "command": "xbsl.formStructure.rename",
+        "key": "f2",
+        "when": "focusedView == 'xbslFormStructure'"
+      },
+      {
+        "command": "xbsl.formStructure.copyYaml",
+        "key": "ctrl+c",
+        "mac": "cmd+c",
+        "when": "focusedView == 'xbslFormStructure'"
+      }
+    ],
     "configuration": [
       {
         "title": "XBSL",
@@ -1134,7 +1398,7 @@
     "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
     "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "check": "tsc --noEmit",
-    "test": "esbuild test/navCore.test.ts --bundle --outfile=dist/navCore.test.js --format=cjs --platform=node && node dist/navCore.test.js && esbuild test/codeActionsCore.test.ts --bundle --outfile=dist/codeActionsCore.test.js --format=cjs --platform=node && node dist/codeActionsCore.test.js && esbuild test/formPreviewCore.test.ts --bundle --outfile=dist/formPreviewCore.test.js --format=cjs --platform=node && node dist/formPreviewCore.test.js && esbuild test/workspaceCore.test.ts --bundle --outfile=dist/workspaceCore.test.js --format=cjs --platform=node && node dist/workspaceCore.test.js && esbuild test/metadataCore.test.ts --bundle --outfile=dist/metadataCore.test.js --format=cjs --platform=node && node dist/metadataCore.test.js && esbuild test/baselineCore.test.ts --bundle --outfile=dist/baselineCore.test.js --format=cjs --platform=node && node dist/baselineCore.test.js && esbuild test/templatesCore.test.ts --bundle --outfile=dist/templatesCore.test.js --format=cjs --platform=node && node dist/templatesCore.test.js",
+    "test": "esbuild test/navCore.test.ts --bundle --outfile=dist/navCore.test.js --format=cjs --platform=node && node dist/navCore.test.js && esbuild test/codeActionsCore.test.ts --bundle --outfile=dist/codeActionsCore.test.js --format=cjs --platform=node && node dist/codeActionsCore.test.js && esbuild test/formPreviewCore.test.ts --bundle --outfile=dist/formPreviewCore.test.js --format=cjs --platform=node && node dist/formPreviewCore.test.js && esbuild test/workspaceCore.test.ts --bundle --outfile=dist/workspaceCore.test.js --format=cjs --platform=node && node dist/workspaceCore.test.js && esbuild test/metadataCore.test.ts --bundle --outfile=dist/metadataCore.test.js --format=cjs --platform=node && node dist/metadataCore.test.js && esbuild test/baselineCore.test.ts --bundle --outfile=dist/baselineCore.test.js --format=cjs --platform=node && node dist/baselineCore.test.js && esbuild test/templatesCore.test.ts --bundle --outfile=dist/templatesCore.test.js --format=cjs --platform=node && node dist/templatesCore.test.js && esbuild test/formStructureCore.test.ts --bundle --outfile=dist/formStructureCore.test.js --format=cjs --platform=node && node dist/formStructureCore.test.js && esbuild test/formPaletteCore.test.ts --bundle --outfile=dist/formPaletteCore.test.js --format=cjs --platform=node && node dist/formPaletteCore.test.js",
     "package": "vsce package --no-dependencies -o xbsl-vscode.vsix",
     "publish:vsce": "vsce publish --no-dependencies --skip-duplicate",
     "publish:ovsx": "ovsx publish xbsl-vscode.vsix --skip-duplicate"

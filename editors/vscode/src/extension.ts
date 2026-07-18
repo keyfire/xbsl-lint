@@ -3,7 +3,9 @@ import * as fs from "fs";
 import * as path from "path";
 import { LinterConfig, RawDiag, RawReport } from "./report";
 import { registerDeploy } from "./deploy";
+import { registerFormPalette } from "./formPalette";
 import { registerFormPreview } from "./formPreview";
+import { registerFormStructure } from "./formStructure";
 import { baselineForLint, registerExcludeAction } from "./excludeAction";
 import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from "./linter";
 import { activateLsp, lspActive, lspBaselinePassed, lspRequest } from "./lspClient";
@@ -414,6 +416,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Element documentation: the help tree, search and showing the page for the symbol under the
   // cursor. Data comes from the linter's LSP server; in the CLI mode (no server) the commands say so.
   registerDocs(context);
+  // Visual form designer panels: the structure tree of the active form yaml and the component
+  // palette. Both are thin clients of the engine (xbsl/formTree, xbsl/formEdit, xbsl/uiSchema);
+  // the providers load data lazily, only when their views are visible.
+  const formStructure = registerFormStructure(context);
+  registerFormPalette(context, {
+    projectComponents: metadataTree.interfaceComponents,
+    structure: formStructure,
+  });
   // Code templates: the management panel works in both modes (data and writes go through the
   // engine), while template suggestions on Ctrl+Space come from the LSP server.
   registerTemplates(context);

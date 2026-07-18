@@ -868,6 +868,17 @@ class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
     return { subsystems: this.model.subsystems, projectDir: this.model.projects[0]?.dir };
   }
 
+  // Interface components (forms) of the workspace - the "Project" section of the component
+  // palette is a thin consumer of the same parsed model.
+  async interfaceComponents(): Promise<Array<{ name: string; yamlPath: string }>> {
+    if (!this.model) {
+      this.model = await parseModel(this.projectRootFor);
+    }
+    return this.model.elements
+      .filter((el) => el.kind === FORM_KIND)
+      .map((el) => ({ name: el.name, yamlPath: el.yamlPath }));
+  }
+
   // Type candidates for the properties panel (the Тип combo box): primitives, then object references
   // (<Имя>.Ссылка?) and enumerations (<Имя>?), each group alphabetized. The list is open.
   async typeCandidates(): Promise<string[]> {
@@ -1329,7 +1340,10 @@ async function pickGroupMode(provider: XbslMetadataProvider, context: vscode.Ext
 export function registerMetadataTree(
   context: vscode.ExtensionContext,
   projectRootFor: (folder: vscode.WorkspaceFolder) => string
-): { typeCandidates: () => Promise<string[]> } {
+): {
+  typeCandidates: () => Promise<string[]>;
+  interfaceComponents: () => Promise<Array<{ name: string; yamlPath: string }>>;
+} {
   const provider = new XbslMetadataProvider(projectRootFor);
   const view = vscode.window.createTreeView("xbslMetadata", {
     treeDataProvider: provider,
@@ -1402,6 +1416,10 @@ export function registerMetadataTree(
     );
   }
 
-  // The properties panel takes the Тип combo box candidates from here (the provider knows the project).
-  return { typeCandidates: () => provider.typeCandidates() };
+  // The properties panel takes the Тип combo box candidates from here; the component palette
+  // takes the project's interface components (the provider knows the project).
+  return {
+    typeCandidates: () => provider.typeCandidates(),
+    interfaceComponents: () => provider.interfaceComponents(),
+  };
 }
