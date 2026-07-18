@@ -50,7 +50,7 @@ const FOCUSED_CONTEXT = "xbsl.formStructure.focusedSubtree";
 const NAMED_CONTEXT = "xbsl.formStructure.namedOnly";
 // Soft hook into the (future) properties panel: executed only when some other module
 // contributed the command; the structure view carries no hard dependency on it.
-const PROPS_HOOK_COMMAND = "xbsl.formProps.show";
+const PROPS_HOOK_COMMAND = "xbsl.properties.showForNode";
 const IDENTIFIER = /^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*$/;
 
 // The same shallow check the form preview uses: an interface component with inheritance.
@@ -675,11 +675,8 @@ class FormStructureProvider
     }
     const commands = await vscode.commands.getCommands(true);
     if (commands.includes(PROPS_HOOK_COMMAND)) {
-      void vscode.commands.executeCommand(PROPS_HOOK_COMMAND, {
-        uri: this.target.toString(),
-        nodeId: node.id,
-        offset: node.span.start,
-      });
+      // The properties panel takes positional (uri, offset) - see formProps.ts.
+      void vscode.commands.executeCommand(PROPS_HOOK_COMMAND, this.target.toString(), node.span.start);
     }
   }
 
