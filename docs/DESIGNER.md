@@ -3,7 +3,7 @@
 Status: waves 1-3 delivered - stages 0-3 (ui schema, form model and operations,
 structure view, palette, properties v2) plus hooks 1-12. The hook backlog is
 closed; live-feedback refinements are in the "Refinement backlog" section below.
-Russian counterpart: [DESIGNER.ru.md](DESIGNER.ru.md). Keep the two files in sync.
+Russian counterpart: [DESIGNER.ru.md](https://github.com/keyfire/xbsl/blob/main/docs/DESIGNER.ru.md). Keep the two files in sync.
 
 The toolkit grows a visual designer for 1C:Element interface components
 (`ВидЭлемента: КомпонентИнтерфейса` – forms, custom components): a structure view,
