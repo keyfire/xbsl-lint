@@ -595,8 +595,12 @@ export function remapIds(ids: Iterable<string>, oldIndex: FormIndex | undefined,
 // MIME types of the two trees. The structure view's own type doubles as the drop protocol id
 // (VS Code derives "application/vnd.code.tree.<viewid lowercase>" from the view id); the
 // palette contributes its payload under its own type, which the structure view also accepts.
+// The structure's own intra-tree move uses the reserved tree mime (VS Code handles it
+// natively). The cross-tree sources (palette, data panel) use PLAIN custom mimes: the reserved
+// application/vnd.code.tree.<viewid> carries VS Code's own internal item representation and does
+// not reliably deliver a custom payload to a DIFFERENT tree - a plain mime does.
 export const STRUCTURE_MIME = "application/vnd.code.tree.xbslformstructure";
-export const PALETTE_MIME = "application/vnd.code.tree.xbslformpalette";
+export const PALETTE_MIME = "application/vnd.xbsl.palette-component";
 
 // Structure drag payload: the source document and the dragged component ids (JSON).
 export interface StructureDragPayload {

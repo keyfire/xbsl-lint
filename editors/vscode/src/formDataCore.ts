@@ -70,7 +70,9 @@ export interface DataFormEditResponse {
 // The Data panel's own tree MIME (VS Code derives "application/vnd.code.tree.<viewid
 // lowercase>" from the view id xbslFormData); the structure view accepts it next to the
 // palette MIME.
-export const DATA_MIME = "application/vnd.code.tree.xbslformdata";
+// A plain custom mime (not the reserved application/vnd.code.tree.<viewid>): the reserved one
+// does not reliably carry a custom payload across to a different tree. See PALETTE_MIME.
+export const DATA_MIME = "application/vnd.xbsl.data-record";
 
 // A dragged record: an object attribute binds as =Объект.Имя, a component property as
 // =Имя. multiline marks the fields the engine renders with a multiline input
