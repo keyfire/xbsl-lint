@@ -27,11 +27,12 @@ Two things to keep in mind:
 
 ## Opening the designer
 
-Open a `.yaml` of an interface component (a form or a custom `КомпонентИнтерфейса`). Two
-activity-bar containers hold the panels, and both follow the active editor:
+Open a `.yaml` of an interface component (a form or a custom `КомпонентИнтерфейса`). Three
+activity-bar containers hold the panels, and all follow the active editor:
 
 - **Designer (1C:Element)** – the **Structure**, **Palette** and **Data** panels.
 - **Properties (1C:Element)** – the **Properties** panel.
+- **Documentation (1C:Element)** – the **Documentation** panel.
 
 For the wireframe, use the **form preview** button (the preview icon in the editor title bar,
 shown when a form yaml is active) or **Form preview** from the metadata tree's context menu.
@@ -106,6 +107,15 @@ attributes, and the component's own `Свойства:`.
 - **Bind an input**: drag an attribute (or a property) into the Structure tree, or use **Insert
   into the form** – the designer creates the right input component already bound (`Булево` –>
   a checkbox, otherwise an input field with `Значение: =...`).
+
+## Documentation panel
+
+The **Documentation (1C:Element)** container is a searchable tree of the platform's own
+documentation, built from your 1C:Element distribution. **Search the documentation** (the search
+button on its title bar) finds pages by name; **Documentation for the symbol** (the editor's
+right-click menu on a type or a variable) and the **Open documentation** action in the palette
+and the properties panel open the matching page here – this is where the designer answers "what
+is this component or property".
 
 ## Wireframe preview
 
