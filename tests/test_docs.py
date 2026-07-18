@@ -143,3 +143,19 @@ def test_asset(docs_root):
     assert a["mime"] == "image/png" and a["bytes"].startswith(b"\x89PNG")
     assert docs.asset("assets/нет.png") is None
     assert docs.asset("../../secret.txt") is None   # escaping the directory is forbidden
+
+
+def test_summarize_pure():
+    # A reference page: the sentence after the availability marker.
+    ref = (
+        "<h1>Справочник</h1><p>Стд::Справочники::Справочник</p>"
+        "<p>Доступность: КлиентИСервер</p>"
+        "<p>Базовый тип для всех менеджеров справочников. Прочее.</p>"
+    )
+    assert docs._summarize(ref) == "Базовый тип для всех менеджеров справочников."
+    # A topic page: the sentence after "Общее описание".
+    topic = "<h1>Структура</h1><h2>Общее описание</h2><p>Структура имеет фиксированный набор полей. Ещё.</p>"
+    assert docs._summarize(topic) == "Структура имеет фиксированный набор полей."
+    # No marker: the first sentence, tags stripped.
+    assert docs._summarize("<p>Просто первое предложение. Второе.</p>") == "Просто первое предложение."
+    assert docs._summarize("") == ""

@@ -824,6 +824,17 @@ def _make_server() -> "LanguageServer":
         # No confident page (a method section, an unknown type) - return candidates to choose from.
         return {"name": name, "page": None, "candidates": docs.search(query, limit=8)}
 
+    @server.feature("xbsl/docsByName")
+    def _docs_by_name(params: object) -> dict:
+        # A type/symbol name -> its documentation page id, title and a one-line summary. Feeds the
+        # metadata-tree category tooltip (a brief description plus a link into the docs panel).
+        name = str(_param(params, "name", "") or "")
+        pid = docs.for_symbol(name) if name else None
+        if not pid:
+            return {}
+        rec = docs.page(pid) or {}
+        return {"id": pid, "title": rec.get("title") or name, "summary": docs.summary(pid)}
+
     # --- ui schema (the designer's palette and properties panel are thin clients) --------
 
     @server.feature("xbsl/uiSchema")

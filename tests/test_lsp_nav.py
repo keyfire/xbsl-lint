@@ -724,3 +724,16 @@ def test_hover_doc_request_registered():
     # no document open in the bare workspace -> a clean empty result, never an exception
     res = features["xbsl/hoverDoc"]({"uri": "file:///нет.xbsl", "position": {"line": 0, "character": 0}})
     assert res == {"pageId": None, "symbol": None}
+
+
+def test_docs_by_name_request_registered():
+    # xbsl/docsByName (the metadata-tree category tooltip) is wired and never raises. Without the
+    # docs bundle for_symbol returns nothing -> an empty dict, not an exception.
+    from xbsl import lsp as lsp_module
+
+    server = lsp_module._make_server()
+    fm = getattr(server.lsp, "fm", None) or getattr(server.lsp, "_features", None)
+    features = getattr(fm, "features", fm)
+    assert "xbsl/docsByName" in features
+    assert features["xbsl/docsByName"]({"name": "нетТакогоТипа"}) == {}
+    assert features["xbsl/docsByName"]({}) == {}

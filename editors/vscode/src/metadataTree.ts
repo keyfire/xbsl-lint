@@ -13,6 +13,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { applyScaffold, callMeta, ensureSavedForCli, ScaffoldResult } from "./engineMeta";
+import { lspActive, lspRequest } from "./lspClient";
+import { docsCommandUri } from "./hoverDocs";
 import {
   MetaField,
   MetaInternals,
@@ -74,6 +76,15 @@ interface KindMeta {
 
 const KIND_META = new Map<string, KindMeta>();
 KIND_ROWS.forEach(([kind, group, icon], i) => KIND_META.set(kind, { group, icon, order: i }));
+
+// The platform type that best documents each category (the first kind mapped to the group) -
+// the metadata-tree category tooltip resolves its docs page by this name (xbsl/docsByName).
+const GROUP_PRIMARY_KIND = new Map<string, string>();
+KIND_ROWS.forEach(([kind, group]) => {
+  if (!GROUP_PRIMARY_KIND.has(group)) {
+    GROUP_PRIMARY_KIND.set(group, kind);
+  }
+});
 
 // A tree icon in the neutral tree-foreground color. The symbol-* codicons (symbol-enum,
 // symbol-interface, ...) otherwise render in their own semantic colors, so enumerations and
@@ -343,6 +354,7 @@ class XbslNode extends vscode.TreeItem {
   codeKind?: boolean; // code kind (module/HTTP service): click opens the module on the left
   stdKind?: string; // standard attribute: the object kind (Справочник/Документ)
   stdName?: string; // standard attribute: the name (Наименование/Код/Номер/Дата)
+  docsKind?: string; // category: the platform type whose docs page describes it (tooltip)
 }
 
 // Set parent links across the whole built tree (for reveal).
@@ -494,6 +506,8 @@ function categoryNode(group: string, icon: string, children: XbslNode[], createK
   node.iconPath = neutralIcon(icon);
   node.description = String(children.length);
   node.newObjectKind = createKind;
+  node.docsKind = GROUP_PRIMARY_KIND.get(group); // the tooltip resolves its docs page lazily
+
   // The newobj-<slug> token enables the right per-kind "Add <class>" command.
   node.contextValue = ["xbslCategory", createKind ? `newobj-${CREATABLE_SLUG[createKind]}` : ""]
     .filter(Boolean)
@@ -904,6 +918,51 @@ class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
 
   getTreeItem(node: XbslNode): vscode.TreeItem {
     return node;
+  }
+
+  // Category tooltips (a brief description + a docs-panel link) are resolved lazily on hover -
+  // one xbsl/docsByName per category, cached for the session (null = no docs page for this kind).
+  private readonly docsTipCache = new Map<string, vscode.MarkdownString | null>();
+
+  async resolveTreeItem(item: vscode.TreeItem, node: XbslNode): Promise<vscode.TreeItem> {
+    if (!node.docsKind) {
+      return item;
+    }
+    const label = typeof node.label === "string" ? node.label : node.label?.label ?? node.docsKind;
+    let md = this.docsTipCache.get(node.docsKind);
+    if (md === undefined) {
+      md = await this.buildCategoryTooltip(node.docsKind, label);
+      this.docsTipCache.set(node.docsKind, md);
+    }
+    if (md) {
+      item.tooltip = md;
+    }
+    return item;
+  }
+
+  private async buildCategoryTooltip(kind: string, label: string): Promise<vscode.MarkdownString | null> {
+    if (!lspActive()) {
+      return null;
+    }
+    const res = await lspRequest<{ id?: string; title?: string; summary?: string }>(
+      "xbsl/docsByName",
+      { name: kind }
+    );
+    if (!res || (!res.summary && !res.id)) {
+      return null;
+    }
+    const md = new vscode.MarkdownString("", true); // supportThemeIcons for the $(book) glyph
+    md.isTrusted = { enabledCommands: ["xbsl.docs.open"] };
+    md.appendMarkdown(`**${label}**`);
+    if (res.summary) {
+      md.appendMarkdown(`\n\n${res.summary}`);
+    }
+    if (res.id) {
+      md.appendMarkdown(
+        `\n\n[$(book) ${vscode.l10n.t("Documentation")}](${docsCommandUri(res.id).toString()})`
+      );
+    }
+    return md;
   }
 
   getParent(node: XbslNode): XbslNode | undefined {

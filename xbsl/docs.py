@@ -18,11 +18,15 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from html import unescape
 from pathlib import Path
 
 from xbsl import dataset
 
 _DB_NAME = "docs.sqlite"
+# Plain-text extraction for a short page summary (the metadata-tree category tooltip).
+_TAG_RE = re.compile(r"<[^>]+>")
+_WS_RE = re.compile(r"\s+")
 # Query token: letters (incl. Cyrillic), digits, underscore - everything else is dropped for FTS5.
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 # Images live as files next to the database (`<version>/assets/...`), mime is derived from the extension.
@@ -164,6 +168,30 @@ def for_symbol(name: str, version: str | None = None) -> str | None:
         return byq["id"] if byq else None
     finally:
         con.close()
+
+
+def _summarize(html: str) -> str:
+    """One-sentence description from a page's cleaned HTML (pure - no database).
+
+    Reference (stdlib) pages read "Title Qualified Доступность: <avail> <description>. ..."; a
+    topic reads "Title Общее описание <description>. ...". We take the sentence right after that
+    marker; failing both markers, the first sentence, capped. Empty when there is no text.
+    """
+    text = _WS_RE.sub(" ", unescape(_TAG_RE.sub(" ", html or ""))).strip()
+    if not text:
+        return ""
+    m = re.search(r"Доступность:\s*\S+\s+(.+?\.)(?:\s|$)", text)
+    if not m:
+        m = re.search(r"Общее описание\s+(.+?\.)(?:\s|$)", text)
+    if m:
+        return m.group(1).strip()
+    return re.split(r"(?<=\.)\s", text, maxsplit=1)[0].strip()[:240]
+
+
+def summary(doc_id: str, version: str | None = None) -> str:
+    """A one-sentence plain-text description of a page - the metadata-tree category tooltip."""
+    rec = page(doc_id, version)
+    return _summarize(rec.get("html") or "") if rec else ""
 
 
 def asset(asset_id: str, version: str | None = None) -> dict | None:
