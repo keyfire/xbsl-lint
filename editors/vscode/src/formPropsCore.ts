@@ -195,8 +195,9 @@ export interface PanelModel {
   // #rrggbb of every АбсолютныйЦвет present anywhere in the form yaml - the color editor
   // offers them as one-click swatches (hook 7). Absent in metadata mode.
   formColors?: string[];
-  // Every binding expression already used in the form yaml - the binding editor offers them
-  // as autocomplete (hook 6). Absent in metadata mode.
+  // Binding autocomplete for the binding editor (hook 6): the expressions already used in the
+  // form yaml, plus =Объект.<attribute> of the owner object (merged in by the extension after an
+  // xbsl/objectInfo call). Absent in metadata mode.
   formBindings?: string[];
   // true - the metadata mode of the unified panel (propsModes.buildMetaPanelModel): the
   // webview renders the rows flat, without the section chrome and the component legend.
