@@ -216,6 +216,11 @@ ${cspMeta(nonce)}
   .cmp .subcap { font-size: .8em; opacity: .7; margin-bottom: 1px; }
   .valline { display: flex; gap: 5px; align-items: center; }
   .valline input, .valline .ro { flex: 1; min-width: 0; }
+  /* The binding field is wrapped in .combo (for its dropdown); make the wrapper the flex child
+     so the field fills the row, with the toggle and yaml-jump buttons after it. */
+  .valline .combo { flex: 1; min-width: 0; }
+  .valline .combo input { width: 100%; box-sizing: border-box; }
+  .valline .rbtn { flex: none; }
   .combo { position: relative; }
   .combo-list { position: absolute; left: 0; right: 0; top: 100%; margin-top: 2px; z-index: 20;
     max-height: 220px; overflow-y: auto; background: var(--vscode-dropdown-background, var(--vscode-input-background));
@@ -573,6 +578,21 @@ ${cspMeta(nonce)}
   // apart the same way the engine does - a leading "=".
   function isBinding(v) { return typeof v === "string" && v.trim().charAt(0) === "="; }
 
+  // Rows rendered through the literal/binding cell (single-line text, number, binding) carry the
+  // yaml-jump button in their value line, next to the field - the caption must not add a second one.
+  function ownsInlineGoto(row) {
+    const c = row.editor.control;
+    return c === "binding" || c === "number" || (c === "text" && !row.editor.multiline);
+  }
+
+  // Editors whose own control already unsets the property - the tristate "Авто", the enum "(auto)"
+  // option, the handler "(no handler)" choice. The reset "x" would just duplicate that, so these
+  // rows get no reset button.
+  function hasAutoAffordance(row) {
+    const c = row.editor.control;
+    return c === "tristate" || c === "enum" || c === "handler";
+  }
+
   function flipButton(label, title, onClick) {
     const b = el("button", "rbtn", label);
     b.title = title;
@@ -624,6 +644,7 @@ ${cspMeta(nonce)}
     wrap.appendChild(input); wrap.appendChild(list);
     line.appendChild(wrap);
     line.appendChild(flipButton("abc", L.toLiteral, toLiteral));
+    inlineActions(row, line);
     return { line, input };
   }
 
@@ -644,6 +665,7 @@ ${cspMeta(nonce)}
       wireText(input, start, (v) => commit(row.key, v), false);
       line.appendChild(input);
       line.appendChild(flipButton("=", L.toBinding, () => renderBinding(true)));
+      inlineActions(row, line);
       holder.appendChild(line);
       if (focus) { input.focus(); }
     };
@@ -684,6 +706,20 @@ ${cspMeta(nonce)}
     return b;
   }
 
+  function resetButton(row) {
+    const b = el("button", "rbtn", "\\u2715");
+    b.title = L.reset;
+    b.addEventListener("click", (e) => { e.preventDefault(); post({ type: "reset", key: row.key }); });
+    return b;
+  }
+
+  // The value-line action buttons for a literal/binding cell (hook 6): the yaml jump and the
+  // reset live next to the field, so the caption stays just the dot and the name.
+  function inlineActions(row, line) {
+    if (row.set && row.propSpan) { line.appendChild(gotoButton(row)); }
+    if (row.set && row.editor.control !== "readonly") { line.appendChild(resetButton(row)); }
+  }
+
   function editorFor(row) {
     switch (row.editor.control) {
       case "tristate": return triEditor(row);
@@ -722,18 +758,17 @@ ${cspMeta(nonce)}
     cap.appendChild(name);
     if (row.editor.control === "readonly") { cap.appendChild(el("span", "ro", "· " + L.readonly)); }
     cap.appendChild(el("span", "sp"));
-    // The yaml jump lives in the caption for every editable set row (the value cell no longer
-    // carries its own - hook 6 made bindings and literals share one cell).
-    if (row.set && row.propSpan && row.editor.control !== "readonly") {
+    // The yaml jump and reset live in the caption - EXCEPT for the literal/binding cell (hook 6),
+    // which carries them in its value line next to the field (see inlineActions).
+    const inlineButtons = ownsInlineGoto(row);
+    if (row.set && row.propSpan && row.editor.control !== "readonly" && !inlineButtons) {
       cap.appendChild(gotoButton(row));
     }
-    // Read-only rows (Ид, ВидЭлемента, slots) cannot be edited - deleting them from the
-    // panel would be the only "edit" left, so they get no reset either.
-    if (row.set && row.editor.control !== "readonly") {
-      const reset = el("button", "rbtn", "\\u2715");
-      reset.title = L.reset;
-      reset.addEventListener("click", () => post({ type: "reset", key: row.key }));
-      cap.appendChild(reset);
+    // The reset lives in the caption too - but not for read-only rows (nothing to reset), the
+    // inline-cell rows (their reset sits by the field), or rows whose own control already clears
+    // the value (tristate/enum/handler - the reset would just duplicate their auto/none choice).
+    if (row.set && row.editor.control !== "readonly" && !inlineButtons && !hasAutoAffordance(row)) {
+      cap.appendChild(resetButton(row));
     }
     div.appendChild(cap);
     div.appendChild(editorFor(row));
