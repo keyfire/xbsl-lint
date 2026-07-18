@@ -420,7 +420,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // mode shows a hint), other element yamls and modules with the metadata object (local
   // targeted edits, no server needed). The metadata tree feeds it its Тип candidates and
   // targets it via xbsl.metadata.props.
-  registerFormProps(context, metadataTree.typeCandidates, metadataTree.formOwnerByPath);
+  registerFormProps(
+    context,
+    metadataTree.typeCandidates,
+    metadataTree.formOwnerByPath,
+    metadataTree.projectEnums
+  );
   // Element documentation: the help tree, search and showing the page for the symbol under the
   // cursor. Data comes from the linter's LSP server; in the CLI mode (no server) the commands say so.
   registerDocs(context);

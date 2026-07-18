@@ -78,6 +78,10 @@ let typeCandidatesFn: (() => Promise<string[]>) | undefined;
 let formOwnerFn: ((yamlPath: string) => Promise<{ name: string; kind: string; yamlPath: string } | undefined>) | undefined;
 // hook 6: =Объект.<attribute> completions per owner object yamlPath, resolved once and reused.
 const objectBindingsCache = new Map<string, string[]>();
+// hook 6: the project's enumerations (name -> values) for the binding editor's =Имя.Значение
+// completion. Supplied by the metadata tree; resolved once per session and reused.
+let projectEnumsFn: (() => Promise<Record<string, string[]>>) | undefined;
+let projectEnumsCache: Record<string, string[]> | undefined;
 let lastModel: PanelModel | null = null;
 let lastHint: string | null = null;
 // The sticky property: the focused row survives switching to another node of the same type
@@ -642,10 +646,21 @@ ${cspMeta(nonce)}
       if (v === "" || v === "=" || v.charAt(0) !== "=") { return; }
       last = v; commit(row.key, v);
     };
+    const enums = (model && model.projectEnums) || {};
     const build = (showAll) => {
       const q = showAll ? "" : input.value.trim().toLowerCase();
       list.textContent = "";
-      const matches = opts.filter((o) => o !== input.value && o.toLowerCase().includes(q));
+      let matches;
+      // hook 6: "=Перечисление.<часть>" offers that enumeration's values as =Перечисление.Значение.
+      const dot = /^=([A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)\.(.*)$/.exec(input.value.trim());
+      if (dot && enums[dot[1]]) {
+        const part = dot[2].toLowerCase();
+        matches = enums[dot[1]]
+          .filter((val) => val.toLowerCase().includes(part))
+          .map((val) => "=" + dot[1] + "." + val);
+      } else {
+        matches = opts.filter((o) => o !== input.value && o.toLowerCase().includes(q));
+      }
       if (!matches.length) { list.style.display = "none"; return; }
       for (const o of matches) {
         const it = el("div", "combo-opt", o);
@@ -1070,6 +1085,24 @@ async function objectBindingsFor(uri: vscode.Uri): Promise<string[]> {
   return attrs;
 }
 
+// hook 6: the project's enumerations (name -> values) for the binding editor's =Имя.Значение
+// completion. Resolved once per session and reused (enum definitions rarely change mid-edit; a
+// window reload picks up new ones). No supplier or a failure yields an empty map.
+async function projectEnumsFor(): Promise<Record<string, string[]>> {
+  if (projectEnumsCache) {
+    return projectEnumsCache;
+  }
+  if (!projectEnumsFn) {
+    return {};
+  }
+  try {
+    projectEnumsCache = await projectEnumsFn();
+  } catch {
+    projectEnumsCache = {};
+  }
+  return projectEnumsCache;
+}
+
 async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> {
   const my = ++seq;
   if (!lspActive()) {
@@ -1132,6 +1165,7 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
   // hook 6: enrich the binding autocomplete with the owner object's attributes (the bindings
   // already used in the form come first, from buildPanelModel; the rest of the attributes follow).
   const objAttrs = await objectBindingsFor(uri);
+  const projEnums = await projectEnumsFor(); // hook 6: =Имя.Значение completion
   const readonly = await isReadonlyDoc(uri); // hook 11
   if (seq !== my || !view) {
     return;
@@ -1140,6 +1174,7 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
     const have = new Set(lastModel.formBindings ?? []);
     lastModel.formBindings = [...(lastModel.formBindings ?? []), ...objAttrs.filter((b) => !have.has(b))];
   }
+  lastModel.projectEnums = projEnums;
   lastModel.readonly = readonly;
   lastHint = null;
   target = { kind: "component", uri, nodeId: node.id, nodeSpanStart: node.span.start, type };
@@ -1727,10 +1762,12 @@ export function updatePropsFromSelection(node: PropsNode | undefined): void {
 export function registerFormProps(
   context: vscode.ExtensionContext,
   typeCandidates?: () => Promise<string[]>,
-  formOwner?: (yamlPath: string) => Promise<{ name: string; kind: string; yamlPath: string } | undefined>
+  formOwner?: (yamlPath: string) => Promise<{ name: string; kind: string; yamlPath: string } | undefined>,
+  projectEnums?: () => Promise<Record<string, string[]>>
 ): void {
   typeCandidatesFn = typeCandidates;
   formOwnerFn = formOwner;
+  projectEnumsFn = projectEnums;
   // hook 7: restore the recent-color swatches persisted last session.
   colorMemento = context.globalState;
   recentColors = (context.globalState.get<string[]>(RECENT_COLORS_KEY) ?? [])

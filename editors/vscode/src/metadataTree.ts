@@ -1051,6 +1051,27 @@ class XbslMetadataProvider implements vscode.TreeDataProvider<XbslNode> {
     return [...PRIMITIVE_TYPES, ...refs, ...enums];
   }
 
+  // The project's enumerations as name -> values - the binding editor completes =Имя.Значение
+  // after a dot (hook 6). The values come from each Перечисление element's Элементы section.
+  async projectEnums(): Promise<Record<string, string[]>> {
+    if (!this.model) {
+      this.model = await parseModel(this.projectRootFor);
+    }
+    const out: Record<string, string[]> = {};
+    for (const el of this.model.elements) {
+      if (el.kind !== "Перечисление") {
+        continue;
+      }
+      const values = (parseInternals(el.text)?.enumValues ?? [])
+        .map((v) => v.name)
+        .filter((n): n is string => !!n);
+      if (values.length) {
+        out[el.name] = values;
+      }
+    }
+    return out;
+  }
+
   // Reveal (select) a node in the tree after a rebuild - for adding an object/field: the new node
   // only appears in the fresh roots, so the reveal is deferred until they are built.
   requestReveal(pred: (n: XbslNode) => boolean): void {
@@ -1512,6 +1533,7 @@ export function registerMetadataTree(
   typeCandidates: () => Promise<string[]>;
   interfaceComponents: () => Promise<Array<{ name: string; yamlPath: string }>>;
   formOwnerByPath: (yamlPath: string) => Promise<{ name: string; kind: string; yamlPath: string } | undefined>;
+  projectEnums: () => Promise<Record<string, string[]>>;
 } {
   const provider = new XbslMetadataProvider(projectRootFor);
   const view = vscode.window.createTreeView("xbslMetadata", {
@@ -1596,6 +1618,7 @@ export function registerMetadataTree(
   return {
     typeCandidates: () => provider.typeCandidates(),
     interfaceComponents: () => provider.interfaceComponents(),
+    projectEnums: () => provider.projectEnums(),
     formOwnerByPath: (yamlPath: string) => provider.formOwnerByPath(yamlPath),
   };
 }

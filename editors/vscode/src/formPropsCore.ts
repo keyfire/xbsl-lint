@@ -199,6 +199,9 @@ export interface PanelModel {
   // form yaml, plus =Объект.<attribute> of the owner object (merged in by the extension after an
   // xbsl/objectInfo call). Absent in metadata mode.
   formBindings?: string[];
+  // The project's enumerations, name -> values - the binding editor completes =Имя.Значение after
+  // a dot (hook 6). Attached by the extension; absent in metadata mode.
+  projectEnums?: Record<string, string[]>;
   // true - the metadata mode of the unified panel (propsModes.buildMetaPanelModel): the
   // webview renders the rows flat, without the section chrome and the component legend.
   meta?: boolean;
