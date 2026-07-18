@@ -131,7 +131,7 @@ function labels(): Record<string, string> {
     defaultPrefix: vscode.l10n.t("default:"),
     readonly: vscode.l10n.t("read-only"),
     slot: vscode.l10n.t("slot"),
-    slotTip: vscode.l10n.t("A slot: holds child components. Add or remove them in the form structure view; the value cannot simply be cleared here."),
+    slotTip: vscode.l10n.t("A slot key: its content is child components (edit them in the form structure view) or a content binding - not a plain value you can just clear here."),
     typeLabel: vscode.l10n.t("Type"),
     valueLabel: vscode.l10n.t("Value"),
     compositeLocked: vscode.l10n.t("The value contains nested blocks – edit it in yaml."),

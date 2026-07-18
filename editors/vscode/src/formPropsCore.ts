@@ -729,6 +729,19 @@ export function chooseEditor(
 
 // -- panel model assembly ---------------------------------------------------------------------
 
+// The engine's universal child-slot keys (xbsl/formmodel.py CHILD_SLOTS): a property with one of
+// these keys holds child components (or a content binding) and is not a plain clearable value,
+// whatever the per-component schema says. Kept in sync with the engine by hand (a short, stable list).
+const CHILD_SLOT_KEYS = new Set([
+  "Содержимое",
+  "Страницы",
+  "Колонки",
+  "Команды",
+  "КомандыСтроки",
+  "Шапка",
+  "Подвал",
+]);
+
 function makeRow(
   key: string,
   prop: NodePropertyDto | undefined,
@@ -778,7 +791,10 @@ function makeRow(
     event: schemaProp?.event,
     colorHex,
     propSpan: prop?.span,
-    slot: schemaProp?.slot,
+    // A slot: the schema flag OR one of the engine's universal child-slot keys (formmodel.py
+    // CHILD_SLOTS). The latter catches a slot bound to a method (Содержимое: =Метод()) that the
+    // per-component schema does not flag, but the engine still refuses to clear as a plain value.
+    slot: schemaProp?.slot || CHILD_SLOT_KEYS.has(key),
     hay: hayParts.join(" ").toLowerCase(),
   };
 }
@@ -810,11 +826,16 @@ export function buildPanelModel(
     hasSchema && (!!schemaProps[p.key]?.event || p.kind === "handler");
 
   const sections: PanelSection[] = [];
+  // The set section is sorted alphabetically, NOT in file order: the engine may re-insert a
+  // re-set property anywhere in the yaml block, and a panel that followed file order would then
+  // make the row jump around. A stable alphabetical order keeps every row in one place (the "all"
+  // section is alphabetical for the same reason).
   sections.push({
     id: "set",
     rows: props
       .filter((p) => !isEventRow(p))
-      .map((p) => makeRow(p.key, p, schemaProps[p.key], docText, componentEnums, handlers)),
+      .map((p) => makeRow(p.key, p, schemaProps[p.key], docText, componentEnums, handlers))
+      .sort((a, b) => a.key.localeCompare(b.key, "ru")),
   });
 
   if (hasSchema) {

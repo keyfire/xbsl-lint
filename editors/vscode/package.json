@@ -333,13 +333,13 @@
         "command": "xbsl.metadata.hideEmptyCategories",
         "title": "%cmd.metadata.hideEmptyCategories%",
         "category": "XBSL",
-        "icon": "$(eye)"
+        "icon": "$(filter)"
       },
       {
         "command": "xbsl.metadata.showEmptyCategories",
         "title": "%cmd.metadata.showEmptyCategories%",
         "category": "XBSL",
-        "icon": "$(eye-closed)"
+        "icon": "$(filter-filled)"
       },
       {
         "command": "xbsl.restartLinter",

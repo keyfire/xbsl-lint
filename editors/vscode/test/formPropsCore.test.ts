@@ -420,7 +420,7 @@ test("chooseEditor: no schema - heuristics over the set value", () => {
 
 // -- panel model ------------------------------------------------------------------------------
 
-test("buildPanelModel: set section keeps the file order, events go to their own section", () => {
+test("buildPanelModel: set section is alphabetical, events go to their own section", () => {
   const model = buildPanelModel(NODE, SCHEMA, FORM);
   assert.strictEqual(model.type, "Надпись");
   assert.strictEqual(model.name, "Шапка");
@@ -435,12 +435,34 @@ test("buildPanelModel: set section keeps the file order, events go to their own 
     ["Заголовок", "РастягиватьПоГоризонтали", "Цвет"]
   );
   assert.ok(set.rows.every((r) => r.set));
-  assert.strictEqual(set.rows[0].value, "Привет <мир>");
-  assert.strictEqual(set.rows[0].doc, "Заголовок надписи.");
-  assert.strictEqual(set.rows[1].editor.control, "tristate");
-  const color = set.rows[2];
+  const title = set.rows.find((r) => r.key === "Заголовок")!;
+  assert.strictEqual(title.value, "Привет <мир>");
+  assert.strictEqual(title.doc, "Заголовок надписи.");
+  assert.strictEqual(set.rows.find((r) => r.key === "РастягиватьПоГоризонтали")!.editor.control, "tristate");
+  const color = set.rows.find((r) => r.key === "Цвет")!;
   assert.strictEqual(color.editor.control, "color");
   assert.strictEqual(color.colorHex, "#595964");
+});
+
+test("buildPanelModel: the set section is sorted, not in file order (stable position)", () => {
+  // Properties written out of alphabetical order in the yaml still come back sorted, so a row
+  // never jumps when the engine re-inserts a re-set property elsewhere in the block.
+  const form = "Наследует\n    Содержимое\n        Тип: Надпись\n        Ширина: 10\n        Видимость: Истина\n";
+  const node: FormNodeDto = {
+    id: "n",
+    kind: "component",
+    span: lineSpan(form, "        Тип: Надпись", 3),
+    type: "Надпись",
+    typeFull: "Надпись",
+    name: "X",
+    slot: "Содержимое",
+    properties: [
+      propDto(form, "Ширина", "scalar", "10"),
+      propDto(form, "Видимость", "scalar", "Истина"),
+    ],
+  };
+  const set = buildPanelModel(node, SCHEMA, form).sections[0];
+  assert.deepStrictEqual(set.rows.map((r) => r.key), ["Видимость", "Ширина"]);
 });
 
 test("buildPanelModel: the events section carries the set handler name", () => {
@@ -497,6 +519,24 @@ test("buildPanelModel: a set slot property is flagged even when bound (slot indi
   assert.ok(!label.slot);
 });
 
+test("buildPanelModel: a universal child-slot key is flagged even without a schema flag", () => {
+  // "Содержимое" is not in the component schema below, but it is one of the engine's CHILD_SLOTS,
+  // so the panel still marks it a slot (the engine refuses to clear it as a plain value).
+  const form = "Наследует\n    Содержимое\n        Тип: КонтейнерHtml\n        Содержимое: =РазметкаHtml()\n";
+  const node: FormNodeDto = {
+    id: "n",
+    kind: "component",
+    span: lineSpan(form, "        Тип: КонтейнерHtml", 2),
+    type: "КонтейнерHtml",
+    typeFull: "КонтейнерHtml",
+    name: "X",
+    slot: "Содержимое",
+    properties: [propDto(form, "Содержимое", "binding", "=РазметкаHtml()")],
+  };
+  const row = buildPanelModel(node, SCHEMA, form).sections[0].rows.find((r) => r.key === "Содержимое")!;
+  assert.strictEqual(row.slot, true);
+});
+
 test("buildPanelModel: a union row picks its member enum values from schema.enums", () => {
   const model = buildPanelModel(NODE, SCHEMA, FORM);
   const bg = model.sections[2].rows.find((r) => r.key === "Фон")!;
@@ -533,9 +573,10 @@ test("buildPanelModel: without a schema only the set section remains, kind-based
   assert.strictEqual(model.schemaAvailable, false);
   assert.deepStrictEqual(model.sections.map((s) => s.id), ["set"]);
   const rows = model.sections[0].rows;
+  // Alphabetical (no schema -> no events section, so the handler stays among the set rows).
   assert.deepStrictEqual(
     rows.map((r) => r.key),
-    ["Заголовок", "РастягиватьПоГоризонтали", "Цвет", "ПриНажатии"]
+    ["Заголовок", "ПриНажатии", "РастягиватьПоГоризонтали", "Цвет"]
   );
   assert.strictEqual(rows.find((r) => r.key === "ПриНажатии")!.editor.control, "handler");
   assert.strictEqual(rows.find((r) => r.key === "Цвет")!.editor.control, "composite");
