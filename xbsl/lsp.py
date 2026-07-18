@@ -36,7 +36,9 @@ except ImportError:  # pragma: no cover - the extra is not installed
     lsp = None
     LanguageServer = None
 
-from xbsl import __version__, baseline, dataset, docs, engine, i18n, indexer, scaffold, templates
+from xbsl import (
+    __version__, baseline, dataset, docs, engine, i18n, indexer, scaffold, templates, uischema,
+)
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.templates import Template, TemplateError
 from xbsl.lsp_nav import (
@@ -721,6 +723,18 @@ def _make_server() -> "LanguageServer":
             return {"name": name, "page": docs.page(pid), "candidates": []}
         # No confident page (a method section, an unknown type) - return candidates to choose from.
         return {"name": name, "page": None, "candidates": docs.search(query, limit=8)}
+
+    # --- ui schema (the designer's palette and properties panel are thin clients) --------
+
+    @server.feature("xbsl/uiSchema")
+    def _ui_schema(params: object = None) -> dict:
+        # Without parameters - the palette catalog (components, no property lists);
+        # with {"component": name} - the full schema of one component. Both degrade to
+        # {"available": False} when the dataset has no ui schema (the docsAvailable pattern).
+        name = _opt_str(params, "component")
+        if name:
+            return uischema.component(name)
+        return uischema.catalog()
 
     # --- metadata scaffolding (the extension's tree is a thin client of these methods) ----
     #

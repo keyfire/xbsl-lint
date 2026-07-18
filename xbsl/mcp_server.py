@@ -21,7 +21,7 @@ import re
 from html import unescape
 from pathlib import Path
 
-from xbsl import dataset, docs, report, scaffold
+from xbsl import dataset, docs, report, scaffold, uischema
 from xbsl.cli import discover
 from xbsl.engine import RULES, load, load_text, run, run_sources
 
@@ -160,6 +160,23 @@ def type_members(name: str) -> dict:
     if facets:
         out["facets"] = facets
     return out
+
+
+@mcp.tool()
+def ui_schema(component: str | None = None) -> dict:
+    """The interface component ui schema (the visual designer's palette and typed properties).
+
+    Without arguments - the catalog: every component with its package, an abstract flag
+    (no constructor: cannot be inserted from the palette) and a one-line doc, WITHOUT
+    property lists. With `component` - the full schema of that component: properties with
+    value type unions, resolved enum values, event handler signatures, slot flags (the
+    property accepts components/commands), doc snippets and documented defaults; an
+    unknown name yields close_matches. {"available": false} when the ui schema dataset
+    is not generated (tools/extract_uischema.py).
+    """
+    if component:
+        return uischema.component(component)
+    return uischema.catalog()
 
 
 # --- scaffolding (metadata) ------------------------------------------------------------

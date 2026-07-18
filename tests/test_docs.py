@@ -116,6 +116,18 @@ def test_for_symbol_confident_only(docs_root):
     assert docs.for_symbol("такого-нет-нигде") is None
 
 
+def test_type_pages(docs_root):
+    # the bulk read for extract_uischema: type pages only, ordered by id
+    pages = docs.type_pages()
+    assert [p["title"] for p in pages] == ["Массив", "Запрос"]
+    assert set(pages[0]) == {"id", "title", "qualified", "html"}
+    dataset.set_data_root(docs_root.parent / "нет")
+    try:
+        assert docs.type_pages() == []
+    finally:
+        dataset.set_data_root(docs_root)
+
+
 def test_tree(docs_root):
     nodes = {n["node"]: n for n in docs.tree()}
     assert set(nodes) == {1, 2, 3, 4}

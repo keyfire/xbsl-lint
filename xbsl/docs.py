@@ -93,6 +93,24 @@ def page(doc_id: str, version: str | None = None) -> dict | None:
         con.close()
 
 
+def type_pages(version: str | None = None) -> list[dict]:
+    """All reference pages of kind 'type' (id, title, qualified, html), ordered by id.
+
+    A bulk read for offline consumers - tools/extract_uischema.py derives the interface
+    component ui schema from these pages. Empty list when the documentation is absent.
+    """
+    con = _open(version)
+    if con is None:
+        return []
+    try:
+        rows = con.execute(
+            "SELECT id, title, qualified, html FROM pages WHERE kind = 'type' ORDER BY id"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        con.close()
+
+
 def tree(version: str | None = None) -> list[dict]:
     """Flat list of curated table-of-contents nodes - the consumer builds the tree.
 
