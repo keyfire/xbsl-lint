@@ -1,5 +1,7 @@
 # XBSL (1C:Element)
 
+**English** · [Русский](https://github.com/keyfire/xbsl/blob/main/docs/index.ru.md)
+
 XBSL is a toolkit for **1C:Element** projects written as `Name.yaml` (element description) and
 `Name.xbsl` (code module) pairs. It gives fast local feedback ahead of the slow server-side
 compilation that runs on deploy – the only check the platform itself provides. The project
