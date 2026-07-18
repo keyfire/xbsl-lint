@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { lspActive, lspRequest } from "./lspClient";
+import { revealContent } from "./reveal";
 
 interface FormMatch {
   path: string;
@@ -86,5 +87,5 @@ async function runSearch(deps: SearchDeps): Promise<void> {
   const line = Math.min(Math.max(pick.match.line, 0), Math.max(0, doc.lineCount - 1));
   const pos = new vscode.Position(line, 0);
   editor.selection = new vscode.Selection(pos, pos);
-  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+  revealContent(editor, pos);
 }

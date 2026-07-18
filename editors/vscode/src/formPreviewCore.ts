@@ -243,8 +243,14 @@ function renderComponent(node: unknown, horizontalParent: boolean): string {
       const title = prop(node, "Заголовок") ?? prop(node, "Представление") ?? prop(node, "Имя");
       return `<button ${tagAttrs(node, cls, grow)}>${valueHtml(title, "Кнопка")}</button>`;
     }
-    case "Картинка":
-      return `<div ${tagAttrs(node, "img", grow)}>🖼</div>`;
+    case "Картинка": {
+      // A resource image (Изображение: info.svg) shows for real when the host resolved it; a
+      // binding, a URL or an unresolved name keeps the placeholder glyph.
+      const image = prop(node, "Изображение");
+      const src = image ? _resources[image] : undefined;
+      const inner = src ? `<img class="rimg" src="${esc(src)}" alt="">` : "🖼";
+      return `<div ${tagAttrs(node, "img", grow)}>${inner}</div>`;
+    }
     case "Таблица":
     case "ПроизвольныйСписок":
       return renderTable(node);
@@ -389,7 +395,13 @@ export function propertyEdit(text: string, nodeOffset: number, key: string, valu
   return { start: insertAt, end: insertAt, newText: `\n${" ".repeat(indent)}${key}: ${encodeScalar(value)}` };
 }
 
-export function renderFormPreview(text: string): PreviewResult {
+// Resource images for the current render, filename -> data URI (resolved by the host from the
+// project's Ресурсы directories). Module-scoped render context so it does not have to thread
+// through every render function; set at the start of each (synchronous) renderFormPreview call.
+let _resources: Record<string, string> = {};
+
+export function renderFormPreview(text: string, resources: Record<string, string> = {}): PreviewResult {
+  _resources = resources;
   let doc;
   try {
     doc = parseDocument(text, { uniqueKeys: false });
@@ -420,6 +432,22 @@ export function renderFormPreview(text: string): PreviewResult {
 // The wireframe highlights the node selected in the yaml editor and survives re-renders.
 // The pure parts live here: the offsets a rendered wireframe exposes, the cursor-to-node
 // match and the nearest-offset restore after the text (and the offsets) shifted.
+
+// Resource image filenames referenced by Изображение: <file> in the form - a plain filename with
+// an image extension, not a binding (=...) and not a URL. The host resolves these against the
+// project's Ресурсы directories and passes them to renderFormPreview as data URIs (so the
+// wireframe shows the real image instead of the placeholder glyph).
+const RESOURCE_IMAGE_RE = /Изображение:\s*([^\s="][^\s"]*\.(?:svg|png|jpe?g|gif|webp))\b/gi;
+
+export function collectResourceImages(text: string): string[] {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(RESOURCE_IMAGE_RE)) {
+    if (!m[1].includes("://")) {
+      seen.add(m[1]);
+    }
+  }
+  return [...seen];
+}
 
 // All node offsets present in a rendered wireframe (the data-off attributes), ascending.
 export function collectDataOffsets(html: string): number[] {

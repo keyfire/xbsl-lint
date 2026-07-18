@@ -188,6 +188,14 @@ linter would flag as an error.
 
 ## Refinement backlog (from live feedback)
 
+- ~~**Horizontal scroll to the content in a narrow panel.**~~ DELIVERED: a reveal from the tree /
+  preview / search brings the yaml cursor into view via `revealContent` - VS Code scrolls
+  horizontally to the line's content (past the indentation), not to the cursor at the far edge.
+- ~~**Real resource images in the wireframe.**~~ DELIVERED: a `Картинка` with `Изображение: file.svg`
+  shows the actual image. The host resolves the name against `**/Ресурсы/<file>`, reads it and embeds
+  a data URI (`img-src data:` in the preview CSP, cached per session); bindings/URLs/unresolved names
+  keep the placeholder.
+
 - ~~**The yaml active line misses the highlighted preview block.**~~ FIXED: selecting a node
   landed the yaml cursor on the list dash (`-`) BEFORE the node (`revealOffset` = `contentSpan.start`),
   while the preview keys its block on the `Тип:` line; the cursor sat left of the node's data-off and

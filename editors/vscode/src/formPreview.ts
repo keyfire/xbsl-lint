@@ -9,7 +9,8 @@
 // The editor title button is visible only for form yamls - the xbsl.formYaml context key.
 
 import * as vscode from "vscode";
-import { collectDataOffsets, esc, nearestOffset, renderFormPreview, selectionForCursor } from "./formPreviewCore";
+import { collectDataOffsets, collectResourceImages, esc, nearestOffset, renderFormPreview, selectionForCursor } from "./formPreviewCore";
+import { revealContent } from "./reveal";
 
 const VIEW_TYPE = "xbslFormPreview";
 const DEBOUNCE_MS = 300;
@@ -56,7 +57,7 @@ function shell(body: string, nonce: string): string {
     .join("");
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'nonce-${nonce}';">
 <style>
   body.theme-editor {
     --fp-bg: var(--vscode-editor-background); --fp-fg: var(--vscode-foreground);
@@ -112,7 +113,8 @@ function shell(body: string, nonce: string): string {
   /* Primary button - the native Element yellow (--themeColorPrimaryBtnBg #fd0, text #1c1c1f). */
   .btn.primary { background: var(--fp-btn-bg); color: var(--fp-btn-fg); border-color: var(--fp-btn-bg); }
   .btn.link { border-color: transparent; color: var(--fp-link); padding-left: 4px; padding-right: 4px; }
-  .img { width: 110px; height: 74px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--fp-border); border-radius: 4px; font-size: 24px; background: var(--fp-soft); }
+  .img { width: 110px; height: 74px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--fp-border); border-radius: 4px; font-size: 24px; background: var(--fp-soft); overflow: hidden; }
+  .img .rimg { max-width: 100%; max-height: 100%; object-fit: contain; }
   .htmlbox { border: 1px dashed rgba(128,128,128,.6); border-radius: 4px; min-height: 48px; min-width: 140px; position: relative; padding: 11px 9px 9px;
     background: repeating-linear-gradient(45deg, transparent, transparent 6px, var(--fp-soft) 6px, var(--fp-soft) 12px); }
   table.tbl { border-collapse: collapse; }
@@ -247,7 +249,57 @@ function setTarget(uri: vscode.Uri): void {
   target = uri;
 }
 
-function render(): void {
+// Resource images resolved to data URIs (filename -> data URI, or null when not found in the
+// project). Cached for the session - resource files rarely change while editing a form.
+const resourceCache = new Map<string, string | null>();
+const IMG_MIME: Record<string, string> = {
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+async function resolveResource(name: string): Promise<string | null> {
+  const cached = resourceCache.get(name);
+  if (cached !== undefined) {
+    return cached;
+  }
+  let uri: string | null = null;
+  try {
+    const found = await vscode.workspace.findFiles(`**/Ресурсы/${name}`, undefined, 1);
+    if (found.length) {
+      const bytes = await vscode.workspace.fs.readFile(found[0]);
+      const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
+      const mime = IMG_MIME[ext] ?? "application/octet-stream";
+      uri = `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
+    }
+  } catch {
+    uri = null; // an unreadable resource keeps the placeholder
+  }
+  resourceCache.set(name, uri);
+  return uri;
+}
+
+async function resolveResources(names: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  await Promise.all(
+    names.map(async (name) => {
+      const uri = await resolveResource(name);
+      if (uri) {
+        out[name] = uri;
+      }
+    })
+  );
+  return out;
+}
+
+// A monotonic render generation: an async render (it resolves resource images) must not clobber
+// the webview with a stale result after a newer render started.
+let renderSeq = 0;
+
+async function render(): Promise<void> {
   if (!panel || !target) {
     return;
   }
@@ -255,7 +307,14 @@ function render(): void {
   if (!doc) {
     return;
   }
-  const result = renderFormPreview(doc.getText());
+  const my = ++renderSeq;
+  const text = doc.getText();
+  // Resolve resource images (Изображение: info.svg) to data URIs so the wireframe shows them.
+  const resources = await resolveResources(collectResourceImages(text));
+  if (my !== renderSeq || !panel || !target) {
+    return; // a newer render started, or the preview closed, while resolving
+  }
+  const result = renderFormPreview(text, resources);
   let body: string;
   if (result.ok) {
     body = result.html;
@@ -291,7 +350,7 @@ function scheduleRender(): void {
   }
   timer = setTimeout(() => {
     timer = undefined;
-    render();
+    void render();
   }, DEBOUNCE_MS);
 }
 
@@ -310,7 +369,7 @@ async function revealOffset(offset: number, preserveFocus: boolean): Promise<voi
     preview: false,
   });
   editor.selection = new vscode.Selection(pos, pos);
-  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+  revealContent(editor, pos);
 }
 
 // Component selection: cursor onto the node's yaml line (no focus steal) + the node's
@@ -401,7 +460,7 @@ function openPreview(context: vscode.ExtensionContext, uri?: vscode.Uri): void {
     // panel's own stale column - otherwise a persistent panel drifts relative to the yaml.
     panel.reveal(column, true);
   }
-  render();
+  void render();
 }
 
 function updateContext(editor: vscode.TextEditor | undefined): void {

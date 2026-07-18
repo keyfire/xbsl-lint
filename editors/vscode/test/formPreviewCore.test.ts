@@ -1,7 +1,7 @@
 // Tests of the form wireframe rendering (yaml -> HTML) and of the targeted property edits
 // that serve the metadata properties panel. Run with plain node (see npm test).
 
-import { collectDataOffsets, nearestOffset, propertyEdit, renderFormPreview, selectionForCursor } from "../src/formPreviewCore";
+import { collectDataOffsets, collectResourceImages, nearestOffset, propertyEdit, renderFormPreview, selectionForCursor } from "../src/formPreviewCore";
 
 let failures = 0;
 
@@ -159,6 +159,28 @@ check(
   "restore after an edit - the shifted node",
   shiftedOffsets.length > 0 && shiftedFieldOff !== fieldNodeOff && nearestOffset(shiftedOffsets, fieldNodeOff) === shiftedFieldOff
 );
+
+// --- resource images in the wireframe (Изображение: info.svg) ---
+const IMG_FORM = [
+  "ВидЭлемента: КомпонентИнтерфейса",
+  "Наследует:",
+  "    Содержимое:",
+  "        Тип: Картинка",
+  "        Изображение: info.svg",
+  "",
+].join("\n");
+check(
+  "resource image names: a plain filename is collected",
+  JSON.stringify(collectResourceImages(IMG_FORM)) === JSON.stringify(["info.svg"])
+);
+check(
+  "resource image names: a binding and a URL are skipped",
+  collectResourceImages("Изображение: =Объект.Лого\nИзображение: https://x/y.png").length === 0
+);
+const withImg = renderFormPreview(IMG_FORM, { "info.svg": "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" });
+check("Картинка renders an <img> when the resource is resolved", withImg.ok && withImg.html.includes("<img class=\"rimg\" src=\"data:image/svg+xml;base64,"));
+const withoutImg = renderFormPreview(IMG_FORM);
+check("Картинка keeps the placeholder when the resource is not resolved", withoutImg.ok && !withoutImg.html.includes("<img") && withoutImg.html.includes("🖼"));
 
 if (failures > 0) {
   console.error(`итого: ${failures} FAIL`);

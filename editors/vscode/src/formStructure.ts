@@ -17,6 +17,7 @@ import {
 } from "./blockPresetsCore";
 import { lspActive, lspRequest } from "./lspClient";
 import { isReadonlyDoc } from "./readonly";
+import { revealContent } from "./reveal";
 import {
   decodePaletteDrag,
   decodeStructureDrag,
@@ -461,7 +462,7 @@ class FormStructureProvider
       preview: false,
     });
     editor.selection = new vscode.Selection(pos, pos);
-    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    revealContent(editor, pos);
   }
 
   // --- operations (thin wrappers over xbsl/formEdit) --------------------------------------
