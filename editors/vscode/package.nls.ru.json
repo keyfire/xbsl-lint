@@ -119,5 +119,13 @@
   "cmd.formPalette.removeFavorite": "Убрать из избранного",
   "cmd.formPalette.openDocs": "Открыть документацию",
   "view.properties": "Свойства компонента",
-  "cmd.properties.showForNode": "Свойства компонента"
+  "cmd.properties.showForNode": "Свойства компонента",
+  "view.formData": "Данные",
+  "cmd.formData.refresh": "XBSL: обновить панель данных",
+  "cmd.formData.activate": "Активировать запись данных",
+  "cmd.formData.insert": "Вставить в форму",
+  "cmd.formData.addProperty": "Добавить свойство",
+  "cmd.formData.renameProperty": "Переименовать свойство",
+  "cmd.formData.retypeProperty": "Сменить тип свойства",
+  "cmd.formData.removeProperty": "Удалить свойство"
 }
