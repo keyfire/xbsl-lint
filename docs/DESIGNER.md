@@ -204,12 +204,15 @@ linter would flag as an error.
 - **Group properties by dependency in the properties panel.** Only the slot indicator (bar +
   badge) exists today; grouping dependent fields is not done.
 - **Full dotted completion of binding expressions.** Done: enumeration values
-  (`=Перечисление.Значение`), owner-object attributes (`=Объект.Реквизит`), bindings already
-  used in the form. NOT done: `=Компоненты.<name>` and member chains
-  (`=Компоненты.Кнопка.Значение`, type members) - that is a full binding-expression completer in
-  the form context (owner object + components + the engine's type system), essentially porting the
-  code editor's `chain_type_at` / `resolve_completions` to the binding mini-expressions. A separate
-  larger task.
+  (`=Перечисление.Значение`), owner-object attributes (`=Объект.Реквизит`), component names
+  (`=Компоненты.<name>`, engine `xbsl/bindingComplete` + `bindingcomplete.py`), bindings already
+  used in the form. REMAINING: member chains (`=Компоненты.Кнопка.Значение`, type members) - the
+  endpoint already serves them for a `=Компоненты.<name>.` prefix; only the on-demand webview wiring
+  (request on the dot, splice the results) is pending. A separate task.
+- ~~**Project-creation wizard.**~~ DELIVERED: the `xbsl.project.new` command (native prompts, name
+  validation against the standard, engine `new-project`); see `projectWizard.ts`/`projectWizardCore.ts`.
+- **Remember the metadata tree view's open state.** NOT done (track B's agent did not reach it);
+  reuse the globalState pattern of "hide empty categories".
 
 ## Delivery plan
 
