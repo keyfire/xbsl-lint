@@ -51,6 +51,7 @@ import {
   pairedYamlPath,
 } from "./propsModes";
 import { findAttrOffset } from "./metadataCore";
+import { ObjectInfoResponse } from "./formDataCore";
 import { lspActive, lspRequest } from "./lspClient";
 import { cspMeta, inlineJson, makeNonce } from "./webviewShared";
 
@@ -70,6 +71,12 @@ let target: Target | undefined;
 // Supplier of type candidates (from the metadata tree provider) for the Тип combobox of
 // the metadata mode; may be absent - the combobox then degrades to a plain input.
 let typeCandidatesFn: (() => Promise<string[]>) | undefined;
+// Resolver of a form's owner object (from the metadata tree provider) - the binding editor
+// (hook 6) fetches the object's attributes for completion. Absent keeps the completion to the
+// bindings already used in the form.
+let formOwnerFn: ((yamlPath: string) => Promise<{ name: string; kind: string; yamlPath: string } | undefined>) | undefined;
+// hook 6: =Объект.<attribute> completions per owner object yamlPath, resolved once and reused.
+const objectBindingsCache = new Map<string, string[]>();
 let lastModel: PanelModel | null = null;
 let lastHint: string | null = null;
 // The sticky property: the focused row survives switching to another node of the same type
@@ -909,6 +916,33 @@ async function getSchema(type: string): Promise<UiComponentDto | null> {
   return schema;
 }
 
+// hook 6: the bindings a developer is most likely to type - =Объект.<attribute> for every
+// attribute of the form's owner object. Resolved once per owner and cached; any failure (a
+// common form with no owner, an unreadable object, no LSP, older wiring) yields an empty list,
+// leaving the completion to the bindings already used in the form.
+async function objectBindingsFor(uri: vscode.Uri): Promise<string[]> {
+  if (!formOwnerFn) {
+    return [];
+  }
+  let owner: { name: string; kind: string; yamlPath: string } | undefined;
+  try {
+    owner = await formOwnerFn(uri.fsPath);
+  } catch {
+    owner = undefined;
+  }
+  if (!owner) {
+    return [];
+  }
+  const cached = objectBindingsCache.get(owner.yamlPath);
+  if (cached) {
+    return cached;
+  }
+  const info = await lspRequest<ObjectInfoResponse>("xbsl/objectInfo", { path: owner.yamlPath });
+  const attrs = (info && !info.error ? info.fields ?? [] : []).map((f) => `=Объект.${f.name}`);
+  objectBindingsCache.set(owner.yamlPath, attrs);
+  return attrs;
+}
+
 async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> {
   const my = ++seq;
   if (!lspActive()) {
@@ -968,6 +1002,16 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
   }
   const doc = await vscode.workspace.openTextDocument(uri);
   lastModel = buildPanelModel(node, schema, doc.getText(), handlers && !handlers.error ? handlers : undefined);
+  // hook 6: enrich the binding autocomplete with the owner object's attributes (the bindings
+  // already used in the form come first, from buildPanelModel; the rest of the attributes follow).
+  const objAttrs = await objectBindingsFor(uri);
+  if (seq !== my || !view) {
+    return;
+  }
+  if (objAttrs.length) {
+    const have = new Set(lastModel.formBindings ?? []);
+    lastModel.formBindings = [...(lastModel.formBindings ?? []), ...objAttrs.filter((b) => !have.has(b))];
+  }
   lastHint = null;
   target = { kind: "component", uri, nodeId: node.id, nodeSpanStart: node.span.start, type };
   const titleParts = [type, node.name ?? ""].filter(Boolean);
@@ -1539,9 +1583,11 @@ export function updatePropsFromSelection(node: PropsNode | undefined): void {
 // mode; without it the Тип field degrades to a plain text input.
 export function registerFormProps(
   context: vscode.ExtensionContext,
-  typeCandidates?: () => Promise<string[]>
+  typeCandidates?: () => Promise<string[]>,
+  formOwner?: (yamlPath: string) => Promise<{ name: string; kind: string; yamlPath: string } | undefined>
 ): void {
   typeCandidatesFn = typeCandidates;
+  formOwnerFn = formOwner;
   // hook 7: restore the recent-color swatches persisted last session.
   colorMemento = context.globalState;
   recentColors = (context.globalState.get<string[]>(RECENT_COLORS_KEY) ?? [])
