@@ -97,7 +97,7 @@ def _parsed(source: SourceFile):
     """The parsed YAML (or None) and the parse error (or None), cached.
 
     The platform parser is more lenient than PyYAML: real shipped sources carry `\\'`
-    inside double-quoted scalars (an HTML/JS onclick in БизКуб), which the platform
+    inside double-quoted scalars (an HTML/JS onclick in real code), which the platform
     accepts as a plain apostrophe while PyYAML rejects the escape. The retry below
     only runs when the strict parse has already failed, so no valid document can be
     misread by it.

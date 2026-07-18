@@ -97,7 +97,7 @@ def _stdlib_names() -> frozenset[str]:
 # top-level fields was the most expensive line (the PyYAML constructor stays pure
 # Python even with libyaml).
 # The yaml of the platform is bilingual: shipped code carries English keys too
-# (ElementKind/Name in БизКуб), so both spellings are recognized.
+# (the ElementKind/Name spelling in real code), so both spellings are recognized.
 _TOP_KIND_RE = re.compile(r"^(?:ВидЭлемента|ElementKind):", re.M)
 _TOP_NAME_RE = re.compile(r"^(?:Имя|Name):[ \t]*(['\"]?)([^\r\n#]*?)\1[ \t]*(?:#.*)?\r?$", re.M)
 _MISSING = object()

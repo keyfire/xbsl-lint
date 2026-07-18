@@ -62,7 +62,7 @@ _IMPLICIT = frozenset({
 # Номер/Дата of a document, Период/Регистратор/ВидЗаписи of register records) plus
 # Ссылка and the write methods.
 # Members that exist on the platform but are absent from the distribution docs -
-# verified against real shipped code (БизКуб, the demo project). Kept deliberately tiny.
+# verified against real shipped code (a large real project and the demo). Kept deliberately tiny.
 _UNDOCUMENTED = frozenset({
     "ВыполнитьЗаписать", "ВыполнитьЗаписатьИЗакрыть",  # ФормаОбъекта commands
     "СобственнаяМодифицированность",                   # a form-component property
@@ -309,7 +309,7 @@ def _collect_declared(module: P.Module, pool: set[str]) -> None:
 
 # On by default (severity error - the compiler rejects such code) since the stdlib
 # catalog carries the global context (Сообщить, ПерейтиПоСсылке...) and the kind-manager
-# methods: the whole real-world corpus (site, БизКуб, chiriker, demo - 1600+ modules)
+# methods: the whole real-world corpus (several real projects and the demo - 1600+ modules)
 # runs with zero false findings. Map-reduce: the mappers run inside the file workers
 # (the static globals filter most names there), the reduce below only knows the
 # project-wide names and the paired-yaml scopes.
