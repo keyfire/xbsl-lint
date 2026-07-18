@@ -202,6 +202,16 @@ export interface PanelModel {
   // true - the metadata mode of the unified panel (propsModes.buildMetaPanelModel): the
   // webview renders the rows flat, without the section chrome and the component legend.
   meta?: boolean;
+  // true - the form is read-only (a library .xlib form, a git/diff view, a read-only file). The
+  // webview disables its editors and shows a banner; writes are refused (hook 11).
+  readonly?: boolean;
+}
+
+// Whether a document uri names a read-only form source: anything other than a real on-disk file
+// (or an unsaved buffer) - git:/diff/output and any virtual scheme a library viewer might use. The
+// caller adds the file-permission check for the "file" scheme (hook 11). Pure, so it is tested.
+export function isReadonlyScheme(scheme: string): boolean {
+  return scheme !== "file" && scheme !== "untitled" && scheme !== "vscode-userdata";
 }
 
 // -- event handlers (hook 1) --------------------------------------------------------------

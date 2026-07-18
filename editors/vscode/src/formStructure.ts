@@ -16,6 +16,7 @@ import {
   sanitizePresets,
 } from "./blockPresetsCore";
 import { lspActive, lspRequest } from "./lspClient";
+import { isReadonlyDoc } from "./readonly";
 import {
   decodePaletteDrag,
   decodeStructureDrag,
@@ -492,6 +493,14 @@ class FormStructureProvider
   }
 
   private async applyEdits(doc: vscode.TextDocument, edits: EngineTextEdit[]): Promise<boolean> {
+    // hook 11: a read-only form (a library .xlib, a git/diff view) is inspected, not edited. The
+    // WorkspaceEdit below would fail anyway; refusing here gives a clear message instead.
+    if (await isReadonlyDoc(doc.uri)) {
+      void vscode.window.showInformationMessage(
+        vscode.l10n.t("XBSL: this form is read-only – editing is disabled.")
+      );
+      return false;
+    }
     const we = new vscode.WorkspaceEdit();
     for (const e of edits) {
       we.replace(doc.uri, new vscode.Range(doc.positionAt(e.start), doc.positionAt(e.end)), e.newText);

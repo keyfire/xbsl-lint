@@ -24,6 +24,7 @@ import {
   findRow,
   handlerChoices,
   hexFromColorFields,
+  isReadonlyScheme,
   normalizeHex,
   panelTarget,
   parseCompositeFields,
@@ -221,6 +222,16 @@ test("hexFromColorFields reads hex and decimal RGB, only for Абсолютны�
     hexFromColorFields([{ key: "Тип", value: "Ссылка", scalar: true }]),
     undefined
   );
+});
+
+test("isReadonlyScheme: only real editable sources are writable (hook 11)", () => {
+  assert.strictEqual(isReadonlyScheme("file"), false);
+  assert.strictEqual(isReadonlyScheme("untitled"), false);
+  assert.strictEqual(isReadonlyScheme("vscode-userdata"), false);
+  // git diffs, output, and any virtual scheme a library viewer might use are read-only.
+  assert.strictEqual(isReadonlyScheme("git"), true);
+  assert.strictEqual(isReadonlyScheme("output"), true);
+  assert.strictEqual(isReadonlyScheme("xlib"), true);
 });
 
 test("normalizeHex canonicalizes to lowercase #rrggbb, rejects non-colors (hook 7)", () => {

@@ -42,6 +42,7 @@ import {
   planHandlerApply,
   prepareWrite,
 } from "./formPropsCore";
+import { isReadonlyDoc } from "./readonly";
 import {
   MetaSelector,
   buildMetaPanelModel,
@@ -132,6 +133,7 @@ function labels(): Record<string, string> {
     readonly: vscode.l10n.t("read-only"),
     slot: vscode.l10n.t("slot"),
     slotTip: vscode.l10n.t("A slot key: its content is child components (edit them in the form structure view) or a content binding - not a plain value you can just clear here."),
+    readonlyForm: vscode.l10n.t("Read-only form – view only, editing is disabled."),
     typeLabel: vscode.l10n.t("Type"),
     valueLabel: vscode.l10n.t("Value"),
     compositeLocked: vscode.l10n.t("The value contains nested blocks – edit it in yaml."),
@@ -190,6 +192,12 @@ ${cspMeta(nonce)}
      background still marks the focus), so it never reads as a plain clearable value. */
   .row.slot, .row.slot.sel { border-left-color: var(--vscode-charts-orange, #d18616); border-left-width: 3px; }
   .slotbadge { opacity: .7; font-style: italic; font-size: .95em; color: var(--vscode-charts-orange, #d18616); }
+  /* hook 11: a read-only form - a banner and disabled row editors (navigation via the header link
+     still works; the write backstop in the extension guarantees no edit slips through). */
+  .robanner { margin: 0 0 8px; padding: 5px 8px; border-radius: 4px; font-size: .95em;
+    background: var(--vscode-inputValidation-warningBackground, rgba(210,150,20,.15));
+    border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(210,150,20,.5)); }
+  .ro .row input, .ro .row select, .ro .row textarea, .ro .row button { pointer-events: none; opacity: .55; }
   .cap { display: flex; align-items: center; gap: 5px; font-size: .85em; margin-bottom: 2px; }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; border: 1px solid rgba(128,128,128,.55); flex: none; }
   .set .dot { background: var(--vscode-charts-blue, #3794ff); border-color: var(--vscode-charts-blue, #3794ff); }
@@ -847,11 +855,17 @@ ${cspMeta(nonce)}
     pane.textContent = "";
     titleBox.textContent = "";
     if (!model) {
+      pane.classList.remove("ro");
       searchInput.style.display = "none";
       pane.appendChild(el("div", "hint", window.__hint || L.hintIdle));
       return;
     }
     searchInput.style.display = "";
+    // hook 11: a read-only form disables its editors and shows a banner above the rows.
+    pane.classList.toggle("ro", !!model.readonly);
+    if (model.readonly) {
+      pane.appendChild(el("div", "robanner", L.readonlyForm));
+    }
     const head = el("span", "ptype", model.type || model.nodeId);
     if (model.name) {
       head.appendChild(el("span", "pname", " · " + model.name));
@@ -1118,6 +1132,7 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
   // hook 6: enrich the binding autocomplete with the owner object's attributes (the bindings
   // already used in the form come first, from buildPanelModel; the rest of the attributes follow).
   const objAttrs = await objectBindingsFor(uri);
+  const readonly = await isReadonlyDoc(uri); // hook 11
   if (seq !== my || !view) {
     return;
   }
@@ -1125,6 +1140,7 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
     const have = new Set(lastModel.formBindings ?? []);
     lastModel.formBindings = [...(lastModel.formBindings ?? []), ...objAttrs.filter((b) => !have.has(b))];
   }
+  lastModel.readonly = readonly;
   lastHint = null;
   target = { kind: "component", uri, nodeId: node.id, nodeSpanStart: node.span.start, type };
   const titleParts = [type, node.name ?? ""].filter(Boolean);
@@ -1171,6 +1187,10 @@ async function refreshMetadata(uri: vscode.Uri, sel: MetaSelector): Promise<void
     }
   }
   lastModel = buildMetaPanelModel(desc, candidates);
+  lastModel.readonly = await isReadonlyDoc(uri); // hook 11
+  if (seq !== my || !view) {
+    return;
+  }
   lastHint = null;
   target = { kind: "metadata", uri, offset: desc.offset, std: sel.std };
   view.description = [lastModel.type, lastModel.name].filter(Boolean).join(" · ") || undefined;
@@ -1614,6 +1634,16 @@ class FormPropsViewProvider implements vscode.WebviewViewProvider {
     v.webview.onDidReceiveMessage(
       (m) => {
         if (!m) {
+          return;
+        }
+        // hook 11: a read-only form refuses every write (the webview also disables its editors,
+        // so this is a backstop). Navigation (reveal, gotoHandler, sticky, ready) stays allowed.
+        const isWrite =
+          m.type === "commit" || m.type === "commitComposite" || m.type === "reset" || m.type === "createHandler";
+        if (isWrite && lastModel?.readonly) {
+          void vscode.window.showInformationMessage(
+            vscode.l10n.t("This form is read-only – editing is disabled.")
+          );
           return;
         }
         if (m.type === "ready") {
