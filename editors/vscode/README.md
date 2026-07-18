@@ -273,6 +273,13 @@ removes the property. Selecting an element and every edit also position the yaml
 the affected line (without stealing focus); Ctrl+click or the *Show in yaml* button jumps
 into the editor – handy for navigating large forms.
 
+**Typed value editors.** A color property opens a native color picker plus swatches of the
+colors already used in the form and your recent picks – one click reuses a shade. Any
+single-line value carries a literal/binding toggle: press `=` to bind the property to data,
+and in binding mode an autocomplete offers the bindings already used in the form and the
+attributes of the form's owner object (`=Объект.Наименование`); the `abc` button switches
+back to a literal.
+
 It is a layout skeleton, not the platform's rendering: composition, nesting and captions are
 faithful, exact sizes and styles are not (explicit label colors and font sizes are applied).
 
