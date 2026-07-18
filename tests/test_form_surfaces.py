@@ -829,3 +829,22 @@ def test_lsp_object_info(tmp_path):
 
     err = features["xbsl/objectInfo"]({"root": str(tmp_path), "name": "Нет"})
     assert "error" in err
+
+
+def test_open_doc_source_matches_across_uri_spellings():
+    # The core of the yaml-corruption fix: the LSP server reads the LIVE buffer of an open
+    # document even when the client's uri is spelled differently from the server's own
+    # (VS Code sends file:///d%3A/..., pygls builds file:///d:/...). Matched by filesystem path.
+    import re
+
+    from pygls import uris
+
+    from xbsl.lsp import open_doc_source
+
+    p = Path.cwd() / "Ф.yaml"
+    own = uris.from_fs_path(str(p))
+    client = re.sub(r"^(file:///[A-Za-z])(:)", r"\1%3A", own)  # percent-encode the drive colon
+    doc = types.SimpleNamespace(source="БУФЕР")
+    assert open_doc_source({client: doc}, p) == "БУФЕР"  # found despite the uri spelling
+    assert open_doc_source({own: doc}, p) == "БУФЕР"  # the exact uri also works
+    assert open_doc_source({}, p) is None  # not open -> None, the caller falls back to disk

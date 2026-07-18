@@ -88,6 +88,28 @@ def _opt_str(params: object, name: str) -> Optional[str]:
     return str(value) if value is not None else None
 
 
+def open_doc_source(open_docs: dict, path: Path) -> Optional[str]:
+    """The source text of the open editor document for `path`, or None when it is not open.
+
+    The open-document map is keyed by the client's uri string, which is normalized differently
+    from the server's own (VS Code sends `file:///d%3A/...`, pygls builds `file:///d:/...`), so a
+    plain `uri in open_docs` check misses and the caller would fall back to the STALE file on
+    disk - fatal for edit offsets computed for the live buffer. Match by the resolved filesystem
+    path instead (case-insensitive), which both uri spellings agree on.
+    """
+    from pygls import uris
+
+    own = uris.from_fs_path(str(path))
+    if own and own in open_docs:
+        return getattr(open_docs[own], "source", None)
+    target = os.path.normcase(os.path.normpath(str(path)))
+    for key, doc in open_docs.items():
+        fp = uris.to_fs_path(key)
+        if fp and os.path.normcase(os.path.normpath(fp)) == target:
+            return getattr(doc, "source", None)
+    return None
+
+
 def _plain_params(value: object) -> object:
     """Recursively convert LSP request params into plain Python data.
 
@@ -821,11 +843,13 @@ def _make_server() -> "LanguageServer":
     # dirty buffers. Files being edited are read from open editor buffers, not from disk.
 
     def _buffer_reader(path: Path) -> str:
-        uri = path_to_uri(path)
+        # Return the LIVE editor buffer (with unsaved edits), NOT the file on disk: form
+        # operations compute text offsets against this text and the client applies the resulting
+        # edits to the same live document, so a stale disk copy here corrupts the yaml. Matched
+        # by filesystem path (see open_doc_source - the uri string spellings differ).
         open_docs = getattr(server.workspace, "text_documents", None) or {}
-        if uri in open_docs:
-            return open_docs[uri].source
-        return engine.load(path).text
+        src = open_doc_source(open_docs, path)
+        return src if src is not None else engine.load(path).text
 
     def _meta_op(op, *args, **kwargs) -> dict:
         try:
