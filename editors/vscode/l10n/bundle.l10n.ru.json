@@ -92,6 +92,8 @@
   "XBSL: the project has no subsystems.": "XBSL: в проекте нет подсистем.",
   "Show only these subsystems (nothing selected – no filter)": "Показывать только выбранные подсистемы (ничего не выбрано – без отбора)",
   "read-only": "только чтение",
+  "slot": "слот",
+  "A slot: holds child components. Add or remove them in the form structure view; the value cannot simply be cleared here.": "Слот: содержит дочерние компоненты. Добавляйте и удаляйте их в панели структуры формы; значение нельзя просто очистить здесь.",
   "Delete": "Удалить",
   "XBSL: delete object \"{0}\"? Files: {1}. References are not updated.": "XBSL: удалить объект \"{0}\"? Файлы: {1}. Ссылки не обновляются.",
   "Catalogs": "Справочники",

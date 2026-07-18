@@ -174,6 +174,7 @@ export interface PanelRow {
   event?: string; // handler signature from the schema
   colorHex?: string; // #rrggbb when the current composite is an АбсолютныйЦвет
   propSpan?: SpanDto; // span of the set property - the "open in yaml" target
+  slot?: boolean; // the schema marks this key a slot - it holds child components (structure view)
   hay: string; // lowercased "name + value" haystack for the panel filter
 }
 
@@ -777,6 +778,7 @@ function makeRow(
     event: schemaProp?.event,
     colorHex,
     propSpan: prop?.span,
+    slot: schemaProp?.slot,
     hay: hayParts.join(" ").toLowerCase(),
   };
 }

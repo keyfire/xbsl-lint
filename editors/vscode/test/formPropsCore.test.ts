@@ -475,6 +475,28 @@ test("buildPanelModel: the all section is alphabetical, slots and events exclude
   assert.strictEqual(setRow.value, "Привет <мир>");
 });
 
+test("buildPanelModel: a set slot property is flagged even when bound (slot indicator)", () => {
+  const form = "Наследует\n    Содержимое\n        Тип: Надпись\n        Картинка: =Объект.Пиктограмма\n";
+  const node: FormNodeDto = {
+    id: "n",
+    kind: "component",
+    span: lineSpan(form, "        Тип: Надпись", 2),
+    type: "Надпись",
+    typeFull: "Надпись",
+    name: "X",
+    slot: "Содержимое",
+    properties: [propDto(form, "Картинка", "binding", "=Объект.Пиктограмма")],
+  };
+  const model = buildPanelModel(node, SCHEMA, form);
+  const row = model.sections[0].rows.find((r) => r.key === "Картинка")!;
+  // A binding value drives a binding editor, but the schema slot flag still rides on the row.
+  assert.strictEqual(row.editor.control, "binding");
+  assert.strictEqual(row.slot, true);
+  // A plain (non-slot) property is not flagged.
+  const label = buildPanelModel(NODE, SCHEMA, FORM).sections[0].rows.find((r) => r.key === "Заголовок")!;
+  assert.ok(!label.slot);
+});
+
 test("buildPanelModel: a union row picks its member enum values from schema.enums", () => {
   const model = buildPanelModel(NODE, SCHEMA, FORM);
   const bg = model.sections[2].rows.find((r) => r.key === "Фон")!;

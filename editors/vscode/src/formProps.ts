@@ -130,6 +130,8 @@ function labels(): Record<string, string> {
     emptyNote: vscode.l10n.t("An empty value is not written – use Reset to clear the property."),
     defaultPrefix: vscode.l10n.t("default:"),
     readonly: vscode.l10n.t("read-only"),
+    slot: vscode.l10n.t("slot"),
+    slotTip: vscode.l10n.t("A slot: holds child components. Add or remove them in the form structure view; the value cannot simply be cleared here."),
     typeLabel: vscode.l10n.t("Type"),
     valueLabel: vscode.l10n.t("Value"),
     compositeLocked: vscode.l10n.t("The value contains nested blocks – edit it in yaml."),
@@ -184,6 +186,10 @@ ${cspMeta(nonce)}
   .row { margin: 0 0 9px; padding: 2px 4px; border-radius: 4px; border-left: 2px solid transparent; }
   .row.sel { background: var(--vscode-list-hoverBackground, rgba(128,128,128,.12));
     border-left-color: var(--vscode-focusBorder, #2f81f7); }
+  /* A slot row (holds child components): a distinct colored bar, kept even when focused (the
+     background still marks the focus), so it never reads as a plain clearable value. */
+  .row.slot, .row.slot.sel { border-left-color: var(--vscode-charts-orange, #d18616); border-left-width: 3px; }
+  .slotbadge { opacity: .7; font-style: italic; font-size: .95em; color: var(--vscode-charts-orange, #d18616); }
   .cap { display: flex; align-items: center; gap: 5px; font-size: .85em; margin-bottom: 2px; }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; border: 1px solid rgba(128,128,128,.55); flex: none; }
   .set .dot { background: var(--vscode-charts-blue, #3794ff); border-color: var(--vscode-charts-blue, #3794ff); }
@@ -743,7 +749,9 @@ ${cspMeta(nonce)}
   }
 
   function buildRow(row) {
-    const div = el("div", "row" + (row.set ? " set" : ""));
+    // A slot key holds child components (edited in the structure view); it reads with a colored
+    // left bar and a "slot" badge so it is clear it is not a plain value and cannot just be cleared.
+    const div = el("div", "row" + (row.set ? " set" : "") + (row.slot ? " slot" : ""));
     div.dataset.key = row.key;
     div.dataset.hay = row.hay;
     const cap = el("div", "cap");
@@ -760,9 +768,11 @@ ${cspMeta(nonce)}
     if (row.event) { tipParts.push(row.event); }
     if (row.since) { tipParts.push("since " + row.since); }
     if (!row.set && row.defaultValue) { tipParts.push(L.defaultPrefix + " " + row.defaultValue); }
+    if (row.slot) { tipParts.push(L.slotTip); }
     if (tipParts.length) { name.title = tipParts.join("\\n"); }
     cap.appendChild(name);
     if (row.editor.control === "readonly") { cap.appendChild(el("span", "ro", "· " + L.readonly)); }
+    if (row.slot) { cap.appendChild(el("span", "slotbadge", "· " + L.slot)); }
     cap.appendChild(el("span", "sp"));
     // The yaml jump {} lives in the caption for every editable set row - one fixed place.
     if (row.set && row.propSpan && row.editor.control !== "readonly") {
