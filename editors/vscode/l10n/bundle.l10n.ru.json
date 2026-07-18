@@ -270,5 +270,15 @@
   "Not set – the platform default applies": "Не задано – действует умолчание платформы",
   "A handler is assigned": "Обработчик назначен",
   "No handler": "Обработчика нет",
-  "A filled dot – the property is set in yaml, an outlined one – the platform default applies.": "Заполненная точка – свойство задано в yaml, контурная – действует умолчание платформы."
+  "A filled dot – the property is set in yaml, an outlined one – the platform default applies.": "Заполненная точка – свойство задано в yaml, контурная – действует умолчание платформы.",
+  "(create a handler...)": "(создать обработчик...)",
+  "Suitable methods": "Подходящие методы",
+  "Other methods": "Остальные методы",
+  "Go to the handler method": "Перейти к методу-обработчику",
+  "The method is not in the module": "Метод не найден в модуле",
+  "The method \"{0}\" is not in the paired module – create it?": "Метод \"{0}\" не найден в парном модуле – создать заготовку?",
+  "Create the handler": "Создать обработчик",
+  "Handler method name (empty – the engine derives it from the node and the event)": "Имя метода-обработчика (пусто – движок соберёт имя из узла и события)",
+  "XBSL: the workspace edit was not applied.": "XBSL: правка не применилась.",
+  "XBSL: open a form yaml (КомпонентИнтерфейса) – the clipboard yaml is pasted into the structure selection.": "XBSL: откройте yaml формы (КомпонентИнтерфейса) – yaml из буфера вставляется в выделение структуры."
 }

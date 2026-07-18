@@ -1,10 +1,13 @@
 // Pure core of the "Form structure" view (no vscode import), unit-tested under plain Node
 // (test/formStructureCore.test.ts): the shapes of the engine's xbsl/formTree payload, tree
-// indexing, labels and icons, drop/insert planning, multi-removal planning, projection of
-// diagnostics onto node spans, the named-only filter and expansion-state remapping after a
-// re-parse. All EDIT logic lives in the engine (xbsl/formedits.py); this module only decides
-// WHICH operation with WHICH arguments to request - the vscode glue (formStructure.ts)
-// sends xbsl/formEdit and applies the returned edits via WorkspaceEdit.
+// indexing, labels and icons, drop/insert planning, clipboard-paste arguments, multi-removal
+// planning, projection of diagnostics onto node spans, the named-only filter and
+// expansion-state remapping after a re-parse. All EDIT logic lives in the engine
+// (xbsl/formedits.py); this module only decides WHICH operation with WHICH arguments to
+// request - the vscode glue (formStructure.ts) sends xbsl/formEdit and applies the returned
+// edits via WorkspaceEdit.
+
+import { iconIdFor } from "./componentIconsCore";
 
 // --- engine payload shapes (formmodel.node_dict / formedits over LSP) ---------------------
 
@@ -189,13 +192,26 @@ export function nodeDescription(node: FormNode): string {
   return "";
 }
 
-// Codicon id by node kind: the form root, a slot, a container or a leaf component.
-export function nodeIconId(node: FormNode, isContainerType?: (type: string) => boolean): string {
+// Codicon id of a tree node. The form root and slots keep their own icons; a typed
+// component goes through the shared type->icon mapping (componentIconsCore) with the
+// package and the schema container flag resolved by the caller - the SAME inputs the
+// palette uses, so one type renders with one icon in both panels. Only untyped mappings
+// (e.g. a page of Страницы) fall back to the local container/leaf heuristic: they have
+// no palette counterpart to stay consistent with.
+export function nodeIconId(
+  node: FormNode,
+  isContainerType?: (type: string) => boolean,
+  packageOf?: (type: string) => string | undefined
+): string {
   if (node.id === ROOT_ID) {
     return "window";
   }
   if (node.kind === "slot") {
     return "layers";
+  }
+  const type = node.type ?? "";
+  if (type) {
+    return iconIdFor(type, packageOf?.(type), isContainerType?.(type) ?? false);
   }
   return isContainerNode(node, isContainerType) ? "layout" : "symbol-field";
 }
@@ -258,6 +274,95 @@ export function insertPlanForSelection(
     return { parentId: ROOT_ID, slot: preferredSlotName(index.root) };
   }
   return dropPlan(selected, index, isContainerType);
+}
+
+// A node copied out of a "-" list slot arrives as a single-item sequence ("- Тип: ..."),
+// and the engine deliberately takes only the MAPPING form (a dash means "several
+// components" to it). Unwrap exactly the unambiguous one-item case by line surgery -
+// reserialization would lose comments and hand-made formatting. The body is re-aligned
+// with the attached comments (which sit at the dash column) so the engine's common-margin
+// dedent yields the canonical relative indentation. Anything else - the mapping form,
+// several items, non-yaml - travels verbatim: the engine's own messages are the
+// user-facing diagnostics. Line logic only, no yaml parse: a dash at the item's own
+// column cannot occur inside its body (yaml indents block content deeper than the key).
+export function unwrapSingleListItem(fragment: string): string {
+  const lines = fragment.split("\n");
+  const lead = (line: string): number => line.length - line.trimStart().length;
+  let at = -1;
+  for (let k = 0; k < lines.length; k++) {
+    const t = lines[k].trim();
+    if (!t || t.startsWith("#")) {
+      continue;
+    }
+    if (t.startsWith("-")) {
+      at = k;
+    }
+    break;
+  }
+  if (at < 0) {
+    return fragment;
+  }
+  // [^\n]* instead of .*: the lines of a CRLF clipboard end with \r, which "." skips
+  const dash = /^([ ]*)-([ \t]*)([^\n]*)$/.exec(lines[at]);
+  if (!dash) {
+    return fragment;
+  }
+  const indent = dash[1].length;
+  for (let k = at + 1; k < lines.length; k++) {
+    const t = lines[k].trim();
+    if (t && lead(lines[k]) <= indent && !t.startsWith("#")) {
+      return fragment; // a sibling item or stray content - not a single-item fragment
+    }
+  }
+  const rest = dash[3];
+  let contentCol: number;
+  if (!rest.trim()) {
+    // the dash stood alone on its line; the content column comes from the first body line
+    const body = lines.findIndex((l, k) => k > at && !!l.trim());
+    if (body < 0) {
+      return fragment;
+    }
+    contentCol = lead(lines[body]);
+    lines.splice(at, 1);
+  } else {
+    contentCol = indent + 1 + dash[2].length;
+    lines[at] = " ".repeat(contentCol) + rest;
+  }
+  const delta = contentCol - indent;
+  if (delta > 0 && lines.slice(at).every((l) => !l.trim() || lead(l) >= delta)) {
+    for (let k = at; k < lines.length; k++) {
+      if (lines[k].trim()) {
+        lines[k] = lines[k].slice(delta);
+      }
+    }
+  }
+  return lines.join("\n");
+}
+
+// Flat xbsl/formEdit arguments of the insert_fragment operation for pasting the clipboard
+// yaml into the current structure selection. The target follows the palette-insertion
+// rules (insertPlanForSelection): a selected container or slot takes the fragment inside,
+// a leaf places it after itself, an empty selection targets the root content slot. The
+// only client-side touch is unwrapSingleListItem (the copy-paste circle over list slots);
+// otherwise the fragment travels verbatim - attached comments stay part of it, the engine
+// validates the yaml itself and re-indents to the destination.
+export function pasteFragmentArgs(
+  selected: FormNode | undefined,
+  index: FormIndex,
+  fragment: string,
+  isContainerType?: (type: string) => boolean
+): Record<string, unknown> | undefined {
+  const plan = insertPlanForSelection(selected, index, isContainerType);
+  if (!plan) {
+    return undefined;
+  }
+  return {
+    parent: plan.parentId,
+    slot: plan.slot,
+    fragment: unwrapSingleListItem(fragment),
+    before: plan.before,
+    after: plan.after,
+  };
 }
 
 // Neighbours of a component inside its slot - the source of Alt+Up/Down move arguments.

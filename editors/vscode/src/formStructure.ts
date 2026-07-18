@@ -31,6 +31,7 @@ import {
   nodeLabel,
   NodeDiagBadge,
   PALETTE_MIME,
+  pasteFragmentArgs,
   planRemoval,
   projectDiagnostics,
   remapIds,
@@ -41,7 +42,12 @@ import {
   validMoveTarget,
   visibleWithNamedFilter,
 } from "./formStructureCore";
-import { cachedContainerTypes, contentContainerTypes } from "./uiSchemaClient";
+import {
+  cachedComponentPackage,
+  cachedContainerTypes,
+  contentContainerTypes,
+  warmContainers,
+} from "./uiSchemaClient";
 
 const TREE_DEBOUNCE_MS = 300;
 const CURSOR_DEBOUNCE_MS = 150;
@@ -193,6 +199,11 @@ class FormStructureProvider
     this.setMessage(undefined);
     this.updateDiagnostics();
     this.emitter.fire(undefined);
+    // Learn the schema container set and the package map even when the palette was never
+    // opened: component icons and drop planning read them synchronously.
+    if (!cachedContainerTypes()) {
+      warmContainers(() => this.emitter.fire(undefined));
+    }
   }
 
   private setMessage(message: string | undefined): void {
@@ -332,7 +343,7 @@ class FormStructureProvider
             : new vscode.ThemeColor("charts.blue");
       item.iconPath = new vscode.ThemeIcon(icon, color);
     } else {
-      item.iconPath = new vscode.ThemeIcon(nodeIconId(node, isContainerType));
+      item.iconPath = new vscode.ThemeIcon(nodeIconId(node, isContainerType, cachedComponentPackage));
     }
     const tooltipParts = [node.kind === "component" ? node.typeFull || node.type || "" : vscode.l10n.t("Slot {0}", node.name ?? "")];
     if (badge) {
@@ -644,6 +655,28 @@ class FormStructureProvider
     vscode.window.setStatusBarMessage(vscode.l10n.t("XBSL: the node yaml is copied to the clipboard."), 2000);
   }
 
+  // Paste the clipboard yaml as a component (the counterpart of copyYaml; works across
+  // forms and projects). The target follows the palette-insertion rules; the engine
+  // validates the fragment (one mapping with a Тип key) and its message is shown as is.
+  async pasteFromClipboard(node?: FormNode): Promise<void> {
+    if (!this.index || !this.target) {
+      void vscode.window.showInformationMessage(
+        vscode.l10n.t("XBSL: open a form yaml (КомпонентИнтерфейса) – the clipboard yaml is pasted into the structure selection.")
+      );
+      return;
+    }
+    const fragment = await vscode.env.clipboard.readText();
+    const selected = this.selectedNodes(node)[0];
+    const args = pasteFragmentArgs(selected, this.index, fragment, (t) => cachedContainerTypes()?.has(t) ?? false);
+    if (!args) {
+      return;
+    }
+    const inserted = await this.performOp("insert_fragment", args);
+    if (inserted) {
+      void this.notifyPropsPanel(inserted.span.start);
+    }
+  }
+
   // --- palette insertion ------------------------------------------------------------------
 
   async insertComponentType(type: string): Promise<boolean> {
@@ -847,6 +880,9 @@ export function registerFormStructure(context: vscode.ExtensionContext): FormStr
       if (target) {
         void provider.copyNode(target);
       }
+    }),
+    vscode.commands.registerCommand("xbsl.formStructure.pasteYaml", (node?: FormNode) => {
+      void provider.pasteFromClipboard(node);
     }),
     vscode.commands.registerCommand("xbsl.formStructure.focusSubtree", (node?: FormNode) => {
       const target = provider.selectedNodes(node)[0];

@@ -119,5 +119,6 @@
   "cmd.formPalette.removeFavorite": "Remove from favorites",
   "cmd.formPalette.openDocs": "Open documentation",
   "view.properties": "Component properties",
-  "cmd.properties.showForNode": "Component properties"
+  "cmd.properties.showForNode": "Component properties",
+  "cmd.formStructure.pasteYaml": "Paste yaml from the clipboard"
 }

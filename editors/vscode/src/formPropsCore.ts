@@ -69,6 +69,51 @@ export interface UiComponentDto {
   enums?: Record<string, string[]>;
 }
 
+// One top-level method of the paired module (the xbsl/moduleHandlers response entries).
+export interface ModuleMethodDto {
+  name: string;
+  static?: boolean;
+  abstract?: boolean;
+  annotations?: string[];
+  visibility?: string | null;
+  params?: { name?: string | null; type?: string | null }[];
+  returnType?: string | null;
+  span?: SpanDto | null;
+  nameSpan?: SpanDto | null; // the method name token - the jump target
+}
+
+// The xbsl/moduleHandlers response: available=false (module null, methods []) when the
+// paired .xbsl file does not exist; error - the request-level failure.
+export interface ModuleHandlersPayload {
+  available?: boolean;
+  module?: string | null;
+  methods?: ModuleMethodDto[];
+  parseErrors?: number;
+  error?: string;
+}
+
+// The xbsl/addHandler response (the two-file plan; see xbsl/formhandlers.py). Offsets are
+// relative to the buffers the plan was computed from. created=true - the module FILE does
+// not exist: moduleText carries its FULL content and moduleEdits is empty.
+export interface AddHandlerResponse {
+  method?: string;
+  created?: boolean;
+  methodAdded?: boolean;
+  yamlEdits?: EngineEditDto[];
+  moduleUri?: string;
+  moduleEdits?: EngineEditDto[];
+  moduleText?: string;
+  cursor?: { uri?: string; offset?: number } | null;
+  notes?: string[];
+  error?: string;
+}
+
+export interface EngineEditDto {
+  start: number;
+  end: number;
+  newText: string;
+}
+
 // The node the properties panel should show for a formNodeAt payload: a component shows
 // itself; a slot shows its owner component (viaSlot carries the slot name for the honest
 // panel header). undefined - nothing to show: no node at the offset, or a slot without
@@ -109,7 +154,10 @@ export type RowEditor =
   | { control: "union"; types: string[]; current?: string; enums?: Record<string, string[]> }
   | { control: "composite"; fields: CompositeField[]; editable: boolean }
   | { control: "binding" }
-  | { control: "handler" }
+  // choices - the handler dropdown content computed from the paired module's methods
+  // (absent inside chooseEditor; buildPanelModel enriches the row when it has the
+  // xbsl/moduleHandlers payload).
+  | { control: "handler"; choices?: HandlerChoices }
   | { control: "readonly" };
 
 export interface PanelRow {
@@ -140,6 +188,208 @@ export interface PanelModel {
   nodeSpanStart: number;
   schemaAvailable: boolean;
   sections: PanelSection[];
+}
+
+// -- event handlers (hook 1) --------------------------------------------------------------
+//
+// The dropdown of an event row offers the methods of the paired module: the ones whose
+// parameter count fits the event signature come first (XBSL binds handlers by name and
+// allows a method to take FEWER parameters than the event passes), the rest stay
+// reachable below. The signature grammar is the engine's normalized form; the parser here
+// mirrors xbsl/formhandlers.parse_event_signature so both sides agree on the argument
+// count.
+
+function depthStep(prev: string, ch: string, depth: number): number {
+  if (ch === "<" || ch === "(") {
+    return depth + 1;
+  }
+  if (ch === ")" || (ch === ">" && prev !== "-")) {
+    return depth - 1;
+  }
+  return depth;
+}
+
+function splitTop(s: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let prev = "";
+  let current = "";
+  for (const ch of s) {
+    depth = depthStep(prev, ch, depth);
+    if (ch === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+    prev = ch;
+  }
+  const tail = current.trim();
+  if (tail) {
+    parts.push(tail);
+  }
+  return parts;
+}
+
+// Whether the leading "(" closes only at the very end (the whole string is wrapped).
+function isWrapped(s: string): boolean {
+  let depth = 0;
+  let prev = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charAt(i);
+    const next = depthStep(prev, ch, depth);
+    if (next < depth && next === 0) {
+      return i === s.length - 1;
+    }
+    depth = next;
+    prev = ch;
+  }
+  return false;
+}
+
+export interface EventSignature {
+  args: string[];
+  ret: string | null;
+}
+
+// (argument types, return type) of a ui-schema event signature: "(Кнопка,
+// СобытиеПриНажатии)->ничто" or the nullable wrapping "((ОписаниеЗадания)->Булево)?".
+// undefined for an unparseable string - the caller then cannot judge compatibility.
+export function parseEventSignature(signature: string | null | undefined): EventSignature | undefined {
+  let s = (signature ?? "").trim();
+  if (s.endsWith("?")) {
+    s = s.slice(0, -1).trim();
+  }
+  if (s.startsWith("(") && s.endsWith(")") && isWrapped(s)) {
+    const inner = s.slice(1, -1).trim();
+    if (inner.includes("->")) {
+      s = inner;
+    }
+  }
+  if (!s.startsWith("(")) {
+    return undefined;
+  }
+  let depth = 0;
+  let prev = "";
+  let argsEnd = -1;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charAt(i);
+    const next = depthStep(prev, ch, depth);
+    if (next < depth && next === 0) {
+      argsEnd = i;
+      break;
+    }
+    depth = next;
+    prev = ch;
+  }
+  if (argsEnd < 0 || s.slice(argsEnd + 1, argsEnd + 3) !== "->") {
+    return undefined;
+  }
+  return { args: splitTop(s.slice(1, argsEnd)), ret: s.slice(argsEnd + 3).trim() || null };
+}
+
+export interface HandlerChoices {
+  // Methods whose parameter count <= the event's argument count, module order.
+  compatible: string[];
+  // The remaining callable methods (module order); ALL methods when the signature is
+  // unknown and compatibility cannot be judged.
+  rest: string[];
+  // The bound method is nowhere in the module (a broken binding or the module file is
+  // missing); false when the module state is unknown (older engine, failed request).
+  currentMissing: boolean;
+}
+
+// The dropdown content of one event row. Abstract methods are skipped (no body - not a
+// handler); everything else stays selectable, the split only ranks.
+export function handlerChoices(
+  eventSignature: string | undefined,
+  currentMethod: string | undefined,
+  handlers: ModuleHandlersPayload | undefined
+): HandlerChoices {
+  const methods = (handlers?.methods ?? []).filter((m) => m.name && !m.abstract);
+  const names = methods.map((m) => m.name);
+  const parsed = eventSignature ? parseEventSignature(eventSignature) : undefined;
+  let compatible: string[] = [];
+  let rest = names;
+  if (parsed) {
+    compatible = methods.filter((m) => (m.params ?? []).length <= parsed.args.length).map((m) => m.name);
+    const chosen = new Set(compatible);
+    rest = names.filter((n) => !chosen.has(n));
+  }
+  const known = handlers !== undefined && !handlers.error;
+  const currentMissing = !!currentMethod && known && !names.includes(currentMethod);
+  return { compatible, rest, currentMissing };
+}
+
+// The engine's default handler name (<Имя узла | Тип узла><КлючСобытия>) - the InputBox
+// suggestion of the "create handler" flow. The engine stays the authority: an empty input
+// sends NO method and the engine derives (and uniquifies) the name itself.
+export function defaultHandlerName(
+  node: { name?: string | null; type?: string | null },
+  key: string
+): string {
+  return `${node.name || node.type || ""}${key}`;
+}
+
+// Flat xbsl/addHandler request params; empty optionals are omitted, not sent as "".
+export function buildAddHandlerParams(
+  uri: string,
+  nodeId: string,
+  key: string,
+  method?: string,
+  signature?: string
+): Record<string, string> {
+  const params: Record<string, string> = { uri, node: nodeId, key };
+  const trimmed = (method ?? "").trim();
+  if (trimmed) {
+    params.method = trimmed;
+  }
+  if (signature) {
+    params.signature = signature;
+  }
+  return params;
+}
+
+// The xbsl/addHandler response parsed into an application plan for the extension: which
+// buffers change how, where the module file comes from and where the cursor lands.
+export interface HandlerApplyPlan {
+  method: string;
+  yamlEdits: EngineEditDto[];
+  moduleUri: string;
+  // true - create the module file with moduleText as its full content; false - apply
+  // moduleEdits to the existing module buffer (both may be no-ops when the method exists).
+  createFile: boolean;
+  moduleText: string;
+  moduleEdits: EngineEditDto[];
+  cursorOffset?: number;
+  notes: string[];
+}
+
+export function planHandlerApply(
+  res: AddHandlerResponse
+): { plan: HandlerApplyPlan } | { error: string } {
+  if (res.error) {
+    return { error: res.error };
+  }
+  if (!res.moduleUri || !res.method) {
+    return { error: "неполный ответ xbsl/addHandler (нет moduleUri/method)" };
+  }
+  const createFile = res.created === true;
+  if (createFile && typeof res.moduleText !== "string") {
+    return { error: "неполный ответ xbsl/addHandler (created без moduleText)" };
+  }
+  return {
+    plan: {
+      method: res.method,
+      yamlEdits: res.yamlEdits ?? [],
+      moduleUri: res.moduleUri,
+      createFile,
+      moduleText: res.moduleText ?? "",
+      moduleEdits: createFile ? [] : res.moduleEdits ?? [],
+      cursorOffset: typeof res.cursor?.offset === "number" ? res.cursor.offset : undefined,
+      notes: res.notes ?? [],
+    },
+  };
 }
 
 // -- yaml value extraction (read-only; writes go through the engine) --------------------------
@@ -397,7 +647,8 @@ function makeRow(
   prop: NodePropertyDto | undefined,
   schemaProp: UiPropDto | undefined,
   docText: string,
-  componentEnums?: Record<string, string[]>
+  componentEnums?: Record<string, string[]>,
+  handlers?: ModuleHandlersPayload
 ): PanelRow {
   let value = "";
   let fields: CompositeField[] | undefined;
@@ -414,7 +665,14 @@ function makeRow(
       value = extractScalarValue(docText, prop);
     }
   }
-  const editor = chooseEditor(schemaProp, prop, value, fields, allScalar, componentEnums);
+  let editor = chooseEditor(schemaProp, prop, value, fields, allScalar, componentEnums);
+  if (editor.control === "handler") {
+    // The dropdown content rides on the row: the webview stays a dumb renderer.
+    editor = {
+      control: "handler",
+      choices: handlerChoices(schemaProp?.event, prop !== undefined ? value : undefined, handlers),
+    };
+  }
   const hayParts = [key, value];
   if (colorHex) {
     hayParts.push(colorHex);
@@ -445,10 +703,14 @@ function makeRow(
 //            with a schema. Set rows repeat here with the same editor - the panel model
 //            is stateless, each row instance is complete.
 // Without a schema the panel degrades to the set section alone (kind-based editors).
+// handlers - the xbsl/moduleHandlers payload of the paired module: event rows grow a
+// dropdown of its methods; undefined (older engine, failed request) keeps the dropdown
+// minimal ((no handler) / current / create).
 export function buildPanelModel(
   node: FormNodeDto,
   schema: UiComponentDto | null | undefined,
-  docText: string
+  docText: string,
+  handlers?: ModuleHandlersPayload
 ): PanelModel {
   const props = node.properties ?? [];
   const schemaProps: Record<string, UiPropDto> = schema?.props ?? {};
@@ -464,7 +726,7 @@ export function buildPanelModel(
     id: "set",
     rows: props
       .filter((p) => !isEventRow(p))
-      .map((p) => makeRow(p.key, p, schemaProps[p.key], docText, componentEnums)),
+      .map((p) => makeRow(p.key, p, schemaProps[p.key], docText, componentEnums, handlers)),
   });
 
   if (hasSchema) {
@@ -475,7 +737,7 @@ export function buildPanelModel(
     sections.push({
       id: "events",
       rows: [...eventKeys, ...unknownHandlers].map((k) =>
-        makeRow(k, byKey.get(k), schemaProps[k], docText, componentEnums)
+        makeRow(k, byKey.get(k), schemaProps[k], docText, componentEnums, handlers)
       ),
     });
 
@@ -484,7 +746,7 @@ export function buildPanelModel(
       .sort((a, b) => a.localeCompare(b, "ru"));
     sections.push({
       id: "all",
-      rows: allKeys.map((k) => makeRow(k, byKey.get(k), schemaProps[k], docText, componentEnums)),
+      rows: allKeys.map((k) => makeRow(k, byKey.get(k), schemaProps[k], docText, componentEnums, handlers)),
     });
   }
 

@@ -5,20 +5,26 @@
 import * as assert from "assert";
 import {
   FormNodeDto,
+  ModuleHandlersPayload,
   NodePropertyDto,
   PanelModel,
   SpanDto,
   UiComponentDto,
+  buildAddHandlerParams,
   buildCompositeYaml,
   buildPanelModel,
   chooseEditor,
   colorYaml,
+  defaultHandlerName,
   encodeFragmentScalar,
   extractScalarValue,
   findRow,
+  handlerChoices,
   hexFromColorFields,
   panelTarget,
   parseCompositeFields,
+  parseEventSignature,
+  planHandlerApply,
   prepareWrite,
   rowMatchesFilter,
 } from "../src/formPropsCore";
@@ -589,6 +595,151 @@ test("prepareWrite union: an enumeration member accepts only its listed values",
     kind: "value",
     value: "Чужое",
   });
+});
+
+// -- event handlers (hook 1) --------------------------------------------------------------
+
+test("parseEventSignature: plain, nullable-wrapped, generic and broken forms", () => {
+  assert.deepStrictEqual(parseEventSignature("(Кнопка, СобытиеПриНажатии)->ничто"), {
+    args: ["Кнопка", "СобытиеПриНажатии"],
+    ret: "ничто",
+  });
+  // the nullable wrapping of callback-typed events unwraps to the inner signature
+  assert.deepStrictEqual(parseEventSignature("((ОписаниеЗадания)->Булево)?"), {
+    args: ["ОписаниеЗадания"],
+    ret: "Булево",
+  });
+  // generic arguments keep their commas inside the brackets
+  assert.deepStrictEqual(
+    parseEventSignature("(ПолеВвода<ТипДанных>, Соответствие<Строка, Число>)->ничто"),
+    { args: ["ПолеВвода<ТипДанных>", "Соответствие<Строка, Число>"], ret: "ничто" }
+  );
+  assert.deepStrictEqual(parseEventSignature("()->ничто"), { args: [], ret: "ничто" });
+  assert.strictEqual(parseEventSignature("Строка"), undefined);
+  assert.strictEqual(parseEventSignature(""), undefined);
+  assert.strictEqual(parseEventSignature(undefined), undefined);
+});
+
+const HANDLERS: ModuleHandlersPayload = {
+  available: true,
+  module: "file:///форма.xbsl",
+  parseErrors: 0,
+  methods: [
+    { name: "ПриОткрытии", params: [] },
+    { name: "КнопкаПриНажатии", params: [{ name: "Источник" }, { name: "Событие" }] },
+    { name: "Пересчитать", params: [{ name: "Источник" }] },
+    { name: "Сложный", params: [{ name: "А" }, { name: "Б" }, { name: "В" }] },
+    { name: "Абстрактный", abstract: true, params: [] },
+  ],
+};
+
+test("handlerChoices: parameter count splits suitable from the rest, module order kept", () => {
+  const choices = handlerChoices("(Кнопка, СобытиеПриНажатии)->ничто", undefined, HANDLERS);
+  // <= 2 parameters fit a two-argument event; the abstract method is not callable
+  assert.deepStrictEqual(choices.compatible, ["ПриОткрытии", "КнопкаПриНажатии", "Пересчитать"]);
+  assert.deepStrictEqual(choices.rest, ["Сложный"]);
+  assert.strictEqual(choices.currentMissing, false);
+});
+
+test("handlerChoices: unknown signature - no split, everything stays reachable", () => {
+  const choices = handlerChoices(undefined, undefined, HANDLERS);
+  assert.deepStrictEqual(choices.compatible, []);
+  assert.deepStrictEqual(choices.rest, [
+    "ПриОткрытии", "КнопкаПриНажатии", "Пересчитать", "Сложный",
+  ]);
+});
+
+test("handlerChoices: the missing-method flag needs a KNOWN module state", () => {
+  assert.strictEqual(
+    handlerChoices(undefined, "КнопкаПриНажатии", HANDLERS).currentMissing,
+    false
+  );
+  assert.strictEqual(handlerChoices(undefined, "Нету", HANDLERS).currentMissing, true);
+  // the module file does not exist - the bound method cannot exist either
+  const noModule: ModuleHandlersPayload = { available: false, module: null, methods: [] };
+  assert.strictEqual(handlerChoices(undefined, "Нету", noModule).currentMissing, true);
+  // an older engine (no payload at all) must not cry wolf
+  assert.strictEqual(handlerChoices(undefined, "Нету", undefined).currentMissing, false);
+  assert.strictEqual(handlerChoices(undefined, undefined, HANDLERS).currentMissing, false);
+});
+
+test("buildPanelModel: event rows carry the dropdown choices when handlers are known", () => {
+  const model = buildPanelModel(NODE, SCHEMA, FORM, HANDLERS);
+  const row = model.sections[1].rows[0];
+  assert.strictEqual(row.key, "ПриНажатии");
+  assert.strictEqual(row.editor.control, "handler");
+  const editor = row.editor as { control: "handler"; choices?: unknown };
+  assert.deepStrictEqual(editor.choices, {
+    compatible: ["ПриОткрытии", "КнопкаПриНажатии", "Пересчитать"],
+    rest: ["Сложный"],
+    currentMissing: true, // ОбработатьНажатие is bound in the yaml but absent in the module
+  });
+  // without the payload the editor still renders, just without the method list
+  const bare = buildPanelModel(NODE, SCHEMA, FORM);
+  const bareEditor = bare.sections[1].rows[0].editor as { control: string; choices?: { compatible: string[]; rest: string[]; currentMissing: boolean } };
+  assert.deepStrictEqual(bareEditor.choices, { compatible: [], rest: [], currentMissing: false });
+});
+
+test("defaultHandlerName mirrors the engine: name, else type, plus the event key", () => {
+  assert.strictEqual(defaultHandlerName({ name: "КнопкаОплатить", type: "Кнопка" }, "ПриНажатии"), "КнопкаОплатитьПриНажатии");
+  assert.strictEqual(defaultHandlerName({ name: null, type: "Кнопка" }, "ПриНажатии"), "КнопкаПриНажатии");
+  assert.strictEqual(defaultHandlerName({ name: "", type: "" }, "ПриНажатии"), "ПриНажатии");
+});
+
+test("buildAddHandlerParams: flat params, empty optionals omitted", () => {
+  assert.deepStrictEqual(
+    buildAddHandlerParams("file:///ф.yaml", "Наследует/Содержимое[0]", "ПриНажатии"),
+    { uri: "file:///ф.yaml", node: "Наследует/Содержимое[0]", key: "ПриНажатии" }
+  );
+  assert.deepStrictEqual(
+    buildAddHandlerParams("u", "n", "k", "  МойМетод  ", "(К, С)->ничто"),
+    { uri: "u", node: "n", key: "k", method: "МойМетод", signature: "(К, С)->ничто" }
+  );
+  assert.deepStrictEqual(buildAddHandlerParams("u", "n", "k", "   "), { uri: "u", node: "n", key: "k" });
+});
+
+test("planHandlerApply: a new module file comes as full content, an existing one as edits", () => {
+  const created = planHandlerApply({
+    method: "КнопкаПриНажатии",
+    created: true,
+    methodAdded: true,
+    yamlEdits: [{ start: 10, end: 10, newText: "ПриНажатии: КнопкаПриНажатии\n" }],
+    moduleUri: "file:///форма.xbsl",
+    moduleEdits: [],
+    moduleText: "метод КнопкаПриНажатии()\n;\n",
+    cursor: { uri: "file:///форма.xbsl", offset: 6 },
+    notes: ["заметка"],
+  });
+  assert.ok("plan" in created);
+  if ("plan" in created) {
+    assert.strictEqual(created.plan.createFile, true);
+    assert.strictEqual(created.plan.moduleText, "метод КнопкаПриНажатии()\n;\n");
+    assert.deepStrictEqual(created.plan.moduleEdits, []);
+    assert.strictEqual(created.plan.cursorOffset, 6);
+    assert.deepStrictEqual(created.plan.notes, ["заметка"]);
+  }
+
+  const appended = planHandlerApply({
+    method: "М",
+    created: false,
+    methodAdded: true,
+    yamlEdits: [],
+    moduleUri: "file:///форма.xbsl",
+    moduleEdits: [{ start: 100, end: 100, newText: "\nметод М()\n;\n" }],
+    cursor: { uri: "file:///форма.xbsl", offset: 108 },
+  });
+  assert.ok("plan" in appended);
+  if ("plan" in appended) {
+    assert.strictEqual(appended.plan.createFile, false);
+    assert.deepStrictEqual(appended.plan.moduleEdits, [{ start: 100, end: 100, newText: "\nметод М()\n;\n" }]);
+    assert.deepStrictEqual(appended.plan.yamlEdits, []);
+    assert.deepStrictEqual(appended.plan.notes, []);
+  }
+
+  assert.deepStrictEqual(planHandlerApply({ error: "Узел не найден" }), { error: "Узел не найден" });
+  // a defensive check against a malformed answer
+  assert.ok("error" in planHandlerApply({ method: "М" }));
+  assert.ok("error" in planHandlerApply({ method: "М", moduleUri: "file:///м.xbsl", created: true }));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

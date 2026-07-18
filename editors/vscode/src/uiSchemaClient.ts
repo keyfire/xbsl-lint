@@ -65,8 +65,19 @@ export function cachedContainerTypes(): ReadonlySet<string> | undefined {
   return containersCache;
 }
 
+// Synchronous view of a catalog component's package (the type->icon mapping input of the
+// structure view, which cannot await inside getTreeItem): undefined until the catalog is
+// cached (warmContainers/uiCatalog) or for a non-catalog (project) type.
+export function cachedComponentPackage(type: string): string | undefined {
+  if (!catalogCache?.available) {
+    return undefined;
+  }
+  return catalogCache.components?.[type]?.package;
+}
+
 // Kick off the container scan in the background (e.g. when the palette loads); notify() runs
-// once the set is learned so the structure view can repaint icons.
+// once the set is learned so the structure view can repaint icons. The scan also fills the
+// catalog cache that cachedComponentPackage reads.
 export function warmContainers(notify?: () => void): void {
   void ensureContainers().then(() => notify?.());
 }

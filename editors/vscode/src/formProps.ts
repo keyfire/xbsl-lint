@@ -4,8 +4,13 @@
 // owns everything: the node comes from xbsl/formNodeAt, the component schema from
 // xbsl/uiSchema, and every write is ONE xbsl/formEdit request whose text edits this module
 // applies via WorkspaceEdit (native undo/redo). The panel model - sections, typed editors,
-// validation, composite value_yaml assembly - is computed by formPropsCore.ts; here lives
-// only the thin wiring: cursor sync, LSP calls, the webview shell and message routing.
+// validation, composite value_yaml assembly, handler dropdown content - is computed by
+// formPropsCore.ts; here lives only the thin wiring: cursor sync, LSP calls, the webview
+// shell and message routing. The EVENTS rows are interactive (hook 1): the dropdown binds
+// an existing method of the paired module (a plain set_property), "(no handler)" resets
+// the key, and "(create a handler...)" drives xbsl/addHandler - one multi-file
+// WorkspaceEdit writes the yaml binding and the module stub together, then the cursor
+// jumps to the method.
 // This panel REPLACED the older per-component tab of the wireframe preview: the structure
 // view and the preview both land here through the xbsl.properties.showForNode command.
 // The metadata properties panel (xbslMetaProps) stays separate - it serves metadata objects.
@@ -15,14 +20,19 @@
 
 import * as vscode from "vscode";
 import {
+  AddHandlerResponse,
   FormNodeAtPayload,
+  ModuleHandlersPayload,
   PanelModel,
   UiComponentDto,
   WritePayload,
   WritePlan,
+  buildAddHandlerParams,
   buildPanelModel,
+  defaultHandlerName,
   findRow,
   panelTarget,
+  planHandlerApply,
   prepareWrite,
 } from "./formPropsCore";
 import { lspActive, lspRequest } from "./lspClient";
@@ -30,6 +40,7 @@ import { cspMeta, inlineJson, makeNonce } from "./webviewShared";
 
 const VIEW_TYPE = "xbslProperties";
 const SELECTION_DEBOUNCE_MS = 150;
+const IDENTIFIER = /^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*$/;
 
 interface Target {
   uri: vscode.Uri;
@@ -73,6 +84,11 @@ function labels(): Record<string, string> {
     reset: vscode.l10n.t("Reset – remove the property from the yaml"),
     notSet: vscode.l10n.t("(not set)"),
     noHandler: vscode.l10n.t("(no handler)"),
+    createHandler: vscode.l10n.t("(create a handler...)"),
+    groupCompatible: vscode.l10n.t("Suitable methods"),
+    groupOther: vscode.l10n.t("Other methods"),
+    gotoMethod: vscode.l10n.t("Go to the handler method"),
+    missingMethod: vscode.l10n.t("The method is not in the module"),
     dotSet: vscode.l10n.t("Set in yaml"),
     dotDefault: vscode.l10n.t("Not set – the platform default applies"),
     dotHandler: vscode.l10n.t("A handler is assigned"),
@@ -363,14 +379,73 @@ ${cspMeta(nonce)}
     return details;
   }
 
+  // An event row: a dropdown of the paired module's methods. "(no handler)" resets the
+  // property, "(create a handler...)" starts the two-file stub flow in the extension;
+  // choosing an existing method is a plain set_property.
+  const CREATE_HANDLER = " create"; // no method name can collide with this value
   function handlerEditor(row) {
     const line = el("div", "valline");
-    if (row.set) {
-      const name = el("span", "mono", row.value);
-      line.appendChild(name);
-      line.appendChild(gotoButton(row));
+    const sel = document.createElement("select");
+    sel.className = "mono";
+    const addOption = (parent, value, text, title) => {
+      const opt = el("option", null, text);
+      opt.value = value;
+      if (title) { opt.title = title; }
+      parent.appendChild(opt);
+    };
+    addOption(sel, "", L.noHandler);
+    const choices = row.editor.choices || { compatible: [], rest: [], currentMissing: false };
+    const listed = new Set();
+    // A bound method the module does not have stays selectable (and marked) - the row
+    // must render the truth of the yaml, not silently pick another method.
+    if (row.set && row.value && (choices.currentMissing
+        || (!choices.compatible.includes(row.value) && !choices.rest.includes(row.value)))) {
+      addOption(sel, row.value, row.value + (choices.currentMissing ? " ⚠" : ""),
+        choices.currentMissing ? L.missingMethod : undefined);
+      listed.add(row.value);
+    }
+    if (choices.compatible.length) {
+      const fit = document.createElement("optgroup");
+      fit.label = L.groupCompatible;
+      for (const name of choices.compatible) { addOption(fit, name, name); listed.add(name); }
+      sel.appendChild(fit);
+      if (choices.rest.length) {
+        const other = document.createElement("optgroup");
+        other.label = L.groupOther;
+        for (const name of choices.rest) { addOption(other, name, name); listed.add(name); }
+        sel.appendChild(other);
+      }
     } else {
-      line.appendChild(el("span", "grey", L.noHandler));
+      for (const name of choices.rest) {
+        if (!listed.has(name)) { addOption(sel, name, name); listed.add(name); }
+      }
+    }
+    addOption(sel, CREATE_HANDLER, L.createHandler);
+    sel.value = row.set && row.value ? row.value : "";
+    let prev = sel.value;
+    sel.addEventListener("change", () => {
+      const v = sel.value;
+      if (v === CREATE_HANDLER) {
+        sel.value = prev; // the flow may be cancelled - do not leave "(create...)" shown
+        post({ type: "createHandler", key: row.key });
+        return;
+      }
+      if (v === "") {
+        if (row.set) { post({ type: "reset", key: row.key }); } else { prev = v; }
+        return;
+      }
+      prev = v;
+      if (!row.set || v !== row.value) { commit(row.key, v); }
+    });
+    line.appendChild(sel);
+    if (row.set && row.value) {
+      const go = el("button", "rbtn", "\\u2192");
+      go.title = L.gotoMethod;
+      go.addEventListener("click", (e) => {
+        e.preventDefault();
+        post({ type: "gotoHandler", key: row.key, method: row.value });
+      });
+      line.appendChild(go);
     }
     return line;
   }
@@ -442,7 +517,8 @@ ${cspMeta(nonce)}
     cap.appendChild(name);
     if (row.editor.control === "readonly") { cap.appendChild(el("span", "ro", "· " + L.readonly)); }
     cap.appendChild(el("span", "sp"));
-    if (row.set && row.propSpan && row.editor.control !== "binding" && row.editor.control !== "handler"
+    // Handler rows keep the yaml jump here: their value line carries the method jump.
+    if (row.set && row.propSpan && row.editor.control !== "binding"
         && row.editor.control !== "readonly") {
       cap.appendChild(gotoButton(row));
     }
@@ -658,8 +734,17 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
   if (seq !== my || !view) {
     return;
   }
+  // The paired module's methods feed the event dropdowns. Not cached: the module changes
+  // independently of the yaml, and the request is as cheap as formNodeAt above. undefined
+  // (older engine, failed request) degrades the dropdowns, nothing more.
+  const handlers = await lspRequest<ModuleHandlersPayload>("xbsl/moduleHandlers", {
+    uri: uri.toString(),
+  });
+  if (seq !== my || !view) {
+    return;
+  }
   const doc = await vscode.workspace.openTextDocument(uri);
-  lastModel = buildPanelModel(node, schema, doc.getText());
+  lastModel = buildPanelModel(node, schema, doc.getText(), handlers && !handlers.error ? handlers : undefined);
   lastHint = null;
   target = { uri, nodeId: node.id, nodeSpanStart: node.span.start, type };
   const titleParts = [type, node.name ?? ""].filter(Boolean);
@@ -809,6 +894,161 @@ async function reveal(offset: number | undefined): Promise<void> {
   editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 }
 
+// -- event handlers (hook 1: create/bind/jump) --------------------------------------------------
+
+// The paired module of a component yaml (the engine's module_path_for: same stem, .xbsl).
+function moduleUriFor(yamlUri: vscode.Uri): vscode.Uri {
+  return yamlUri.with({ path: yamlUri.path.replace(/\.[^./\\]*$/, "") + ".xbsl" });
+}
+
+async function openAtOffset(uri: vscode.Uri, offset: number): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument(uri);
+  const pos = doc.positionAt(Math.min(offset, doc.getText().length));
+  const editor = await vscode.window.showTextDocument(doc, { preview: false });
+  editor.selection = new vscode.Selection(pos, pos);
+  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+}
+
+// "Go to the handler method": jump to the method name in the paired module; a method the
+// module does not have gets a warning with an offer to create exactly that stub.
+async function gotoHandler(key: string, method: string): Promise<void> {
+  if (!target || !method) {
+    return;
+  }
+  const handlers = await lspRequest<ModuleHandlersPayload>("xbsl/moduleHandlers", {
+    uri: target.uri.toString(),
+  });
+  if (!handlers || handlers.error) {
+    void vscode.window.showWarningMessage(
+      vscode.l10n.t("The engine does not answer the form requests – update the xbsl package.")
+    );
+    return;
+  }
+  const found = handlers.methods?.find((m) => m.name === method);
+  if (handlers.available && handlers.module && found) {
+    const span = found.nameSpan ?? found.span;
+    await openAtOffset(vscode.Uri.parse(handlers.module), span?.start ?? 0);
+    return;
+  }
+  const create = vscode.l10n.t("Create the handler");
+  const pick = await vscode.window.showWarningMessage(
+    vscode.l10n.t('The method "{0}" is not in the paired module – create it?', method),
+    create
+  );
+  if (pick === create) {
+    const row = lastModel ? findRow(lastModel, key) : undefined;
+    await runAddHandler(key, method, row?.event);
+  }
+}
+
+// "(create a handler...)": suggest the engine's default name in an InputBox. Decision
+// documented: a NON-EMPTY input is sent as the explicit method (an existing name means
+// "bind to it" per the engine contract); an EMPTY input sends no method at all - the
+// engine derives <Имя|Тип><Ключ> itself and uniquifies it against the module.
+async function createHandler(key: string): Promise<void> {
+  if (!target || !lastModel) {
+    return;
+  }
+  const row = findRow(lastModel, key);
+  const value = await vscode.window.showInputBox({
+    prompt: vscode.l10n.t("Handler method name (empty – the engine derives it from the node and the event)"),
+    value: defaultHandlerName({ name: lastModel.name, type: lastModel.type }, key),
+    validateInput: (v) =>
+      !v.trim() || IDENTIFIER.test(v.trim())
+        ? undefined
+        : vscode.l10n.t("A valid identifier is required (letters, digits, _)."),
+  });
+  if (value === undefined) {
+    return; // cancelled
+  }
+  await runAddHandler(key, value.trim() || undefined, row?.event);
+}
+
+// One xbsl/addHandler round trip applied as a single multi-file WorkspaceEdit: the yaml
+// gets the binding, the module gets the stub (or the whole new file), the cursor lands on
+// the method name. Versions of both buffers are pinned around the request - the engine
+// computed the edits against them.
+async function runAddHandler(key: string, method?: string, signature?: string): Promise<void> {
+  if (!target) {
+    return;
+  }
+  if (!lspActive()) {
+    void vscode.window.showWarningMessage(
+      vscode.l10n.t(
+        "The properties panel needs the LSP mode (xbsl.lsp.enabled) and the xbsl engine with the form designer."
+      )
+    );
+    return;
+  }
+  const uri = target.uri;
+  const yamlVersion = (await vscode.workspace.openTextDocument(uri)).version;
+  let moduleVersion: number | undefined;
+  try {
+    moduleVersion = (await vscode.workspace.openTextDocument(moduleUriFor(uri))).version;
+  } catch {
+    // the module file does not exist yet - the response will carry its full content
+  }
+  const res = await lspRequest<AddHandlerResponse>(
+    "xbsl/addHandler",
+    buildAddHandlerParams(uri.toString(), target.nodeId, key, method, signature)
+  );
+  if (!res) {
+    void vscode.window.showWarningMessage(
+      vscode.l10n.t("The engine does not answer the form requests – update the xbsl package.")
+    );
+    return;
+  }
+  const outcome = planHandlerApply(res);
+  if ("error" in outcome) {
+    void vscode.window.showWarningMessage(vscode.l10n.t("XBSL: {0}", outcome.error));
+    return;
+  }
+  const plan = outcome.plan;
+  const moduleUri = vscode.Uri.parse(plan.moduleUri);
+  const yamlDoc = await vscode.workspace.openTextDocument(uri);
+  if (yamlDoc.version !== yamlVersion) {
+    void vscode.window.showWarningMessage(
+      vscode.l10n.t("XBSL: the buffer changed while the edit was being computed – try again.")
+    );
+    return;
+  }
+  const we = new vscode.WorkspaceEdit();
+  for (const e of plan.yamlEdits) {
+    we.replace(uri, new vscode.Range(yamlDoc.positionAt(e.start), yamlDoc.positionAt(e.end)), e.newText);
+  }
+  if (plan.createFile) {
+    // created=true: the file does not exist, moduleText IS its full content.
+    we.createFile(moduleUri, { ignoreIfExists: false });
+    we.insert(moduleUri, new vscode.Position(0, 0), plan.moduleText);
+  } else if (plan.moduleEdits.length) {
+    const moduleDoc = await vscode.workspace.openTextDocument(moduleUri);
+    if (moduleVersion !== undefined && moduleDoc.version !== moduleVersion) {
+      void vscode.window.showWarningMessage(
+        vscode.l10n.t("XBSL: the buffer changed while the edit was being computed – try again.")
+      );
+      return;
+    }
+    for (const e of plan.moduleEdits) {
+      we.replace(
+        moduleUri,
+        new vscode.Range(moduleDoc.positionAt(e.start), moduleDoc.positionAt(e.end)),
+        e.newText
+      );
+    }
+  }
+  if (!(await vscode.workspace.applyEdit(we))) {
+    void vscode.window.showWarningMessage(vscode.l10n.t("XBSL: the workspace edit was not applied."));
+    return;
+  }
+  if (plan.cursorOffset !== undefined) {
+    await openAtOffset(moduleUri, plan.cursorOffset);
+  }
+  for (const note of plan.notes) {
+    void vscode.window.showInformationMessage(vscode.l10n.t("XBSL: {0}", note));
+  }
+  void refreshForOffset(uri, target.nodeSpanStart);
+}
+
 // -- provider and registration ----------------------------------------------------------------
 
 class FormPropsViewProvider implements vscode.WebviewViewProvider {
@@ -852,6 +1092,10 @@ class FormPropsViewProvider implements vscode.WebviewViewProvider {
           handleCommitComposite(m.key, m.fields);
         } else if (m.type === "reset" && typeof m.key === "string") {
           void applyOperation("reset_property", m.key);
+        } else if (m.type === "createHandler" && typeof m.key === "string") {
+          void createHandler(m.key);
+        } else if (m.type === "gotoHandler" && typeof m.key === "string" && typeof m.method === "string") {
+          void gotoHandler(m.key, m.method);
         } else if (m.type === "reveal") {
           void reveal(typeof m.offset === "number" ? m.offset : undefined);
         } else if (m.type === "sticky" && typeof m.key === "string" && target) {

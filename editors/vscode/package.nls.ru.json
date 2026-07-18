@@ -119,5 +119,6 @@
   "cmd.formPalette.removeFavorite": "Убрать из избранного",
   "cmd.formPalette.openDocs": "Открыть документацию",
   "view.properties": "Свойства компонента",
-  "cmd.properties.showForNode": "Свойства компонента"
+  "cmd.properties.showForNode": "Свойства компонента",
+  "cmd.formStructure.pasteYaml": "Вставить yaml из буфера"
 }

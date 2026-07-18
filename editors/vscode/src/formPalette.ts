@@ -8,6 +8,7 @@
 // building lives in formPaletteCore.ts.
 
 import * as vscode from "vscode";
+import { iconFor } from "./componentIcons";
 import { docsSearch } from "./docsClient";
 import { openPage } from "./docsPanel";
 import { lspActive } from "./lspClient";
@@ -19,7 +20,7 @@ import {
 } from "./formPaletteCore";
 import { encodePaletteDrag, PALETTE_MIME } from "./formStructureCore";
 import { FormStructureController } from "./formStructure";
-import { resetUiSchemaCache, uiCatalog, warmContainers } from "./uiSchemaClient";
+import { cachedContainerTypes, resetUiSchemaCache, uiCatalog, warmContainers } from "./uiSchemaClient";
 
 const FAVORITES_KEY = "xbsl.formPalette.favorites";
 const USAGE_KEY = "xbsl.formPalette.usage";
@@ -113,9 +114,13 @@ class FormPaletteProvider
     }
     this.sections = buildPalette(catalog, project, this.favorites(), this.usage());
     if (catalog.available) {
-      // Learn the Содержимое-slot container set in the background: the structure view then
-      // paints container icons and plans drops for types beyond the static fallback list.
-      warmContainers(() => this.deps.structure.repaint());
+      // Learn the Содержимое-slot container set in the background: both trees then paint
+      // container icons and the structure view plans drops for types beyond the static
+      // fallback list.
+      warmContainers(() => {
+        this.deps.structure.repaint();
+        this.emitter.fire(undefined);
+      });
     }
     this.emitter.fire(undefined);
   }
@@ -199,7 +204,9 @@ class FormPaletteProvider
     const { item: model, sectionId } = element;
     const item = new vscode.TreeItem(model.name, vscode.TreeItemCollapsibleState.None);
     item.id = `palette:item:${sectionId}:${model.name}`;
-    item.iconPath = new vscode.ThemeIcon(model.origin === "project" ? "window" : "symbol-field");
+    // The shared type->icon mapping, with the SAME inputs the structure view resolves for
+    // its nodes (componentIcons.ts) - one type, one icon in both panels.
+    item.iconPath = iconFor(model.name, model.packageName, cachedContainerTypes()?.has(model.name) ?? false);
     if (sectionId === "frequent" || sectionId === "favorites") {
       item.description =
         model.origin === "project"

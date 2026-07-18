@@ -17,7 +17,9 @@ import {
   nodeDescription,
   nodeIconId,
   nodeLabel,
+  pasteFragmentArgs,
   planRemoval,
+  unwrapSingleListItem,
   projectDiagnostics,
   remapIds,
   revealOffset,
@@ -125,14 +127,25 @@ test("descriptions: property preview for components, child count for slots", () 
   assert.strictEqual(nodeDescription(CONTENT_SLOT), "2");
 });
 
-test("icons by kind: root, slot, container, leaf", () => {
+test("icons: root and slots keep their own, components go through the shared type mapping", () => {
   assert.strictEqual(nodeIconId(ROOT), "window");
   assert.strictEqual(nodeIconId(INNER_SLOT), "layers");
-  assert.strictEqual(nodeIconId(GROUP), "layout"); // has a slot child
-  assert.strictEqual(nodeIconId(BUTTON), "symbol-field");
-  // A schema-known container without slot children yet is painted as a container too.
+  assert.strictEqual(nodeIconId(GROUP), "layout"); // the Группа family
+  assert.strictEqual(nodeIconId(BUTTON), "inspect"); // the exact Кнопка entry
+  assert.strictEqual(nodeIconId(LABEL), "symbol-string");
+  assert.strictEqual(nodeIconId(FIELD), "symbol-field");
+  // A schema-known container outside the mapping still reads as a container...
   const emptyCard = comp("x", "СпецКарточка", null, [0, 1]);
   assert.strictEqual(nodeIconId(emptyCard, (t) => t === "СпецКарточка"), "layout");
+  // ...an unknown leaf type falls to the generic icon, refined by the package when the
+  // catalog is cached (the same inputs the palette resolves - one type, one icon).
+  assert.strictEqual(nodeIconId(emptyCard), "symbol-misc");
+  const listy = comp("y", "Аккордеон", null, [0, 1]);
+  assert.strictEqual(nodeIconId(listy, undefined, () => "Стд::Интерфейс::Списки"), "list-flat");
+  // an untyped mapping (e.g. a page of Страницы) keeps the local container/leaf heuristic
+  const page = comp("z", null, null, [0, 1], [slot("z/Содержимое", "Содержимое", [0, 1], [])]);
+  assert.strictEqual(nodeIconId(page), "layout");
+  assert.strictEqual(nodeIconId(comp("w", null, null, [0, 1])), "symbol-field");
 });
 
 test("container detection: slot children, the known list, the schema callback", () => {
@@ -182,6 +195,80 @@ test("palette insertion targets the selection (empty selection - the root)", () 
     after: FIELD.id,
   });
   assert.deepStrictEqual(insertPlanForSelection(GROUP, INDEX), { parentId: GROUP.id, slot: "Содержимое" });
+});
+
+test("pasteFragmentArgs: the palette target rules, the fragment travels verbatim", () => {
+  // a copied node with an attached comment and quotes - byte-for-byte in the arguments
+  // (the engine re-attaches the comments and re-indents; the client must not touch them)
+  const fragment = '# Кнопка из другой формы\nТип: Кнопка\nЗаголовок: "Оплатить"\nСодержимое:\n    Тип: Надпись\n';
+  assert.deepStrictEqual(pasteFragmentArgs(GROUP, INDEX, fragment), {
+    parent: GROUP.id,
+    slot: "Содержимое",
+    fragment,
+    before: undefined,
+    after: undefined,
+  });
+  assert.deepStrictEqual(pasteFragmentArgs(LABEL, INDEX, fragment), {
+    parent: GROUP.id,
+    slot: "Содержимое",
+    fragment,
+    before: undefined,
+    after: LABEL.id,
+  });
+  assert.deepStrictEqual(pasteFragmentArgs(FOOTER_SLOT, INDEX, fragment), {
+    parent: ROOT_ID,
+    slot: "Подвал",
+    fragment,
+    before: undefined,
+    after: undefined,
+  });
+  // empty selection - the root content slot; the fragment is not validated client-side
+  const empty = pasteFragmentArgs(undefined, INDEX, "мусор, не yaml");
+  assert.deepStrictEqual(empty, {
+    parent: ROOT_ID,
+    slot: "Содержимое",
+    fragment: "мусор, не yaml",
+    before: undefined,
+    after: undefined,
+  });
+});
+
+test("unwrapSingleListItem: a copied list item becomes the mapping form the engine takes", () => {
+  // the shape copyYaml produces for a node in a "-" slot: attached comments at the dash
+  // column, the inline dash, the body aligned with the first key
+  const copied =
+    "        # Кнопка с комментарием\n" +
+    "        - Тип: Кнопка\n" +
+    "          Имя: Оплатить\n" +
+    "          Содержимое:\n" +
+    "              Тип: Надпись\n";
+  assert.strictEqual(
+    unwrapSingleListItem(copied),
+    "        # Кнопка с комментарием\n" +
+      "        Тип: Кнопка\n" +
+      "        Имя: Оплатить\n" +
+      "        Содержимое:\n" +
+      "            Тип: Надпись\n"
+  );
+  // the engine's own insert style: the dash alone on its line, the body one step deeper
+  const dashAlone = "    -\n        Тип: Кнопка\n        Имя: Купить\n";
+  assert.strictEqual(unwrapSingleListItem(dashAlone), "    Тип: Кнопка\n    Имя: Купить\n");
+  // nested list dashes inside the item body are not top-level items
+  const nested = "- Тип: Группа\n  Поля:\n      - Имя: А\n      - Имя: Б\n";
+  assert.strictEqual(
+    unwrapSingleListItem(nested),
+    "Тип: Группа\nПоля:\n    - Имя: А\n    - Имя: Б\n"
+  );
+  // untouched: the mapping form, several items (the engine's diagnostic educates), garbage
+  const mapping = "# к\nТип: Кнопка\nИмя: Х\n";
+  assert.strictEqual(unwrapSingleListItem(mapping), mapping);
+  const two = "- Тип: А\n- Тип: Б\n";
+  assert.strictEqual(unwrapSingleListItem(two), two);
+  assert.strictEqual(unwrapSingleListItem("мусор"), "мусор");
+  assert.strictEqual(unwrapSingleListItem(""), "");
+  // crlf clipboards keep their line endings
+  const crlf = "- Тип: Кнопка\r\n  Имя: Х\r\n";
+  assert.strictEqual(unwrapSingleListItem(crlf), "Тип: Кнопка\r\nИмя: Х\r\n");
 });
 
 test("a move into a dragged subtree is rejected", () => {
