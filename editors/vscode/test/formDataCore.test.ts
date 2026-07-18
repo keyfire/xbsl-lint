@@ -142,8 +142,8 @@ test("foreign or malformed payloads decode to undefined", () => {
 
 // --- constants ---------------------------------------------------------------------------------
 
-test("the MIME matches the view id and the primitives are the picker's fixed set", () => {
-  assert.strictEqual(DATA_MIME, "application/vnd.code.tree.xbslformdata");
+test("the drag MIME is a plain custom type and the primitives are the picker's fixed set", () => {
+  assert.strictEqual(DATA_MIME, "application/vnd.xbsl.data-record");
   assert.deepStrictEqual([...PROPERTY_PRIMITIVE_TYPES], ["Строка", "Число", "Булево", "Дата"]);
 });
 
