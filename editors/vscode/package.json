@@ -72,6 +72,11 @@
           "id": "xbslDesigner",
           "title": "%view.designerContainer%",
           "icon": "resources/form-designer.svg"
+        },
+        {
+          "id": "xbslProps",
+          "title": "%view.propsContainer%",
+          "icon": "resources/form-props.svg"
         }
       ]
     },
@@ -100,15 +105,17 @@
           "icon": "resources/form-palette.svg"
         },
         {
+          "id": "xbslFormData",
+          "name": "%view.formData%",
+          "icon": "$(database)"
+        }
+      ],
+      "xbslProps": [
+        {
           "id": "xbslProperties",
           "type": "webview",
           "name": "%view.properties%",
           "icon": "resources/form-props.svg"
-        },
-        {
-          "id": "xbslFormData",
-          "name": "%view.formData%",
-          "icon": "$(database)"
         }
       ]
     },
