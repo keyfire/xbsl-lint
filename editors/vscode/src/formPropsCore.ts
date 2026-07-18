@@ -191,6 +191,9 @@ export interface PanelModel {
   nodeSpanStart: number;
   schemaAvailable: boolean;
   sections: PanelSection[];
+  // #rrggbb of every АбсолютныйЦвет present anywhere in the form yaml - the color editor
+  // offers them as one-click swatches (hook 7). Absent in metadata mode.
+  formColors?: string[];
   // true - the metadata mode of the unified panel (propsModes.buildMetaPanelModel): the
   // webview renders the rows flat, without the section chrome and the component legend.
   meta?: boolean;
@@ -524,6 +527,52 @@ export function hexFromColorFields(fields: CompositeField[]): string | undefined
   return undefined;
 }
 
+// "#rgb" / "rrggbb" / "#RRGGBB" -> canonical "#rrggbb"; undefined on anything else. The color
+// swatches (hook 7) store and compare colors in this one spelling so equal shades collapse.
+export function normalizeHex(raw: string): string | undefined {
+  const m = HEX_RE.exec(raw.trim());
+  if (!m) {
+    return undefined;
+  }
+  let hex = m[1];
+  if (hex.length === 3) {
+    hex = hex
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  }
+  return "#" + hex.toLowerCase();
+}
+
+// Every АбсолютныйЦвет value anywhere in the form yaml, as #rrggbb, first-seen order,
+// deduplicated and capped. Feeds the color editor's "colors used in this form" swatches
+// (hook 7): reusing an existing shade keeps a form on a small, deliberate palette.
+const RGB_SCAN_RE = /RGB\(\s*(?:([0-9A-Fa-f]{6})|(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3}))\s*\)/g;
+
+export function collectFormColors(docText: string, limit = 16): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of docText.matchAll(RGB_SCAN_RE)) {
+    let hex: string | undefined;
+    if (m[1]) {
+      hex = "#" + m[1].toLowerCase();
+    } else {
+      const parts = [m[2], m[3], m[4]].map((d) => Number(d));
+      if (parts.every((n) => n <= 255)) {
+        hex = "#" + parts.map((n) => n.toString(16).padStart(2, "0")).join("");
+      }
+    }
+    if (hex && !seen.has(hex)) {
+      seen.add(hex);
+      out.push(hex);
+      if (out.length >= limit) {
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 // -- composite fragment assembly --------------------------------------------------------------
 
 // One fragment value as yaml: bare where unambiguous, JSON double quotes otherwise -
@@ -763,6 +812,7 @@ export function buildPanelModel(
     nodeSpanStart: node.span.start,
     schemaAvailable: hasSchema,
     sections,
+    formColors: collectFormColors(docText),
   };
 }
 

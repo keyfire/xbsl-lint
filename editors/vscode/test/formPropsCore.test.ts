@@ -14,6 +14,7 @@ import {
   buildCompositeYaml,
   buildPanelModel,
   chooseEditor,
+  collectFormColors,
   createSerialQueue,
   colorYaml,
   defaultHandlerName,
@@ -22,6 +23,7 @@ import {
   findRow,
   handlerChoices,
   hexFromColorFields,
+  normalizeHex,
   panelTarget,
   parseCompositeFields,
   parseEventSignature,
@@ -218,6 +220,29 @@ test("hexFromColorFields reads hex and decimal RGB, only for Абсолютны�
     hexFromColorFields([{ key: "Тип", value: "Ссылка", scalar: true }]),
     undefined
   );
+});
+
+test("normalizeHex canonicalizes to lowercase #rrggbb, rejects non-colors (hook 7)", () => {
+  assert.strictEqual(normalizeHex("#AABBCC"), "#aabbcc");
+  assert.strictEqual(normalizeHex("aabbcc"), "#aabbcc");
+  assert.strictEqual(normalizeHex("#abc"), "#aabbcc"); // short form expands
+  assert.strictEqual(normalizeHex("  #FfF  "), "#ffffff"); // trims, folds case
+  assert.strictEqual(normalizeHex("красный"), undefined);
+  assert.strictEqual(normalizeHex("#12345"), undefined);
+});
+
+test("collectFormColors gathers АбсолютныйЦвет shades, deduped in first-seen order (hook 7)", () => {
+  const doc = [
+    "ЦветФона: {Тип: АбсолютныйЦвет, Значение: RGB(595964)}",
+    "ЦветТекста: {Тип: АбсолютныйЦвет, Значение: RGB(255, 0, 16)}",
+    "ЦветРамки: {Тип: АбсолютныйЦвет, Значение: RGB(595964)}", // duplicate of the first
+  ].join("\n");
+  assert.deepStrictEqual(collectFormColors(doc), ["#595964", "#ff0010"]);
+  // A decimal component over 255 is not a color and is skipped.
+  assert.deepStrictEqual(collectFormColors("x: RGB(300, 0, 0)"), []);
+  // The cap bounds the list.
+  const many = Array.from({ length: 20 }, (_, i) => `RGB(0000${i.toString(16).padStart(2, "0")})`).join(" ");
+  assert.strictEqual(collectFormColors(many, 5).length, 5);
 });
 
 // -- fragment assembly ------------------------------------------------------------------------

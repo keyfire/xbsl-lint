@@ -37,6 +37,7 @@ import {
   createSerialQueue,
   defaultHandlerName,
   findRow,
+  normalizeHex,
   panelTarget,
   planHandlerApply,
   prepareWrite,
@@ -74,6 +75,12 @@ let lastHint: string | null = null;
 // The sticky property: the focused row survives switching to another node of the same type
 // (serial editing; panel memory only, deliberately not persisted).
 const stickyByType = new Map<string, string>();
+// hook 7: the last few distinct colors the developer applied, most-recent first. Persisted
+// in globalState so the color editor offers them as swatches across nodes, files and sessions.
+const RECENT_COLORS_KEY = "xbsl.props.recentColors";
+const RECENT_COLORS_MAX = 8;
+let colorMemento: vscode.Memento | undefined;
+let recentColors: string[] = [];
 // Component schemas are static for the engine session; negative answers are cached too.
 const schemaCache = new Map<string, UiComponentDto | null>();
 let schemaUnavailable = false;
@@ -189,6 +196,11 @@ ${cspMeta(nonce)}
   .colorline input[type=color] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--vscode-input-border, rgba(128,128,128,.5));
     border-radius: 3px; background: transparent; flex: none; cursor: pointer; }
   .colorline input[type=text] { flex: 1; }
+  .colorwrap { display: flex; flex-direction: column; gap: 5px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+  .swatch { width: 18px; height: 18px; padding: 0; border-radius: 3px; cursor: pointer;
+    border: 1px solid var(--vscode-input-border, rgba(128,128,128,.5)); }
+  .swatch:hover { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
   details.cmp { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35)); border-radius: 4px; padding: 3px 7px; }
   details.cmp > summary { cursor: pointer; font-size: .95em; opacity: .85; user-select: none; }
   .cmp .sub { margin: 6px 0 4px 4px; }
@@ -217,6 +229,7 @@ ${cspMeta(nonce)}
   if (!state.open) { state.open = { set: true, events: true, all: false }; }
   let model = null;
   let sticky = null;
+  let recentColors = [];
   const pane = document.getElementById("pane");
   const titleBox = document.getElementById("title");
   const searchInput = document.getElementById("search");
@@ -330,7 +343,22 @@ ${cspMeta(nonce)}
     return wrap;
   }
 
-  function colorControls(initialHex, initialText, placeholder, onCommit) {
+  // The color swatches (hook 7): the colors already used in this form (model.formColors)
+  // followed by the recent picks, deduplicated and capped. currentHex, when set, leads so a
+  // "used here" shade is easy to reapply.
+  function paletteFor(currentHex) {
+    const form = (model && model.formColors) || [];
+    const seen = new Set();
+    const out = [];
+    for (const raw of [currentHex, ...recentColors, ...form]) {
+      const h = String(raw || "").toLowerCase();
+      if (/^#[0-9a-f]{6}$/.test(h) && !seen.has(h)) { seen.add(h); out.push(h); }
+      if (out.length >= 12) { break; }
+    }
+    return out;
+  }
+
+  function colorControls(initialHex, initialText, placeholder, onCommit, swatches) {
     const line = el("div", "colorline");
     const picker = document.createElement("input");
     picker.type = "color";
@@ -344,13 +372,27 @@ ${cspMeta(nonce)}
     wireText(text, initialText, onCommit, false);
     line.appendChild(picker);
     line.appendChild(text);
-    return line;
+    if (!swatches || !swatches.length) { return line; }
+    const wrap = el("div", "colorwrap");
+    wrap.appendChild(line);
+    const sw = el("div", "swatches");
+    for (const hex of swatches) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "swatch";
+      b.style.background = hex;
+      b.title = hex;
+      b.addEventListener("click", () => { picker.value = hex; text.value = hex; onCommit(hex); });
+      sw.appendChild(b);
+    }
+    wrap.appendChild(sw);
+    return wrap;
   }
 
   function colorEditor(row) {
     const initial = row.colorHex || (row.set ? row.value : "");
     return colorControls(row.colorHex, initial, !row.set && row.defaultValue ? row.defaultValue : "#RRGGBB",
-      (v) => commit(row.key, v));
+      (v) => commit(row.key, v), paletteFor(row.colorHex));
   }
 
   function unionEditor(row) {
@@ -371,7 +413,7 @@ ${cspMeta(nonce)}
       const member = sel.value;
       if (member === "Цвет") {
         valueBox.appendChild(colorControls(row.colorHex, row.colorHex || "", "#RRGGBB",
-          (v) => commit(row.key, v, member)));
+          (v) => commit(row.key, v, member), paletteFor(row.colorHex)));
         return;
       }
       // An enumeration member gets a dropdown of its values (row.editor.enums comes from
@@ -702,6 +744,7 @@ ${cspMeta(nonce)}
     if (m.type === "model") {
       model = m.model || null;
       sticky = m.sticky || null;
+      recentColors = m.recent || [];
       window.__hint = m.hint || null;
       render();
     } else if (m.type === "fieldError") {
@@ -731,6 +774,9 @@ function postModel(): void {
     // The sticky row is a component-mode habit (serial editing across same-type nodes);
     // metadata nodes share no type, so the memory does not apply.
     sticky: target?.kind === "component" ? stickyByType.get(target.type) ?? null : null,
+    // hook 7: recent colors ride with every model so the color editor can offer them as
+    // swatches next to the form's own palette (model.formColors).
+    recent: recentColors,
   });
 }
 
@@ -1039,6 +1085,17 @@ async function doApplyMetaProp(key: string, value: string | null): Promise<void>
   await refreshMetadata(tgt.uri, tgt.std ? { std: tgt.std } : { offset: tgt.offset });
 }
 
+// hook 7: record a color the developer just applied, most-recent first, distinct, capped.
+// A non-color value normalizes to undefined and is ignored, so a bad hex is never stored.
+function rememberColor(hex: string): void {
+  const norm = normalizeHex(hex);
+  if (!norm) {
+    return;
+  }
+  recentColors = [norm, ...recentColors.filter((c) => c !== norm)].slice(0, RECENT_COLORS_MAX);
+  void colorMemento?.update(RECENT_COLORS_KEY, recentColors);
+}
+
 function handleCommit(key: string, value: unknown, member: unknown): void {
   if (!lastModel || typeof value !== "string") {
     return;
@@ -1067,6 +1124,9 @@ function handleCommit(key: string, value: unknown, member: unknown): void {
     payload = { form: "color", hex: value };
   } else {
     payload = { form: "scalar", value, editor: row.editor, wasSet: row.set, oldValue: row.value };
+  }
+  if (payload.form === "color" || (payload.form === "union" && payload.memberType === "Цвет")) {
+    rememberColor(value);
   }
   dispatchPlan(key, prepareWrite(payload));
 }
@@ -1393,6 +1453,12 @@ export function registerFormProps(
   typeCandidates?: () => Promise<string[]>
 ): void {
   typeCandidatesFn = typeCandidates;
+  // hook 7: restore the recent-color swatches persisted last session.
+  colorMemento = context.globalState;
+  recentColors = (context.globalState.get<string[]>(RECENT_COLORS_KEY) ?? [])
+    .map((c) => normalizeHex(c))
+    .filter((c): c is string => !!c)
+    .slice(0, RECENT_COLORS_MAX);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(VIEW_TYPE, new FormPropsViewProvider(context)),
     // The cursor is the selection source: the node under it fills the panel (the structure
