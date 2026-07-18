@@ -201,18 +201,22 @@ linter would flag as an error.
   while the preview keys its block on the `Тип:` line; the cursor sat left of the node's data-off and
   `selectionForCursor` picked the neighbouring block. Fix: `skipToNodeKey` moves the cursor past the
   dash/indent to the node's first key (matching the preview's `map.range[0]`).
-- **Group properties by dependency in the properties panel.** Only the slot indicator (bar +
-  badge) exists today; grouping dependent fields is not done.
-- **Full dotted completion of binding expressions.** Done: enumeration values
-  (`=Перечисление.Значение`), owner-object attributes (`=Объект.Реквизит`), component names
-  (`=Компоненты.<name>`, engine `xbsl/bindingComplete` + `bindingcomplete.py`), bindings already
-  used in the form. REMAINING: member chains (`=Компоненты.Кнопка.Значение`, type members) - the
-  endpoint already serves them for a `=Компоненты.<name>.` prefix; only the on-demand webview wiring
-  (request on the dot, splice the results) is pending. A separate task.
+- ~~**Full dotted completion of binding expressions.**~~ DELIVERED: enumeration values
+  (`=Перечисление.Значение`), owner-object attributes (`=Объект.Реквизит`), components and their
+  members (`=Компоненты.<name>` and `=Компоненты.Кнопка.Значение` - engine `xbsl/bindingComplete` +
+  `bindingcomplete.py`; the client prefetches names and members and merges them into the completion
+  with a display cap), and bindings already used in the form.
 - ~~**Project-creation wizard.**~~ DELIVERED: the `xbsl.project.new` command (native prompts, name
   validation against the standard, engine `new-project`); see `projectWizard.ts`/`projectWizardCore.ts`.
-- **Remember the metadata tree view's open state.** NOT done (track B's agent did not reach it);
-  reuse the globalState pattern of "hide empty categories".
+- ~~**Remember the metadata tree view's open state.**~~ DELIVERED: tree nodes now get a stable
+  `TreeItem.id` (the parent-id path plus the node key, in `setParents`) - VS Code then preserves the
+  expanded state across refreshes and window reloads (without an id it identified a node by its
+  label, recreated on every rebuild).
+- **Group properties by dependency in the properties panel.** BLOCKED on data: the ui schema
+  (`UiPropDto`) carries no property groups, so there is nothing to group by. It needs an ENGINE
+  change - the ui-schema extractor must pull property groups/categories from the platform docs (if
+  they are marked there); then the panel groups by them. Or clarify what "dependency" should mean.
+  Only the slot indicator (bar + badge) exists today.
 
 ## Delivery plan
 
