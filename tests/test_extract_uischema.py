@@ -74,6 +74,7 @@ _PAGES = [
         "Видимость: Авто|Булево,\n"
         "ВидОтображения: Авто|ВидОтображенияКарточкиАкме,\n"
         "Важность: Авто|ВажностьКоманды,\n"
+        "Граница: Авто|ВидГраницы|Строка,\n"
         "Содержимое: Компонент|Строка,\n"
         "Картинка: Картинка?,\n"
         "Изображение: Url|ДвоичныйОбъект.Ссылка|?,\n"
@@ -102,7 +103,8 @@ _PAGES = [
         "<p>Основное содержимое карточки.</p>",
     ),
     # A component referenced as a property type (the slot rule) - constructor without
-    # a version marker and without deleted overloads: no since is emitted.
+    # a version marker and without deleted overloads: no since is emitted. Its only slot
+    # is Команды, so it must NOT be flagged a container (only Содержимое counts).
     _page(
         _STD + "Interface/CommonComponents/Picture_ru",
         "Картинка", "Стд::Интерфейс::ОбщиеКомпоненты::Картинка",
@@ -110,7 +112,8 @@ _PAGES = [
         + _BASES_COMPONENT +
         '<h2 id="конструкторы">Конструкторы</h2> <h3 id="картинка-1">Картинка</h3> '
         "<p></p><pre><code>@ИменованныеПараметры\nКартинка(\n"
-        "Видимость: Авто|Булево)</code></pre> Создает компонент.<p></p>",
+        "Видимость: Авто|Булево,\n"
+        "Команды: Команда|?)</code></pre> Создает компонент.<p></p>",
     ),
     # The command-interface package: a class (slot rule) and an enumeration (must stay
     # an enumeration, not a command).
@@ -153,6 +156,18 @@ _PAGES = [
         f'<a href="#{_ENUM_BASE_ID}#пр">Представление</a></p> '
         '<h2 id="список-унаследованных-свойств">Список унаследованных свойств</h2> '
         f'<h3 id="перечисление-1">Перечисление</h3> <p><a href="#{_ENUM_BASE_ID}#и">Индекс</a></p>',
+    ),
+    # An enumeration referenced only as ONE MEMBER of a wider union (Авто|ВидГраницы|
+    # Строка): prop.enum is not resolved, but the top-level enums map must carry it.
+    _page(
+        _STD + "Interface/BorderKind_ru",
+        "ВидГраницы", "Стд::Интерфейс::ВидГраницы",
+        "<h1>ВидГраницы</h1> <p>Вид границы.</p> "
+        '<h2 id="иерархия-типа">Иерархия типа</h2> <p><em>Базовые типы:</em> '
+        f'<a href="#{_ENUM_BASE_ID}">Перечисление</a></p> '
+        '<h2 id="свойства">Свойства</h2> '
+        '<h3 id="сплошная">Сплошная</h3> <pre><code>Сплошная</code></pre> <p>Сплошная.</p> <hr> '
+        '<h3 id="пунктирная">Пунктирная</h3> <pre><code>Пунктирная</code></pre> <p>Пунктирная.</p>',
     ),
     # An enumeration nothing references: it must stay out of the emitted enums map.
     _page(
@@ -255,7 +270,7 @@ def test_constructible_component_props():
     props = card["props"]
     # the property list is exactly the current constructor's parameter list
     assert list(props) == [
-        "Видимость", "ВидОтображения", "Важность", "Содержимое", "Картинка",
+        "Видимость", "ВидОтображения", "Важность", "Граница", "Содержимое", "Картинка",
         "Изображение", "Команды", "ПриНажатии",
     ]
     assert "Устаревшее" not in props  # the struck-out overload is ignored
@@ -273,6 +288,17 @@ def test_enum_resolution_and_default():
     imp = props["Важность"]
     assert imp["enum"] == ["Обычная", "Важная"]
     assert "slot" not in imp
+
+
+def test_enum_member_of_wider_union_not_resolved_but_mapped():
+    # Авто|ВидГраницы|Строка: two real members - prop.enum stays unresolved (its
+    # semantics is "the single-member case"), but the enums map carries the values
+    # for the paired Type+Value editor.
+    schema = _schema()
+    border = schema["components"]["КарточкаАкме"]["props"]["Граница"]
+    assert border["types"] == ["Авто", "ВидГраницы", "Строка"]
+    assert "enum" not in border
+    assert schema["enums"]["ВидГраницы"]["values"] == ["Сплошная", "Пунктирная"]
 
 
 def test_nullable_and_since():
@@ -293,6 +319,16 @@ def test_slots():
     assert props["Команды"]["slot"] is True          # command-interface classes
     assert "slot" not in props["ВидОтображения"]     # an enum union is not a slot
     assert "slot" not in props["Видимость"]
+
+
+def test_container_flag_only_for_content_slot():
+    comps = _schema()["components"]
+    assert comps["КарточкаАкме"]["container"] is True  # props carry a slot Содержимое
+    # a Команды slot alone does not make a container - only Содержимое counts
+    assert comps["Картинка"]["props"]["Команды"]["slot"] is True
+    assert "container" not in comps["Картинка"]
+    assert "container" not in comps["Виджет"]      # no slots at all
+    assert "container" not in comps["Компонент"]   # the abstract base has no Содержимое
 
 
 def test_event_signature_kept_as_string():
@@ -331,8 +367,10 @@ def test_namesake_components_winner_and_conflicts():
 
 
 def test_enums_map_only_referenced():
+    # Every enumeration referenced by ANY union member is in (ВидГраницы comes from a
+    # multi-member union); the unreferenced ЦветРамкиВиджета stays out.
     enums = _schema()["enums"]
-    assert set(enums) == {"ВидОтображенияКарточкиАкме", "ВажностьКоманды"}
+    assert set(enums) == {"ВидОтображенияКарточкиАкме", "ВажностьКоманды", "ВидГраницы"}
     assert enums["ВидОтображенияКарточкиАкме"] == {
         "package": "Стд::Интерфейс::ОбщиеКомпоненты",
         "values": ["Карточка", "Баннер"],  # page order, no service members

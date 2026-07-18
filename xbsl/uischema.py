@@ -6,28 +6,38 @@ component palette and the typed properties panel. The response shapes for the LS
 (`xbsl/uiSchema`) and the MCP (`ui_schema`) are built here so the two surfaces stay
 identical:
 
-- catalog(): the palette catalog - every component with its package, abstract flag and
-  doc snippet, WITHOUT the property lists (compact; a component's full schema is a
-  separate request);
+- catalog(): the palette catalog - every component with its package, abstract and
+  container flags and doc snippet, WITHOUT the property lists (compact; a component's
+  full schema is a separate request);
 - component(name): the full record of one component (properties with type unions, enum
-  values, event signatures, slot flags); an unknown name yields close_matches instead;
+  values, event signatures, slot flags) plus "enums" - the value lists of the
+  enumerations referenced by the union types of the component's properties (feeds the
+  paired Type+Value editor; omitted when there are none); an unknown name yields
+  close_matches instead;
 - both return {"available": False} when the dataset has no ui schema (e.g. a public
   checkout without generated data) - the docsAvailable degradation pattern.
 
-Optional fields of the schema records (abstract, since, doc, nullable, slot, enum,
-default, readonly, conflicts) are omitted when false/unknown - consumers treat an
-absent key as false/null. See tools/extract_uischema.py for the full data shape.
+Optional fields of the schema records (abstract, container, since, doc, nullable, slot,
+enum, default, readonly, conflicts) are omitted when false/unknown - consumers treat an
+absent key as false/null. Older uischema.json files without the newer fields keep
+working: everything added later is optional. See tools/extract_uischema.py for the full
+data shape.
 """
 
 from __future__ import annotations
 
 import difflib
+import re
 
 from xbsl import dataset
 
 #: Keys of a component record served by the catalog (props stay out - the palette
 #: does not need them, and the full record is one more request away).
-_CATALOG_KEYS = ("package", "abstract", "since", "doc", "conflicts")
+_CATALOG_KEYS = ("package", "abstract", "container", "since", "doc", "conflicts")
+
+#: A type name inside a union member: the head identifier with optional dotted facets
+#: (mirrors the extractor's _TYPE_REF_RE - generic arguments are scanned too).
+_TYPE_NAME_RE = re.compile(r"[А-ЯЁA-Z][0-9A-Za-zА-Яа-яЁё_]*(?:\.[0-9A-Za-zА-Яа-яЁё_]+)*")
 
 
 def available(version: str | None = None) -> bool:
@@ -51,10 +61,29 @@ def catalog(version: str | None = None) -> dict:
     }
 
 
+def _component_enums(rec: dict, enums: dict) -> dict:
+    """{name: [values]} of the enumerations referenced by the record's property unions.
+
+    Every name mentioned by any member of any "types" union counts (the dataset's
+    top-level enums map is the filter); event and slot-only properties carry no unions
+    and contribute nothing. Sorted for a deterministic response.
+    """
+    used: dict[str, list] = {}
+    for prop in (rec.get("props") or {}).values():
+        for member in prop.get("types") or ():
+            for name in _TYPE_NAME_RE.findall(str(member)):
+                entry = enums.get(name)
+                if entry is not None and name not in used:
+                    used[name] = list(entry.get("values") or [])
+    return dict(sorted(used.items()))
+
+
 def component(name: str, version: str | None = None) -> dict:
     """The full schema of one component, or close matches for an unknown name.
 
-    {"available": True, "component": {"name": ..., ...record...}} on a hit;
+    {"available": True, "component": {"name": ..., ...record...}} on a hit, plus
+    "enums": {name: [values]} for the enumerations referenced by the union types of the
+    component's properties (the key is omitted when there are none);
     {"available": True, "component": None, "close_matches": [...]} on a miss;
     {"available": False} when the dataset has no ui schema.
     """
@@ -69,4 +98,8 @@ def component(name: str, version: str | None = None) -> dict:
             "component": None,
             "close_matches": difflib.get_close_matches(name, components, n=5, cutoff=0.6),
         }
-    return {"available": True, "component": {"name": name, **rec}}
+    out = {"available": True, "component": {"name": name, **rec}}
+    enums = _component_enums(rec, schema.get("enums") or {})
+    if enums:
+        out["enums"] = enums
+    return out

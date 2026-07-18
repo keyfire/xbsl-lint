@@ -23,6 +23,9 @@ export interface FormNode {
   id: string;
   kind: "component" | "slot";
   span: FormSpan;
+  // The span without the attached leading comments (equals span when there are none);
+  // optional - older engines do not send it.
+  contentSpan?: FormSpan;
   children: FormNode[];
   // component fields
   type?: string | null;
@@ -32,6 +35,13 @@ export interface FormNode {
   properties?: FormNodeProperty[];
   // slot fields
   list?: boolean;
+}
+
+// The yaml offset a click/selection should land on: the first CONTENT line of the node -
+// not the comment attached above it, which the full span includes (and must include for
+// moves and copies). Falls back to the span start with older engines.
+export function revealOffset(node: FormNode): number {
+  return node.contentSpan?.start ?? node.span.start;
 }
 
 export interface FormTreeResponse {

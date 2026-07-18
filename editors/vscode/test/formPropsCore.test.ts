@@ -17,6 +17,7 @@ import {
   extractScalarValue,
   findRow,
   hexFromColorFields,
+  panelTarget,
   parseCompositeFields,
   prepareWrite,
   rowMatchesFilter,
@@ -109,9 +110,12 @@ const SCHEMA: UiComponentDto = {
     ВидОтображения: { types: ["Авто", "ВидОтображения"], enum: ["Карточка", "Баннер"], default: "Карточка" },
     Ширина: { types: ["Авто", "Число"] },
     Изображение: { types: ["Url", "ДвоичныйОбъект.Ссылка"], nullable: true },
+    // a union with an enumeration member: the values come from the enums map below
+    Фон: { types: ["Авто", "ВидФона", "Цвет"] },
     Картинка: { types: ["Картинка"], slot: true },
     Индекс: { types: ["Число"], readonly: true },
   },
+  enums: { ВидФона: ["Сплошной", "Градиент"] },
 };
 
 // -- webviewShared ----------------------------------------------------------------------------
@@ -279,6 +283,31 @@ test("chooseEditor: union pair editor with the current member from composite fie
   assert.deepStrictEqual(editor, { control: "union", types: ["Url", "Ссылка", "Цвет"], current: "Ссылка" });
 });
 
+test("chooseEditor: union editor carries the enum values of its enumeration members", () => {
+  const componentEnums = { ВидФона: ["Сплошной", "Градиент"], Чужое: ["А"] };
+  const editor = chooseEditor(
+    { types: ["Авто", "ВидФона", "Цвет"] },
+    undefined,
+    "",
+    undefined,
+    undefined,
+    componentEnums
+  );
+  // only the members of THIS union get a key; the color member has no values
+  assert.deepStrictEqual(editor, {
+    control: "union",
+    types: ["ВидФона", "Цвет"],
+    current: undefined,
+    enums: { ВидФона: ["Сплошной", "Градиент"] },
+  });
+  // without the per-component map (an older engine) the editor shape stays as before
+  assert.deepStrictEqual(chooseEditor({ types: ["Авто", "ВидФона", "Цвет"] }, undefined, ""), {
+    control: "union",
+    types: ["ВидФона", "Цвет"],
+    current: undefined,
+  });
+});
+
 test("chooseEditor: kind and flags outrank the type union", () => {
   const prop: NodePropertyDto = {
     key: "Значение",
@@ -382,7 +411,7 @@ test("buildPanelModel: the all section is alphabetical, slots and events exclude
   const keys = all.rows.map((r) => r.key);
   assert.ok(!keys.includes("ПриНажатии"), "events are not repeated in all");
   assert.ok(!keys.includes("Картинка"), "slot properties are the structure view's business");
-  assert.strictEqual(keys.length, 8);
+  assert.strictEqual(keys.length, 9);
   for (let i = 1; i < keys.length; i++) {
     assert.ok(keys[i - 1].localeCompare(keys[i], "ru") <= 0, `not sorted: ${keys[i - 1]} > ${keys[i]}`);
   }
@@ -395,6 +424,37 @@ test("buildPanelModel: the all section is alphabetical, slots and events exclude
   const setRow = all.rows.find((r) => r.key === "Заголовок")!;
   assert.strictEqual(setRow.set, true);
   assert.strictEqual(setRow.value, "Привет <мир>");
+});
+
+test("buildPanelModel: a union row picks its member enum values from schema.enums", () => {
+  const model = buildPanelModel(NODE, SCHEMA, FORM);
+  const bg = model.sections[2].rows.find((r) => r.key === "Фон")!;
+  assert.deepStrictEqual(bg.editor, {
+    control: "union",
+    types: ["ВидФона", "Цвет"],
+    current: undefined,
+    enums: { ВидФона: ["Сплошной", "Градиент"] },
+  });
+});
+
+test("panelTarget: a component shows itself, a slot shows its parent component", () => {
+  const slotNode: FormNodeDto = {
+    id: "Наследует/Содержимое",
+    kind: "slot",
+    span: { start: 40, end: 200 },
+    name: "Содержимое",
+  };
+  assert.deepStrictEqual(panelTarget({ node: NODE }), { node: NODE });
+  // a slot with the parent along (newer engines): the parent's properties are shown
+  assert.deepStrictEqual(panelTarget({ node: slotNode, parent: NODE }), {
+    node: NODE,
+    viaSlot: "Содержимое",
+  });
+  // a slot from an older engine (no parent) keeps the hint path
+  assert.strictEqual(panelTarget({ node: slotNode }), undefined);
+  assert.strictEqual(panelTarget({ node: slotNode, parent: null }), undefined);
+  assert.strictEqual(panelTarget({ node: null }), undefined);
+  assert.strictEqual(panelTarget({}), undefined);
 });
 
 test("buildPanelModel: without a schema only the set section remains, kind-based editors", () => {
@@ -511,6 +571,23 @@ test("prepareWrite union: the member type drives the value form", () => {
   assert.deepStrictEqual(prepareWrite({ form: "union", memberType: "", value: " " }), {
     kind: "error",
     code: "empty",
+  });
+});
+
+test("prepareWrite union: an enumeration member accepts only its listed values", () => {
+  const options = ["Сплошной", "Градиент"];
+  assert.deepStrictEqual(
+    prepareWrite({ form: "union", memberType: "ВидФона", value: "Градиент", options }),
+    { kind: "value", value: "Градиент" }
+  );
+  assert.deepStrictEqual(
+    prepareWrite({ form: "union", memberType: "ВидФона", value: "Чужое", options }),
+    { kind: "error", code: "enum" }
+  );
+  // without options (older engines / a non-enum member) the value passes as before
+  assert.deepStrictEqual(prepareWrite({ form: "union", memberType: "ВидФона", value: "Чужое" }), {
+    kind: "value",
+    value: "Чужое",
   });
 });
 

@@ -248,6 +248,32 @@ def test_node_dict_shapes():
     assert full["properties"][1]["valueSpan"]
 
 
+def test_node_dict_content_span():
+    form = parse_form(FORM)
+    # a node with an attached comment: contentSpan starts below the comment
+    field = formmodel.node_dict(form.nodes[FIELD], deep=False)
+    assert field["contentSpan"]["start"] > field["span"]["start"]
+    assert field["contentSpan"]["end"] == field["span"]["end"]
+    assert FORM[field["contentSpan"]["start"]:].startswith("            -\n")
+    # without comments the two spans coincide, on slots included
+    button = formmodel.node_dict(form.nodes[BUTTON], deep=False)
+    assert button["contentSpan"] == button["span"]
+    slot = formmodel.node_dict(form.nodes[LIST_GRP], deep=False)
+    assert slot["contentSpan"] == slot["span"]
+
+
+def test_parent_component_skips_slots():
+    form = parse_form(FORM)
+    # a slot resolves to its owner component
+    slot = form.nodes[LIST_GRP]
+    assert formmodel.parent_component(form, slot).id == TPL
+    # a component resolves to the component above its slot (the slot is skipped)
+    assert formmodel.parent_component(form, form.nodes[FIELD]).id == TPL
+    assert formmodel.parent_component(form, form.nodes[BUTTON]).id == PAY_GRP
+    # the root has no parent
+    assert formmodel.parent_component(form, form.root) is None
+
+
 # --- helpers for operation tests ----------------------------------------------------------
 
 

@@ -20,9 +20,13 @@ _SCHEMA = {
     "components": {
         "КарточкаАкме": {
             "package": "Стд::Интерфейс::ОбщиеКомпоненты",
+            "container": True,
             "doc": "Карточка с предопределенной структурой.",
             "props": {
                 "ВидОтображения": {"types": ["Авто", "ВидВиджета"], "enum": ["Карточка", "Баннер"]},
+                # a multi-member union: prop.enum is not resolved, the values come from
+                # the per-component enums map of the component() response instead
+                "Граница": {"types": ["Авто", "ВидГраницы", "Строка"]},
                 "ПриНажатии": {"event": "(КарточкаАкме, СобытиеПриНажатии)->ничто"},
                 "Содержимое": {"types": ["Компонент", "Строка"], "slot": True},
             },
@@ -34,7 +38,10 @@ _SCHEMA = {
             "props": {"Видимость": {"types": ["Авто", "Булево"]}},
         },
     },
-    "enums": {"ВидВиджета": {"package": "Стд::Интерфейс", "values": ["Карточка", "Баннер"]}},
+    "enums": {
+        "ВидВиджета": {"package": "Стд::Интерфейс", "values": ["Карточка", "Баннер"]},
+        "ВидГраницы": {"package": "Стд::Интерфейс", "values": ["Сплошная", "Пунктирная"]},
+    },
 }
 
 
@@ -89,7 +96,9 @@ def test_catalog_strips_props(ui_root):
     card = got["components"]["КарточкаАкме"]
     assert card["package"] == "Стд::Интерфейс::ОбщиеКомпоненты"
     assert "props" not in card
+    assert card["container"] is True  # the palette/structure take containers from here
     assert got["components"]["Компонент"]["abstract"] is True
+    assert "container" not in got["components"]["Компонент"]
 
 
 def test_component_full_record(ui_root):
@@ -99,6 +108,17 @@ def test_component_full_record(ui_root):
     assert comp["name"] == "КарточкаАкме"
     assert comp["props"]["ВидОтображения"]["enum"] == ["Карточка", "Баннер"]
     assert comp["props"]["ПриНажатии"]["event"].startswith("(КарточкаАкме")
+
+
+def test_component_enums_referenced_by_unions(ui_root):
+    # Both the single-member and the multi-member union enums ride along the response;
+    # a component whose unions reference no enumerations has no "enums" key at all.
+    got = uischema.component("КарточкаАкме")
+    assert got["enums"] == {
+        "ВидВиджета": ["Карточка", "Баннер"],
+        "ВидГраницы": ["Сплошная", "Пунктирная"],
+    }
+    assert "enums" not in uischema.component("Компонент")
 
 
 def test_component_unknown_gives_close_matches(ui_root):
@@ -148,8 +168,10 @@ def test_mcp_tool_registered(mcp_module):
 def test_mcp_catalog_and_component(mcp_module, ui_root):
     catalog = mcp_module.ui_schema()
     assert catalog["available"] is True and "КарточкаАкме" in catalog["components"]
+    assert catalog["components"]["КарточкаАкме"]["container"] is True
     one = mcp_module.ui_schema("КарточкаАкме")
     assert one["component"]["props"]["Содержимое"]["slot"] is True
+    assert one["enums"]["ВидГраницы"] == ["Сплошная", "Пунктирная"]
 
 
 def test_mcp_degrades_without_data(mcp_module, no_data):
@@ -180,8 +202,11 @@ def test_lsp_ui_schema_catalog_and_component(ui_root):
     catalog = features["xbsl/uiSchema"](None)
     assert catalog["available"] is True
     assert "props" not in catalog["components"]["КарточкаАкме"]
+    assert catalog["components"]["КарточкаАкме"]["container"] is True
     one = features["xbsl/uiSchema"]({"component": "Компонент"})
     assert one["component"]["abstract"] is True
+    full = features["xbsl/uiSchema"]({"component": "КарточкаАкме"})
+    assert full["enums"]["ВидВиджета"] == ["Карточка", "Баннер"]
     miss = features["xbsl/uiSchema"]({"component": "Нет"})
     assert miss["component"] is None and "close_matches" in miss
 

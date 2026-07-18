@@ -38,6 +38,7 @@ treats an absent key as false/null):
           "package": "Стд::Интерфейс::ОбщиеКомпоненты",
           "doc": "Представляет собой карточку с предопределенной структурой.",
           "abstract": true,            # only when there is no current constructor
+          "container": true,           # only when the props carry a slot Содержимое
           "since": "9.0",              # only when the docs state a version
           "conflicts": ["Пакет::Имя"], # only for same-named losers (see below)
           "props": {
@@ -66,10 +67,18 @@ Conventions of the property records:
   (future nodes of the designer's structure tree): some type referenced by the union -
   generic arguments included, Тип<...> type literals excluded - is an interface
   component or a non-enum type of the Стд::Интерфейс::Команды package.
+- "container": true on a component means its properties include Содержимое with
+  "slot": true. Exactly Содержимое: the designer wraps into and drops onto that slot,
+  so other component-bearing slots (Команды, Шапка, Подвал, Страницы, Колонки) do not
+  make a component a container in this sense. The flag is what lets the palette and
+  the structure view take the container list straight from the catalog instead of
+  fetching every full record.
 - "enum" is resolved only when the union has exactly one real member (ignoring "Авто"
   and the nullable marker), that member has no generic arguments and its name is an
   enumeration page title. The top-level "enums" map carries every enumeration
-  referenced anywhere in the emitted property types.
+  referenced by ANY member of ANY property union - members beyond the single-member
+  "enum" case included - so the paired Type+Value editor can offer values for an
+  enumeration member of a wider union.
 - "default" is a best-effort extraction of the documented auto-value ("При Авто
   выбирается X"); when the docs do not state one, the key is absent - never guessed.
 - "since" of a component: the page-level "Версия N и выше" marker when present;
@@ -496,6 +505,9 @@ def build_schema(pages: list[dict], element_version: str) -> dict:
         rec: dict = {"package": page.package}
         if abstract:
             rec["abstract"] = True
+        content = props.get("Содержимое")
+        if content is not None and content.get("slot"):
+            rec["container"] = True  # only the Содержимое slot counts (see the docstring)
         since = page.since
         if since is None and not abstract and not page.has_deleted_ctor:
             since = page.ctor_since

@@ -28,11 +28,20 @@ export interface FormNodeDto {
   id: string;
   kind: "component" | "slot";
   span: SpanDto;
+  contentSpan?: SpanDto; // span without the attached leading comments (newer engines)
   type?: string | null;
   typeFull?: string | null;
   name?: string | null;
   slot?: string | null;
   properties?: NodePropertyDto[];
+}
+
+// The xbsl/formNodeAt response: the node under the offset plus the nearest parent
+// COMPONENT (slots skipped; null for the root). Older engines send the node alone.
+export interface FormNodeAtPayload {
+  node?: FormNodeDto | null;
+  parent?: FormNodeDto | null;
+  error?: string;
 }
 
 export interface UiPropDto {
@@ -54,6 +63,31 @@ export interface UiComponentDto {
   since?: string;
   doc?: string;
   props?: Record<string, UiPropDto>;
+  // Value lists of the enumerations referenced by the property unions - the response-level
+  // "enums" of xbsl/uiSchema, folded into the cached record by the extension. Absent on
+  // older engines; the union editor then falls back to a plain text input.
+  enums?: Record<string, string[]>;
+}
+
+// The node the properties panel should show for a formNodeAt payload: a component shows
+// itself; a slot shows its owner component (viaSlot carries the slot name for the honest
+// panel header). undefined - nothing to show: no node at the offset, or a slot without
+// parent info (an older engine), which keeps the "select a component" hint.
+export function panelTarget(
+  payload: FormNodeAtPayload
+): { node: FormNodeDto; viaSlot?: string } | undefined {
+  const node = payload.node;
+  if (!node) {
+    return undefined;
+  }
+  if (node.kind === "component") {
+    return { node };
+  }
+  const parent = payload.parent;
+  if (parent && parent.kind === "component") {
+    return { node: parent, viaSlot: node.name ?? node.id };
+  }
+  return undefined;
 }
 
 // -- panel model ------------------------------------------------------------------------------
@@ -70,7 +104,9 @@ export type RowEditor =
   | { control: "number" }
   | { control: "text"; multiline: boolean }
   | { control: "color" }
-  | { control: "union"; types: string[]; current?: string }
+  // enums: value lists for the members that are enumerations (only such members carry a
+  // key) - the paired editor shows a dropdown for them instead of a text input.
+  | { control: "union"; types: string[]; current?: string; enums?: Record<string, string[]> }
   | { control: "composite"; fields: CompositeField[]; editable: boolean }
   | { control: "binding" }
   | { control: "handler" }
@@ -272,15 +308,36 @@ function compositeEditor(fields: CompositeField[], allScalar: boolean): RowEdito
   return { control: "composite", fields, editable: allScalar };
 }
 
+// Value lists for the union members that are enumerations, cut out of the component's
+// enums map; undefined when none of the members has one (or the map is absent).
+function unionEnums(
+  members: string[],
+  componentEnums: Record<string, string[]> | undefined
+): Record<string, string[]> | undefined {
+  if (!componentEnums) {
+    return undefined;
+  }
+  const out: Record<string, string[]> = {};
+  for (const member of members) {
+    const values = componentEnums[member];
+    if (values && values.length) {
+      out[member] = values;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 // The typed editor of one property row. schemaProp - the ui schema record (may be absent:
 // an unknown property or no schema at all); prop - the set yaml property (absent for rows
-// of the "all" section that are not written yet).
+// of the "all" section that are not written yet); componentEnums - the per-component
+// enumeration values of the uiSchema response (absent on older engines).
 export function chooseEditor(
   schemaProp: UiPropDto | undefined,
   prop: NodePropertyDto | undefined,
   value: string,
   fields?: CompositeField[],
-  allScalar?: boolean
+  allScalar?: boolean,
+  componentEnums?: Record<string, string[]>
 ): RowEditor {
   if (prop?.kind === "binding") {
     return { control: "binding" };
@@ -314,7 +371,10 @@ export function chooseEditor(
     }
     if (real.length > 1) {
       const current = fields?.find((f) => f.key === "Тип")?.value;
-      return { control: "union", types: real, current };
+      const enums = unionEnums(real, componentEnums);
+      return enums
+        ? { control: "union", types: real, current, enums }
+        : { control: "union", types: real, current };
     }
     // types is empty or ["Авто"] alone - fall through to the kind-based choice
   }
@@ -336,7 +396,8 @@ function makeRow(
   key: string,
   prop: NodePropertyDto | undefined,
   schemaProp: UiPropDto | undefined,
-  docText: string
+  docText: string,
+  componentEnums?: Record<string, string[]>
 ): PanelRow {
   let value = "";
   let fields: CompositeField[] | undefined;
@@ -353,7 +414,7 @@ function makeRow(
       value = extractScalarValue(docText, prop);
     }
   }
-  const editor = chooseEditor(schemaProp, prop, value, fields, allScalar);
+  const editor = chooseEditor(schemaProp, prop, value, fields, allScalar, componentEnums);
   const hayParts = [key, value];
   if (colorHex) {
     hayParts.push(colorHex);
@@ -391,6 +452,7 @@ export function buildPanelModel(
 ): PanelModel {
   const props = node.properties ?? [];
   const schemaProps: Record<string, UiPropDto> = schema?.props ?? {};
+  const componentEnums = schema?.enums;
   const hasSchema = !!schema;
   const byKey = new Map(props.map((p) => [p.key, p]));
 
@@ -402,7 +464,7 @@ export function buildPanelModel(
     id: "set",
     rows: props
       .filter((p) => !isEventRow(p))
-      .map((p) => makeRow(p.key, p, schemaProps[p.key], docText)),
+      .map((p) => makeRow(p.key, p, schemaProps[p.key], docText, componentEnums)),
   });
 
   if (hasSchema) {
@@ -413,7 +475,7 @@ export function buildPanelModel(
     sections.push({
       id: "events",
       rows: [...eventKeys, ...unknownHandlers].map((k) =>
-        makeRow(k, byKey.get(k), schemaProps[k], docText)
+        makeRow(k, byKey.get(k), schemaProps[k], docText, componentEnums)
       ),
     });
 
@@ -422,7 +484,7 @@ export function buildPanelModel(
       .sort((a, b) => a.localeCompare(b, "ru"));
     sections.push({
       id: "all",
-      rows: allKeys.map((k) => makeRow(k, byKey.get(k), schemaProps[k], docText)),
+      rows: allKeys.map((k) => makeRow(k, byKey.get(k), schemaProps[k], docText, componentEnums)),
     });
   }
 
@@ -449,7 +511,9 @@ export type WritePayload =
   | { form: "scalar"; value: string; editor: RowEditor; wasSet: boolean; oldValue: string }
   | { form: "color"; hex: string }
   | { form: "composite"; fields: { key: string; value: string }[] }
-  | { form: "union"; memberType: string; value: string };
+  // options - the value list of an enumeration member (editor.enums[memberType]); when
+  // present the value must be one of them.
+  | { form: "union"; memberType: string; value: string; options?: string[] };
 
 export type WritePlan =
   | { kind: "value"; value: string }
@@ -492,6 +556,9 @@ export function prepareWrite(payload: WritePayload): WritePlan {
   const value = payload.value;
   if (value.trim() === "") {
     return { kind: "error", code: "empty" };
+  }
+  if (payload.options && !payload.options.includes(value)) {
+    return { kind: "error", code: "enum" };
   }
   if (payload.memberType === "Цвет") {
     const yaml = colorYaml(value);

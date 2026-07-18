@@ -14,13 +14,14 @@
 
 import * as vscode from "vscode";
 import {
-  FormNodeDto,
+  FormNodeAtPayload,
   PanelModel,
   UiComponentDto,
   WritePayload,
   WritePlan,
   buildPanelModel,
   findRow,
+  panelTarget,
   prepareWrite,
 } from "./formPropsCore";
 import { lspActive, lspRequest } from "./lspClient";
@@ -77,6 +78,7 @@ function labels(): Record<string, string> {
     valueLabel: vscode.l10n.t("Value"),
     compositeLocked: vscode.l10n.t("The value contains nested blocks – edit it in yaml."),
     typeOption: vscode.l10n.t("(type)"),
+    valueOption: vscode.l10n.t("(value)"),
   };
 }
 
@@ -278,6 +280,29 @@ ${cspMeta(nonce)}
       if (member === "Цвет") {
         valueBox.appendChild(colorControls(row.colorHex, row.colorHex || "", "#RRGGBB",
           (v) => commit(row.key, v, member)));
+        return;
+      }
+      // An enumeration member gets a dropdown of its values (row.editor.enums comes from
+      // the engine's per-component enums map; absent on older engines - plain input then).
+      const options = row.editor.enums ? row.editor.enums[member] : undefined;
+      if (options && options.length) {
+        const values = document.createElement("select");
+        const none = el("option", null, L.valueOption);
+        none.value = "";
+        values.appendChild(none);
+        for (const o of options) {
+          const opt = el("option", null, o);
+          opt.value = o;
+          values.appendChild(opt);
+        }
+        // A set scalar value belongs to no particular member; preselect it only when it
+        // is one of this member's values.
+        const current = row.set && !row.editor.current ? row.value : "";
+        values.value = options.includes(current) ? current : "";
+        values.addEventListener("change", () => {
+          if (values.value !== "") { commit(row.key, values.value, member); }
+        });
+        valueBox.appendChild(values);
         return;
       }
       const input = document.createElement("input");
@@ -551,15 +576,18 @@ async function getSchema(type: string): Promise<UiComponentDto | null> {
   if (cached !== undefined) {
     return cached;
   }
-  const res = await lspRequest<{ available?: boolean; component?: UiComponentDto | null }>(
-    "xbsl/uiSchema",
-    { component: type }
-  );
+  const res = await lspRequest<{
+    available?: boolean;
+    component?: UiComponentDto | null;
+    enums?: Record<string, string[]>;
+  }>("xbsl/uiSchema", { component: type });
   if (!res || res.available === false) {
     schemaUnavailable = true; // the dataset has no ui schema - stop asking this session
     return null;
   }
-  const schema = res.component ?? null;
+  // The response-level enums (values of the enumerations referenced by the property
+  // unions) are folded into the cached record - the panel model reads schema.enums.
+  const schema = res.component ? { ...res.component, enums: res.enums } : null;
   schemaCache.set(type, schema);
   return schema;
 }
@@ -574,7 +602,7 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
     );
     return;
   }
-  const res = await lspRequest<{ node?: FormNodeDto | null; error?: string }>("xbsl/formNodeAt", {
+  const res = await lspRequest<FormNodeAtPayload>("xbsl/formNodeAt", {
     uri: uri.toString(),
     offset,
   });
@@ -591,8 +619,7 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
     showHint(vscode.l10n.t("The yaml does not parse: {0}", res.error));
     return;
   }
-  const node = res.node;
-  if (!node) {
+  if (!res.node) {
     showHint(
       vscode.l10n.t(
         "Place the cursor on a form component in the yaml editor – its properties will show here."
@@ -600,10 +627,14 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
     );
     return;
   }
-  if (node.kind !== "component") {
+  // A slot hit shows its owner component (the engine sends the parent along); the slot
+  // hint remains only for older engines whose response carries no parent.
+  const shown = panelTarget(res);
+  if (!shown) {
     showHint(vscode.l10n.t("The cursor is on a slot – select a component inside it."));
     return;
   }
+  const node = shown.node;
   const type = node.type ?? "";
   const schema = await getSchema(type);
   if (seq !== my || !view) {
@@ -613,7 +644,11 @@ async function refreshForOffset(uri: vscode.Uri, offset: number): Promise<void> 
   lastModel = buildPanelModel(node, schema, doc.getText());
   lastHint = null;
   target = { uri, nodeId: node.id, nodeSpanStart: node.span.start, type };
-  view.description = [type, node.name ?? ""].filter(Boolean).join(" · ") || undefined;
+  const titleParts = [type, node.name ?? ""].filter(Boolean);
+  if (shown.viaSlot) {
+    titleParts.push(vscode.l10n.t("Slot {0}", shown.viaSlot));
+  }
+  view.description = titleParts.join(" · ") || undefined;
   postModel();
 }
 
@@ -701,7 +736,14 @@ function handleCommit(key: string, value: unknown, member: unknown): void {
   }
   let payload: WritePayload;
   if (row.editor.control === "union") {
-    payload = { form: "union", memberType: typeof member === "string" ? member : "", value };
+    const memberType = typeof member === "string" ? member : "";
+    payload = {
+      form: "union",
+      memberType,
+      value,
+      // The value list of an enumeration member gates the write (dropdown or not).
+      options: row.editor.enums?.[memberType],
+    };
   } else if (row.editor.control === "color") {
     payload = { form: "color", hex: value };
   } else {

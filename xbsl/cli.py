@@ -520,6 +520,13 @@ def _scaffold_main(argv: list[str]) -> int:
             if args.at is not None:
                 node = formmodel.node_at(form, args.at)
                 payload = {"node": formmodel.node_dict(node, deep=False) if node else None}
+                if node is not None:
+                    # Parity with LSP xbsl/formNodeAt: the nearest parent COMPONENT
+                    # (slots skipped) without children, null for the root.
+                    parent = formmodel.parent_component(form, node)
+                    payload["parent"] = (
+                        formmodel.node_dict(parent, deep=False) if parent else None
+                    )
             else:
                 payload = {"root": formmodel.node_dict(form.root)}
             print(json.dumps(payload, ensure_ascii=False))

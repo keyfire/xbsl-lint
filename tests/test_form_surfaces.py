@@ -45,7 +45,9 @@ BUTTON = TPL + "/Содержимое[1]"
 @pytest.fixture()
 def form_file(tmp_path):
     path = tmp_path / "Витрина.yaml"
-    path.write_text(FORM, encoding="utf-8")
+    # write_bytes keeps LF as is (write_text would turn it into CRLF on Windows and
+    # desynchronize the FORM.find offsets the LSP assertions rely on)
+    path.write_bytes(FORM.encode("utf-8"))
     return path
 
 
@@ -94,6 +96,9 @@ def test_mcp_component_tree(mcp_module, form_file):
     label = slot["children"][0]["children"][0]["children"][0]
     assert label["name"] == "Приветствие"
     assert label["properties"][0]["valuePreview"] == "Добро пожаловать"
+    # contentSpan is serialized for every node (equals span - no comments here)
+    assert label["contentSpan"] == label["span"]
+    assert root["contentSpan"] == root["span"]
 
     err = mcp_module.meta_component_tree(str(form_file.parent / "Нет.yaml"))
     assert "не найден" in err["error"].lower()
@@ -168,6 +173,13 @@ def test_cli_form_tree(form_file, capsys):
     code, out = _run_cli(capsys, "form-tree", str(form_file), "--at", str(offset))
     assert code == 0
     assert out["node"]["id"] == BUTTON and out["node"]["name"] == "КнопкаОбновить"
+    # parity with LSP formNodeAt: the nearest parent COMPONENT rides along
+    assert out["parent"]["id"] == TPL and "children" not in out["parent"]
+
+    code, out = _run_cli(capsys, "form-tree", str(form_file), "--at",
+                         str(FORM.find("Тип: Форма")))
+    assert code == 0
+    assert out["node"]["id"] == "Наследует" and out["parent"] is None
 
 
 def test_cli_form_edit_dry_run_writes_nothing(form_file, capsys):
@@ -262,6 +274,24 @@ def test_lsp_form_tree_and_node_at(form_file):
     )
     assert node["node"]["id"] == BUTTON
     assert node["node"]["properties"][0]["valueSpan"]  # full properties for one node
+    assert node["node"]["contentSpan"] == node["node"]["span"]  # no attached comments
+    # the parent COMPONENT rides along: the slot between them is skipped
+    assert node["parent"]["id"] == TPL
+    assert node["parent"]["type"] == "ПроизвольныйШаблонФормы"
+    assert "children" not in node["parent"] and "properties" in node["parent"]
+
+    # a slot hit resolves the parent to the slot's owner component
+    slot_hit = features["xbsl/formNodeAt"](
+        {"uri": _uri(form_file), "offset": FORM.find("Содержимое:")}
+    )
+    assert slot_hit["node"]["kind"] == "slot"
+    assert slot_hit["parent"]["id"] == "Наследует"
+
+    # the root has no parent
+    root_hit = features["xbsl/formNodeAt"](
+        {"uri": _uri(form_file), "offset": FORM.find("Тип: Форма")}
+    )
+    assert root_hit["node"]["id"] == "Наследует" and root_hit["parent"] is None
 
     miss = features["xbsl/formNodeAt"]({"uri": _uri(form_file), "offset": 0})
     assert miss == {"node": None}

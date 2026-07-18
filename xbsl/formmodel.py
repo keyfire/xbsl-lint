@@ -499,9 +499,38 @@ def get_component(form: Form, node_id: str) -> Node:
     return node
 
 
+def parent_component(form: Form, node: Node) -> Node | None:
+    """The nearest ancestor COMPONENT of the node, slots skipped; None for the root.
+
+    A slot resolves to its owner component, a component to the component above its slot.
+    Serialized (without children) into the "parent" field of the one-node surfaces
+    (LSP xbsl/formNodeAt, CLI form-tree --at) so the properties panel can show the owner
+    of a slot the cursor landed on.
+    """
+    current = node.parent_id
+    while current is not None:
+        parent = form.nodes.get(current)
+        if parent is None:
+            return None
+        if parent.kind == "component":
+            return parent
+        current = parent.parent_id
+    return None
+
+
 def node_dict(node: Node, *, property_spans: bool = True, deep: bool = True) -> dict:
-    """Serializable node for the LSP/MCP/CLI surfaces (camelCase keys for clients)."""
-    d: dict = {"id": node.id, "kind": node.kind, "span": node.span.as_dict()}
+    """Serializable node for the LSP/MCP/CLI surfaces (camelCase keys for clients).
+
+    "contentSpan" is the span without the leading comments attached to the node (equal
+    to "span" when there are none): clients move the cursor to contentSpan.start, while
+    moves/copies keep operating on the full span.
+    """
+    d: dict = {
+        "id": node.id,
+        "kind": node.kind,
+        "span": node.span.as_dict(),
+        "contentSpan": node.content_span.as_dict(),
+    }
     if node.kind == "component":
         d["type"] = node.type
         d["typeFull"] = node.type_full

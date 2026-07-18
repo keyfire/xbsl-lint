@@ -20,6 +20,7 @@ import {
   planRemoval,
   projectDiagnostics,
   remapIds,
+  revealOffset,
   ROOT_ID,
   siblingInfo,
   validMoveTarget,
@@ -139,6 +140,16 @@ test("container detection: slot children, the known list, the schema callback", 
   assert.ok(isContainerNode(comp("x", "Группа", null, [0, 1]))); // known type, no slots yet
   assert.ok(!isContainerNode(BUTTON));
   assert.ok(!isContainerNode(INNER_SLOT)); // a slot is not a component
+});
+
+test("revealOffset prefers the content span over the comment-inclusive span", () => {
+  // a node with a comment attached above: the click lands on the first content line
+  const commented: FormNode = { ...LABEL, contentSpan: { start: 62, end: 100 } };
+  assert.strictEqual(revealOffset(commented), 62);
+  // no comments: contentSpan equals span; older engines send no contentSpan at all
+  const same: FormNode = { ...LABEL, contentSpan: { start: 40, end: 100 } };
+  assert.strictEqual(revealOffset(same), 40);
+  assert.strictEqual(revealOffset(LABEL), LABEL.span.start);
 });
 
 // --- drop and insert planning -------------------------------------------------------------

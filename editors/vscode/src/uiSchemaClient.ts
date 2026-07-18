@@ -6,6 +6,7 @@
 
 import { lspRequest } from "./lspClient";
 import {
+  containersFromCatalog,
   containersFromRecords,
   UiCatalogResponse,
   UiComponentRecord,
@@ -48,10 +49,10 @@ export async function uiComponent(name: string): Promise<UiComponentRecord | und
   return record;
 }
 
-// Container types with a Содержимое slot, verified against the full per-component records.
-// The catalog does not carry slot flags (an engine gap - see the designer report), so the
-// records are fetched once per session for every concrete catalog component; without the
-// schema the static fallback list is returned.
+// Container types with a Содержимое slot. Newer datasets flag them right in the catalog
+// ("container": true) - one request; older data without the flag falls back to fetching
+// the full per-component records once per session; without the schema at all the static
+// fallback list is returned.
 export async function contentContainerTypes(): Promise<string[]> {
   const set = await ensureContainers();
   return [...set].sort((a, b) => a.localeCompare(b, "ru"));
@@ -81,6 +82,12 @@ async function ensureContainers(): Promise<Set<string>> {
         containersCache = new Set(WRAP_FALLBACK_CONTAINERS);
         return containersCache;
       }
+      const fromCatalog = containersFromCatalog(catalog);
+      if (fromCatalog) {
+        containersCache = new Set(fromCatalog);
+        return containersCache;
+      }
+      // Older generated data without the container flag: verify the full records.
       const names = Object.entries(catalog.components)
         .filter(([, rec]) => !rec.abstract)
         .map(([name]) => name);

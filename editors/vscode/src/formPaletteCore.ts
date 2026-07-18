@@ -11,6 +11,10 @@
 export interface UiCatalogComponent {
   package?: string;
   abstract?: boolean;
+  // The props carry a slot Содержимое (a wrap/drop container). Newer datasets emit the
+  // flag right in the catalog; older ones lack it and the container set is learned from
+  // the full per-component records instead (containersFromRecords).
+  container?: boolean;
   since?: string;
   doc?: string;
 }
@@ -139,7 +143,26 @@ export function buildPalette(
   return sections;
 }
 
-// --- container candidates from full component records -------------------------------------
+// --- container candidates ------------------------------------------------------------------
+
+// Container types straight from the catalog "container" flags. undefined - no record
+// carries the flag (older generated data without it): the caller falls back to verifying
+// the full per-component records. Abstract components cannot be written as a wrapper
+// type, so they are dropped; a catalog where every flagged container is abstract counts
+// as no data too.
+export function containersFromCatalog(catalog: UiCatalogResponse): string[] | undefined {
+  const flagged = Object.entries(catalog.components ?? {}).filter(([, rec]) => rec.container === true);
+  if (!flagged.length) {
+    return undefined;
+  }
+  const names = flagged
+    .filter(([, rec]) => !rec.abstract)
+    .map(([name]) => name)
+    .sort((a, b) => a.localeCompare(b, RU));
+  return names.length ? names : undefined;
+}
+
+// --- container candidates from full component records (older data) --------------------------
 
 export interface UiComponentRecord {
   name?: string;

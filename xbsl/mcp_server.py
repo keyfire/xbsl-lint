@@ -167,10 +167,12 @@ def ui_schema(component: str | None = None) -> dict:
     """The interface component ui schema (the visual designer's palette and typed properties).
 
     Without arguments - the catalog: every component with its package, an abstract flag
-    (no constructor: cannot be inserted from the palette) and a one-line doc, WITHOUT
-    property lists. With `component` - the full schema of that component: properties with
-    value type unions, resolved enum values, event handler signatures, slot flags (the
-    property accepts components/commands), doc snippets and documented defaults; an
+    (no constructor: cannot be inserted from the palette), a container flag (the props
+    carry a slot Содержимое - a wrap/drop target) and a one-line doc, WITHOUT property
+    lists. With `component` - the full schema of that component: properties with value
+    type unions, resolved enum values, event handler signatures, slot flags (the
+    property accepts components/commands), doc snippets and documented defaults, plus
+    "enums" - the value lists of the enumerations referenced by the property unions; an
     unknown name yields close_matches. {"available": false} when the ui schema dataset
     is not generated (tools/extract_uischema.py).
     """

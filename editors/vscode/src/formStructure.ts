@@ -34,6 +34,7 @@ import {
   planRemoval,
   projectDiagnostics,
   remapIds,
+  revealOffset,
   ROOT_ID,
   siblingInfo,
   STRUCTURE_MIME,
@@ -395,12 +396,13 @@ class FormStructureProvider
   }
 
   // Click on a node: cursor onto the node's yaml without stealing focus; a second activation
-  // in quick succession (double click / double Enter) moves focus to the editor.
+  // in quick succession (double click / double Enter) moves focus to the editor. The cursor
+  // lands on the first content line, not on a comment attached above the node.
   async select(node: FormNode): Promise<void> {
     const now = Date.now();
     const double = !!this.lastActivation && this.lastActivation.id === node.id && now - this.lastActivation.at < DOUBLE_ACTIVATE_MS;
     this.lastActivation = { id: node.id, at: now };
-    await this.revealInEditor(node.span.start, !double);
+    await this.revealInEditor(revealOffset(node), !double);
   }
 
   async revealInEditor(offset: number, preserveFocus: boolean): Promise<void> {
@@ -793,7 +795,7 @@ export function registerFormStructure(context: vscode.ExtensionContext): FormStr
     vscode.commands.registerCommand("xbsl.formStructure.openInEditor", (node?: FormNode) => {
       const target = provider.selectedNodes(node)[0];
       if (target) {
-        void provider.revealInEditor(target.span.start, false);
+        void provider.revealInEditor(revealOffset(target), false);
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.moveUp", (node?: FormNode) => {

@@ -5,6 +5,7 @@ import * as assert from "assert";
 import {
   buildPalette,
   bumpUsage,
+  containersFromCatalog,
   containersFromRecords,
   concreteCatalog,
   FREQUENT_LIMIT,
@@ -112,6 +113,31 @@ test("without the ui schema: a hint node plus the project-backed sections", () =
   // Platform names vanish from frequent/favorites - only project components stay insertable.
   assert.deepStrictEqual(sections[1].items.map((i) => i.name), ["МояКарточка"]);
   assert.deepStrictEqual(sections[2].items.map((i) => i.name), ["МояКарточка"]);
+});
+
+test("container candidates come straight from catalog flags when the data has them", () => {
+  const catalog: UiCatalogResponse = {
+    available: true,
+    components: {
+      СтандартнаяКарточка: { package: "Стд::Интерфейс::ОбщиеКомпоненты", container: true },
+      Группа: { package: "Стд::Интерфейс::ОбщиеКомпоненты", container: true },
+      Кнопка: { package: "Стд::Интерфейс::ОбщиеКомпоненты" },
+      БазовыйКонтейнер: { package: "Стд::Интерфейс", container: true, abstract: true },
+    },
+  };
+  // ru-sorted, the abstract container dropped (it cannot be written as a wrapper type)
+  assert.deepStrictEqual(containersFromCatalog(catalog), ["Группа", "СтандартнаяКарточка"]);
+  // older data without the flag: undefined - the caller falls back to the full records
+  assert.strictEqual(containersFromCatalog(CATALOG), undefined);
+  assert.strictEqual(containersFromCatalog({ available: true, components: {} }), undefined);
+  // every flagged container abstract counts as no data too
+  assert.strictEqual(
+    containersFromCatalog({
+      available: true,
+      components: { БазовыйКонтейнер: { container: true, abstract: true } },
+    }),
+    undefined
+  );
 });
 
 test("container candidates come from records with a Содержимое slot", () => {

@@ -850,7 +850,8 @@ def _make_server() -> "LanguageServer":
     # positional and valid only until the next change. Dirty buffers come through
     # _buffer_reader. xbsl/formTree carries the tree with COMPACT properties (key, kind,
     # valuePreview - no spans): enough for the tree view; the full per-property spans
-    # come from xbsl/formNodeAt for one node at a time.
+    # come from xbsl/formNodeAt for one node at a time, together with the nearest parent
+    # COMPONENT (slots skipped) so the properties panel can serve a slot hit.
 
     def _form_path(params: object) -> Path:
         uri = _param(params, "uri")
@@ -887,7 +888,16 @@ def _make_server() -> "LanguageServer":
         node = formmodel.node_at(form, int(_param(params, "offset", 0) or 0))
         if node is None:
             return {"node": None}
-        return {"node": formmodel.node_dict(node, property_spans=True, deep=False)}
+        parent = formmodel.parent_component(form, node)
+        return {
+            "node": formmodel.node_dict(node, property_spans=True, deep=False),
+            # The nearest parent COMPONENT without children (null for the root): a slot
+            # hit resolves to its owner, a component hit skips its slot.
+            "parent": (
+                formmodel.node_dict(parent, property_spans=True, deep=False)
+                if parent is not None else None
+            ),
+        }
 
     @server.feature("xbsl/formEdit")
     def _form_edit(params: object) -> dict:
