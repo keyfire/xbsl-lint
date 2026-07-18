@@ -766,3 +766,19 @@ def test_search_forms_request_registered():
     form = "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nНаследует:\n    Содержимое:\n        Тип: Кнопка\n        Имя: К\n"
     res = features["xbsl/searchForms"]({"paths": ["a.yaml"], "texts": [form], "query": "Кнопка"})
     assert [m["name"] for m in res["matches"]] == ["К"]
+
+
+def test_binding_complete_request_registered():
+    # xbsl/bindingComplete (the form binding editor's component-reference completions) is wired
+    # and never raises. Without a built index (a bare workspace) it yields an empty list, and a
+    # garbage request yields one too – an empty result, never an exception.
+    from xbsl import lsp as lsp_module
+
+    server = lsp_module._make_server()
+    fm = getattr(server.lsp, "fm", None) or getattr(server.lsp, "_features", None)
+    features = getattr(fm, "features", fm)
+    assert "xbsl/bindingComplete" in features
+    assert features["xbsl/bindingComplete"]({}) == {"completions": []}
+    assert features["xbsl/bindingComplete"](
+        {"uri": "file:///нет.yaml", "prefix": "=Компоненты."}
+    ) == {"completions": []}

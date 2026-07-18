@@ -37,8 +37,8 @@ except ImportError:  # pragma: no cover - the extra is not installed
     LanguageServer = None
 
 from xbsl import (
-    __version__, baseline, dataset, docs, engine, formedits, formhandlers, formmodel,
-    formsearch, i18n, indexer, scaffold, templates, uischema,
+    __version__, baseline, bindingcomplete, dataset, docs, engine, formedits, formhandlers,
+    formmodel, formsearch, i18n, indexer, scaffold, templates, uischema,
 )
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.templates import Template, TemplateError
@@ -1084,6 +1084,36 @@ def _make_server() -> "LanguageServer":
         query = str(_param(params, "query", "") or "")
         forms = [{"path": str(p), "text": str(t)} for p, t in zip(paths, texts)]
         return {"matches": formsearch.search_forms(forms, query)}
+
+    @server.feature("xbsl/bindingComplete")
+    def _binding_complete(params: object) -> dict:
+        # Component-reference completions for the form binding editor (flat params
+        # {uri, prefix}): =Компоненты.<part> –> the form's components, =Компоненты.<comp>.<part>
+        # –> members of that component's TYPE. The other binding contexts (=Объект.<attr>,
+        # enum values, bindings already used in the form) are the editor's own. The form is
+        # taken from the uri stem, the components from the project index and the members from
+        # the stdlib dataset. Never raises: any failure degrades to an empty list, like the
+        # neighboring defensive endpoints.
+        try:
+            uri = _param(params, "uri")
+            prefix = str(_param(params, "prefix", "") or "")
+            path = uri_to_path(str(uri)) if uri else None
+            if path is None or STATE.lookup is None:
+                return {"completions": []}
+            try:
+                catalog = dataset.load_json("stdlib.json")
+            except Exception:  # noqa: BLE001 - the dataset may be missing, do not break completion
+                catalog = {}
+            members = {
+                **(catalog.get("type_members") or {}),
+                **(catalog.get("facet_members") or {}),
+            }
+            completions = bindingcomplete.complete_binding(
+                prefix, form_stem=path.stem, components=STATE.lookup, members=members,
+            )
+            return {"completions": completions}
+        except Exception:  # noqa: BLE001 - a custom request must never crash the server
+            return {"completions": []}
 
     # --- event handlers (hook 1: the properties panel's event rows) ----------------------
     #
