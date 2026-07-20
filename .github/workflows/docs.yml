@@ -12,6 +12,10 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/docs.yml"
+      # Страница расширения на сайте — зеркало этого README (см. scripts/sync-vscode-doc.mjs).
+      - "editors/vscode/README.md"
+      - "editors/vscode/README.ru.md"
+      - "scripts/**"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +42,10 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      # Синхронизируем зеркальные страницы (README расширения -> docs/vscode*) перед
+      # сборкой, чтобы задеплоенный сайт всегда совпадал с актуальным README.
+      - name: Sync mirrored docs
+        run: npm run sync:docs
       - name: Build
         run: npx blume build
       - uses: actions/configure-pages@v5

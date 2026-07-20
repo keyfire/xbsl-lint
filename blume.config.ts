@@ -11,7 +11,9 @@ export default defineConfig({
     "scaffolding for 1C:Element (XBSL) sources, plus a VS Code extension built on " +
     "the same engine.",
 
-  // Контент в docs/ — это значение по умолчанию, оставляем явно для наглядности.
+  // Весь контент сайта — в docs/. Страница расширения (docs/vscode.md + .ru.md) —
+  // зеркало editors/vscode/README.md (README маркетплейса); синхронизируется скриптом
+  // scripts/sync-vscode-doc.mjs (npm run sync:docs).
   content: {
     root: "docs",
   },
@@ -45,15 +47,11 @@ export default defineConfig({
     parser: "dot",
   },
 
-  // Внешние ссылки, которые в старом меню mkdocs вели за пределы сайта документации
-  // (расширение VS Code и гайд для контрибьюторов) — закрепляем над сайдбаром.
+  // Гайд для контрибьюторов живёт на GitHub (не страница сайта) — закрепляем над
+  // сайдбаром. Расширение VS Code теперь отдельная страница сайта (docs/vscode.md),
+  // поэтому его в featured не дублируем — оно появляется в сайдбаре само.
   navigation: {
     featured: [
-      {
-        label: "VS Code extension",
-        href: "https://github.com/keyfire/xbsl/blob/main/editors/vscode/README.md",
-        icon: "code",
-      },
       {
         label: "Contributing",
         href: "https://github.com/keyfire/xbsl/blob/main/CONTRIBUTING.md",

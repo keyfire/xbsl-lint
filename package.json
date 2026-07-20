@@ -5,7 +5,10 @@
   "description": "Documentation site for XBSL (1C:Element), built with Blume.",
   "type": "module",
   "scripts": {
+    "sync:docs": "node scripts/sync-vscode-doc.mjs",
+    "predev": "npm run sync:docs",
     "dev": "blume dev",
+    "prebuild": "npm run sync:docs",
     "build": "blume build",
     "preview": "blume preview"
   },
