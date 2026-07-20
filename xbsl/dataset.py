@@ -133,12 +133,53 @@ def resolve_version(override: str | None = None) -> str:
 
 
 # The root is part of the cache key: otherwise switching roots would return data read from the old one.
+def _expand_inherited(data: dict) -> dict:
+    """Re-expand the own-members form of stdlib.json into full member sets.
+
+    The extractor stores only each type's OWN members (meta.members == "own") to avoid
+    repeating an inherited member once per heir. Here a type's full set is rebuilt by adding
+    every ancestor's own set - `bases` is the transitively closed ancestor list, so one pass
+    over it suffices. member_types (result types) merges the same way, the type's own last so
+    an overridden member keeps its own result type. Datasets without the marker (older, full)
+    are returned untouched. The consumers keep reading type_members/member_types as before.
+    """
+    if data.get("meta", {}).get("members") != "own":
+        return data
+    bases = data.get("bases") or {}
+    own_members = data.get("type_members") or {}
+    full_members: dict[str, dict[str, list[str]]] = {}
+    for name, own in own_members.items():
+        props, methods = set(own.get("properties", ())), set(own.get("methods", ()))
+        for base in bases.get(name, ()):
+            base_own = own_members.get(base, {})
+            props.update(base_own.get("properties", ()))
+            methods.update(base_own.get("methods", ()))
+        entry: dict[str, list[str]] = {}
+        if props:
+            entry["properties"] = sorted(props)
+        if methods:
+            entry["methods"] = sorted(methods)
+        full_members[name] = entry
+    own_returns = data.get("member_types") or {}
+    full_returns: dict[str, dict[str, str]] = {}
+    for name, own in own_returns.items():
+        merged: dict[str, str] = {}
+        for base in bases.get(name, ()):
+            merged.update(own_returns.get(base, {}))
+        merged.update(own)
+        full_returns[name] = merged
+    data["type_members"] = full_members
+    data["member_types"] = full_returns
+    return data
+
+
 @lru_cache(maxsize=None)
 def _load_cached(root: str, version: str, name: str) -> dict:
     path = Path(root) / version / name
     if not path.exists():
         raise DatasetError(i18n.t("dataset.no-file", name=name, version=version, path=path))
-    return json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return _expand_inherited(data) if name == "stdlib.json" else data
 
 
 def load_json(name: str, version: str | None = None) -> dict:

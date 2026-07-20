@@ -23,6 +23,9 @@ indisputable part is kept.
 
 From all Std pages type_members is built: type name -> its members for dot completion,
 properties and methods SEPARATELY (different icons in the completion list, methods get parens).
+Only a type's OWN members are stored (meta.members == "own"); the "Иерархия типа" section gives
+the whole ancestor chain in `bases`, and the loader (dataset._expand_inherited) rebuilds the full
+set by adding every ancestor's own - so the object protocol is not repeated on all 2000 types.
 
 The result is xbsl/data/element/<version>/stdlib.json:
 { "names": [...], "object_members": {"Справочник": [...], ...},
@@ -397,6 +400,39 @@ def _members_json(members: dict[str, set[str]]) -> dict[str, list[str]]:
     return {kind: sorted(members[kind]) for kind in ("properties", "methods") if members.get(kind)}
 
 
+def _own_members(
+    types: dict[str, dict[str, set[str]]],
+    returns: dict[str, dict[str, str]],
+    bases: dict[str, list[str]],
+) -> tuple[dict[str, dict[str, set[str]]], dict[str, dict[str, str]]]:
+    """Strip inherited members, leaving only each type's own - the loader re-expands them.
+
+    `bases` is the transitively closed ancestor list, so subtracting every ancestor's FULL
+    set leaves exactly the members a type does not inherit. A member a type overrides with a
+    different result type stays (its type differs from the ancestor's) - that is why
+    member_types is compared by value, not just by name.
+    """
+    own_types: dict[str, dict[str, set[str]]] = {}
+    for name, sets in types.items():
+        inherited = {"properties": set(), "methods": set()}
+        for base in bases.get(name, ()):
+            for kind in ("properties", "methods"):
+                inherited[kind] |= types.get(base, {}).get(kind, set())
+        own_types[name] = {
+            kind: sets.get(kind, set()) - inherited[kind] for kind in ("properties", "methods")
+        }
+    own_returns: dict[str, dict[str, str]] = {}
+    for name, member_types in returns.items():
+        inherited = {}
+        for base in bases.get(name, ()):
+            inherited.update(returns.get(base, {}))
+        own_returns[name] = {
+            member: rtype for member, rtype in member_types.items()
+            if inherited.get(member) != rtype
+        }
+    return own_types, own_returns
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Извлечь каталог типов stdlib Элемента из доков")
     ap.add_argument("--dist", required=True, help="каталог дистрибутива 1С:Элемент")
@@ -413,21 +449,31 @@ def main(argv=None) -> int:
 
     version = _distro.detect_version(dist, args.element_version)
     names, members, components, types, globals_, managers, facets, returns, bases = extract(dist)
+    # Store only OWN members, not the full set: an inherited member (the object protocol on
+    # every type, an exception's fields on every exception) would otherwise be repeated once
+    # per heir. The loader re-expands them by `bases` - a member set is completed by adding
+    # every ancestor's own set. This also fills the pages the docs left incomplete (a heir
+    # that fails to list a member its base owns still gets it back on expansion).
+    own_types, own_returns = _own_members(types, returns, bases)
     data = {
         "meta": {
             "element_version": version,
             "source": "docs/help/ru/stdlib/element/xbsl",
             "count": len(names),
+            # The loader expands type_members/member_types only when this marker is present -
+            # older full datasets (without it) are read as is.
+            "members": "own",
             "note": "двуязычные имена символов stdlib (русское из title + английское из пути)"
                     " + порождаемые члены по видам объектов (шаблонные страницы)"
                     " + встроенные свойства компонентов интерфейса (страницы наследников"
                     " Стд::Интерфейс::Компонент)"
-                    " + члены типов (свойства и методы страницы раздельно, под обеими формами имени)",
+                    " + СОБСТВЕННЫЕ члены типов (унаследованные разворачиваются по bases"
+                    " при загрузке), под обеими формами имени",
         },
         "names": sorted(names),
         "object_members": {k: sorted(v) for k, v in sorted(members.items())},
         "component_props": {k: sorted(v) for k, v in sorted(components.items())},
-        "type_members": {k: _members_json(v) for k, v in sorted(types.items())},
+        "type_members": {k: _members_json(v) for k, v in sorted(own_types.items())},
         # Global context: members of Стд and its first-level packages, available by bare name.
         "globals": sorted(globals_),
         # Kind manager methods (the <Kind>Name_ru template page): bare names in the manager module.
@@ -436,7 +482,7 @@ def main(argv=None) -> int:
         # reference members that do not land on the type's own page.
         "facet_members": {k: _members_json(v) for k, v in sorted(facets.items())},
         # Result type roots of members (page signatures: method returns and property types).
-        "member_types": {k: dict(sorted(v.items())) for k, v in sorted(returns.items())},
+        "member_types": {k: dict(sorted(v.items())) for k, v in sorted(own_returns.items())},
         # Type hierarchy: the WHOLE ancestor chain a page prints under "Иерархия типа", so a
         # check needs no resolution of its own - `"Исключение" in bases[type]` decides.
         "bases": {k: v for k, v in sorted(bases.items())},
