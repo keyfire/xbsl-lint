@@ -225,6 +225,26 @@ def _nav_project(target: str, **extra):
     return files
 
 
+def test_navigation_target_needs_import_too(tmp_path=None):
+    # A navigation target is a reference like any other: a public foreign form still has to be
+    # imported. Before this the rule read only `Тип:` and such a panel passed unnoticed.
+    target = "ВидЭлемента: КомпонентИнтерфейса\nИмя: ЦелеваяФорма\nОбластьВидимости: ВПроекте\n"
+    files = {
+        "А/Подсистема.yaml": SUB_A,
+        "Б/Подсистема.yaml": SUB_B,
+        "Б/ЦелеваяФорма.yaml": target,
+        "А/Панель.yaml": PANEL,
+    }
+    diags = _lint(files)
+    assert len(diags) == 1
+    assert "ЦелеваяФорма" in diags[0].message and "'Б'" in diags[0].message
+
+    files["А/Панель.yaml"] = PANEL.replace(
+        "Имя: Панель\n", "Имя: Панель\nИмпорт:\n    - Б\n", 1
+    )
+    assert _lint(files) == []
+
+
 def test_visibility_rule_registered_project_scope():
     info = next(r for r in engine.active_rules() if r.id == VIS_RULE)
     assert info.tier == "D" and info.scope == "project" and info.enabled_by_default

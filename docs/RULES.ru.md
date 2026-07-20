@@ -171,7 +171,7 @@ sidebar:
 | `yaml/builtin-property-name` | warning | вкл | файл | Совпадение со встроенным свойством | – |
 | `yaml/size-needs-no-stretch` | info | выкл | файл | Размер без отключения растягивания | [доки](https://1cmycloud.com/docs/help/topics/arrange-components-on-screen/) |
 | `code/unused-method` | warning | выкл | проект | Метод нигде не используется | – |
-| `yaml/missing-import` | warning | вкл | проект | Нет импорта подсистемы в yaml | [доки](https://1cmycloud.com/docs/help/topics/modular-development/) |
+| `yaml/missing-import` | warning | вкл | проект | Ссылка из yaml (позиция типа или цель навигации `ТипФормы`) на публичный элемент чужой подсистемы, которой нет в секции `Импорт` | [доки](https://1cmycloud.com/docs/help/topics/modular-development/) |
 
 ## Подробнее о группах
 

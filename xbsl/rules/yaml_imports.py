@@ -6,10 +6,10 @@ what the platform requires for a reference across a subsystem boundary; both are
 the same placement model of the project, described below.
 
 
-The yaml/missing-import rule: a yaml element (a form, an object...) that uses, in a type
-position (the string values of `Тип` keys, generic arguments included), a type generated
-by a project object from ANOTHER subsystem must list that subsystem in its own `Импорт:`
-section. The namespace import in the paired `.xbsl` module does not cover the yaml – such
+The yaml/missing-import rule: a yaml element (a form, an object...) that references an
+element of ANOTHER subsystem must list that subsystem in its own `Импорт:` section. A
+reference is either a type position (the string values of `Тип` keys, generic arguments
+included) or a navigation target (`ТипФормы`) - see _REFERENCE_KEYS. The namespace import in the paired `.xbsl` module does not cover the yaml – such
 a project deploys, but the component initialization fails at runtime.
 
 An element's subsystem is determined by the source layout: a directory with a
@@ -78,6 +78,11 @@ i18n.register(MESSAGES)
 _SUBSYSTEM_FILE = "Подсистема.yaml"
 _PUBLIC_SCOPES = frozenset({"ВПроекте", "Глобально"})
 
+# Yaml keys that name another element. A navigation target is as much a reference as a type
+# position, so both rules below read both keys: `ТипФормы: ПрограммыФормаСписка` reaches into
+# another subsystem exactly the way `Тип: Программы.Ссылка` does.
+_REFERENCE_KEYS = ("Тип", "ТипФормы")
+
 
 def _subsystem_roots(sources: list[SourceFile]) -> dict[Path, str]:
     """Directories that are subsystem roots, mapped to the subsystem name."""
@@ -130,18 +135,19 @@ def _yaml_import_mapper(source: SourceFile) -> dict | None:
     raw = data.get("Импорт")
     imports = [e for e in raw if isinstance(e, str)] if isinstance(raw, list) else []
     cands: list[tuple[str, str, int, int]] = []
-    for value in dict.fromkeys(_type_values(data)):  # unique, in document order
-        chains = _parse_type_string(value)
-        if not chains:
-            continue
-        position: tuple[int, int] | None = None
-        for chain in chains:
-            root = chain[0]
-            if root in stdlib:
+    for key in _REFERENCE_KEYS:
+        for value in dict.fromkeys(_type_values(data, key)):  # unique, in document order
+            chains = _parse_type_string(value)
+            if not chains:
                 continue
-            if position is None:
-                position = (_value_positions(source, value) or [(1, 1)])[0]
-            cands.append((root, ".".join(chain), position[0], position[1]))
+            position: tuple[int, int] | None = None
+            for chain in chains:
+                root = chain[0]
+                if root in stdlib:
+                    continue
+                if position is None:
+                    position = (_value_positions(source, value, key) or [(1, 1)])[0]
+                cands.append((root, ".".join(chain), position[0], position[1]))
     nm = data.get("Имя")
     return {
         "k": "el",
@@ -221,9 +227,6 @@ MESSAGES_VISIBILITY = {
 }
 i18n.register(MESSAGES_VISIBILITY)
 
-# Navigation targets name a form the same way a type position names a type, so both keys
-# feed the same check: `ТипФормы: ПрограммыФормаСписка` is a reference across subsystems.
-_REFERENCE_KEYS = ("Тип", "ТипФормы")
 _DEFAULT_SCOPE = "ВПодсистеме"  # the platform default when the property is absent
 
 

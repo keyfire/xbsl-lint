@@ -172,7 +172,7 @@ the execution model (client/server), form handlers, properties and queries.
 | `yaml/builtin-property-name` | warning | on | file | Built-in property name clash | – |
 | `yaml/size-needs-no-stretch` | info | off | file | A size without disabling the stretch | [docs](https://1cmycloud.com/docs/help/topics/arrange-components-on-screen/) |
 | `code/unused-method` | warning | off | project | Method is never referenced | – |
-| `yaml/missing-import` | warning | on | project | Missing subsystem import in yaml | [docs](https://1cmycloud.com/docs/help/topics/modular-development/) |
+| `yaml/missing-import` | warning | on | project | A yaml reference (a type position or a `ТипФормы` navigation target) to a public element of another subsystem that the `Импорт` section does not list | [docs](https://1cmycloud.com/docs/help/topics/modular-development/) |
 
 ## Group details
 
