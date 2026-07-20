@@ -280,7 +280,7 @@ def _visibility_mapper(source: SourceFile) -> dict | None:
 
 @rule(
     "yaml/foreign-not-public", "yaml/foreign-not-public.title", "D",
-    scope="project", severity=Severity.WARNING, mapper=_visibility_mapper,
+    scope="project", severity=Severity.ERROR, mapper=_visibility_mapper,
 )
 def foreign_not_public(facts: dict[str, dict]) -> Iterable[Diagnostic]:
     """A yaml reference to an element of ANOTHER subsystem that is not public.
@@ -291,6 +291,12 @@ def foreign_not_public(facts: dict[str, dict]) -> Iterable[Diagnostic]:
     exactly the case yaml/missing-import leaves alone, so the two rules never overlap:
     that one fires when a public foreign element is not imported, this one when the
     foreign element is not public in the first place.
+
+    The severity is `error` because the compiler rejects such a project outright - checked
+    on a two-subsystem probe built and applied on a server: with the navigation target left
+    at ВПодсистеме the build fails with `Тип "ЦелеваяФорма" не виден из-за модификатора
+    видимости @ВПодсистеме` at the exact position this rule reports, and the same probe with
+    ВПроекте compiles that reference clean.
 
     The narrowings of the sibling rule apply here too (they are what keeps this at zero
     false positives): names of the file's own subsystem resolve locally, stdlib names and
@@ -333,6 +339,6 @@ def foreign_not_public(facts: dict[str, dict]) -> Iterable[Diagnostic]:
             vis = subs[owner] or _DEFAULT_SCOPE
             reported.add(root)
             yield Diagnostic(
-                rel, line, col, "yaml/foreign-not-public", Severity.WARNING,
+                rel, line, col, "yaml/foreign-not-public", Severity.ERROR,
                 i18n.t("yaml/foreign-not-public.found", name=chain_name, sub=owner, vis=vis),
             )

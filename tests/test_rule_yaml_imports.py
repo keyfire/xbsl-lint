@@ -1,8 +1,10 @@
-"""Checks of the yaml/missing-import rule (importing a foreign subsystem in yaml)."""
+"""Checks of the two cross-subsystem yaml rules: yaml/missing-import (importing a foreign
+subsystem) and yaml/foreign-not-public (the foreign element is not public at all)."""
 
 import pytest
 
 from xbsl import dataset, engine
+from xbsl.diagnostics import Severity
 from xbsl.rules import semantics
 
 RULE = "yaml/missing-import"
@@ -226,6 +228,8 @@ def _nav_project(target: str, **extra):
 def test_visibility_rule_registered_project_scope():
     info = next(r for r in engine.active_rules() if r.id == VIS_RULE)
     assert info.tier == "D" and info.scope == "project" and info.enabled_by_default
+    # error, not warning: the compiler rejects such a project - verified on a server probe
+    assert info.severity is Severity.ERROR
 
 
 def test_navigation_to_private_foreign_form_flagged():
