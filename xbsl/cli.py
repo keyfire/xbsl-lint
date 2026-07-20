@@ -34,141 +34,124 @@ def discover(paths: list[str]) -> list[Path]:
     return uniq
 
 
-_SERVER_HELP = {
-    "lsp": "сервер LSP для редактора",
-    "mcp": "сервер MCP для агента",
-    "web": "веб-панель",
-}
-
-
 def _commands_help() -> str:
-    """Список команд для справки.
+    """The command list for the help epilog.
 
-    Команды верхнего уровня разбираются вручную в main(): режим по умолчанию принимает
-    произвольные пути, поэтому argparse не отличит "xbsl Форма.xbsl" от имени команды и сам такой
-    список не построит. Имена берутся из тех же кортежей, что и диспетчеризация, – разойтись со
-    списком они не могут.
+    The top-level commands are dispatched by hand in main(): the default mode accepts arbitrary
+    paths, so argparse cannot tell "xbsl Форма.xbsl" from a command name and would not build this
+    list itself. The names come from the same tuples as the dispatch, so they cannot drift apart.
+    The help texts go through i18n.t: the language is chosen before build_parser is called.
     """
-    entries = [("lint <пути>", "проверить исходники – то же, что без команды")]
-    entries += [(name, _SERVER_HELP[name]) for name in _SERVER_COMMANDS]
+    entries = [(i18n.t("cli.help.commands.lint-name"), i18n.t("cli.help.commands.lint-desc"))]
+    entries += [(name, i18n.t(f"cli.help.server.{name}")) for name in _SERVER_COMMANDS]
     entries += [
-        ("templates", "шаблоны кода: list, export, import, save"),
-        ("self-update", "обновить xbsl распаковкой колеса с PyPI"),
+        ("templates", i18n.t("cli.help.commands.templates")),
+        ("self-update", i18n.t("cli.help.commands.self-update")),
     ]
-    lines = ["команды:"]
+    lines = [i18n.t("cli.help.commands.header")]
     lines += [f"  {name:<16}{description}" for name, description in entries]
-    lines += ["", "  скаффолдинг метаданных (создание и правка исходников):"]
+    lines += ["", "  " + i18n.t("cli.help.commands.scaffold-header")]
     # break_on_hyphens=False: without it the wrapper splits names like add-subsystem in half.
     lines += textwrap.wrap(", ".join(_META_COMMANDS), width=74, break_on_hyphens=False,
                            initial_indent="    ", subsequent_indent="    ")
-    lines += ["", "Опции команды: xbsl <команда> --help. Опции выше относятся к режиму проверки."]
+    lines += ["", i18n.t("cli.help.commands.footer")]
     return "\n".join(lines)
 
 
 def build_parser() -> argparse.ArgumentParser:
+    rule_selector = i18n.t("cli.help.meta.rule-selector")  # shared metavar --select/--ignore/--enable
+    baseline_file = i18n.t("cli.help.meta.file")  # shared metavar --baseline/--write-baseline
     parser = argparse.ArgumentParser(
         prog="xbsl",
-        usage="%(prog)s [пути] [опции]        (без команды: проверка исходников)\n"
-              "       %(prog)s <команда> [опции]",
+        usage=i18n.t("cli.help.usage"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Линтер исходников 1С:Элемент (пары .yaml/.xbsl).\n\n"
-                    "Без команды проверяет указанные пути – это режим по умолчанию.\n"
-                    "Команды ниже адресуют остальные части инструментария.",
+        description=i18n.t("cli.help.description"),
         epilog=_commands_help(),
     )
-    parser.add_argument("paths", nargs="*", default=["."], help="файлы или каталоги для проверки")
+    parser.add_argument("paths", nargs="*", default=["."], help=i18n.t("cli.help.paths"))
     parser.add_argument(
         "--select",
-        metavar="ID/ГРУППА/ТИР",
+        metavar=rule_selector,
         action="append",
-        help="проверять только эти правила (через запятую или повтором флага: id, группа – "
-             "часть id до '/' (напр. style) – или буква тира A/B/C/D)",
+        help=i18n.t("cli.help.select"),
     )
     parser.add_argument(
         "--ignore",
-        metavar="ID/ГРУППА/ТИР",
+        metavar=rule_selector,
         action="append",
-        help="исключить эти правила (через запятую или повтором флага: id, группа или буква тира)",
+        help=i18n.t("cli.help.ignore"),
     )
     parser.add_argument(
         "--enable",
-        metavar="ID/ГРУППА/ТИР",
+        metavar=rule_selector,
         action="append",
-        help="добавить выключенные по умолчанию правила ПОВЕРХ стандартного набора "
-             "(--select набор заменяет); формы значений те же",
+        help=i18n.t("cli.help.enable"),
     )
     parser.add_argument(
         "--baseline",
-        metavar="ФАЙЛ",
-        help="гасить находки, замороженные в файле базлайна (создаётся --write-baseline); "
-             "новые находки выводятся как обычно",
+        metavar=baseline_file,
+        help=i18n.t("cli.help.baseline"),
     )
     parser.add_argument(
         "--write-baseline",
-        metavar="ФАЙЛ",
-        help="вместо отчёта записать все текущие находки в файл базлайна "
-             "(заморозить долг; пути в файле – относительно его каталога)",
+        metavar=baseline_file,
+        help=i18n.t("cli.help.write-baseline"),
     )
     parser.add_argument(
         "--fix",
         action="store_true",
-        help="исправить механические находки на месте (хвостовые пробелы, типографские "
-             "символы, переводы строк) и вывести оставшиеся; правит только однозначно",
+        help=i18n.t("cli.help.fix"),
     )
     parser.add_argument(
         "--jobs",
         type=int,
         default=0,
         metavar="N",
-        help="процессов для файловых правил: 0 – авто (включается на больших прогонах), "
-             "1 – последовательно, N – явное число воркеров",
+        help=i18n.t("cli.help.jobs"),
     )
     parser.add_argument(
-        "--list-rules", action="store_true", help="вывести список правил и выйти"
+        "--list-rules", action="store_true", help=i18n.t("cli.help.list-rules")
     )
     parser.add_argument(
         "--where",
         action="store_true",
-        help="показать корень данных Элемента (путь, источник, версии) и выйти",
+        help=i18n.t("cli.help.where"),
     )
     parser.add_argument(
         "--element-version",
-        metavar="ВЕРСИЯ",
-        help="версия данных Элемента (по умолчанию – последняя из бандла)",
+        metavar=i18n.t("cli.help.meta.version"),
+        help=i18n.t("cli.help.element-version"),
     )
     parser.add_argument(
         "--data-dir",
-        metavar="КАТАЛОГ",
-        help="корень данных Элемента (каталог с index.json); также env XBSL_DATA_DIR",
+        metavar=i18n.t("cli.help.meta.dir"),
+        help=i18n.t("cli.help.data-dir"),
     )
     parser.add_argument(
         "--lang",
         choices=i18n.LANGS,
-        help="язык вывода линтера (по умолчанию: env XBSL_LANG / локаль системы / ru)",
+        help=i18n.t("cli.help.lang"),
     )
     parser.add_argument(
         "--format",
         choices=("text", "json", "codeclimate"),
         default="text",
-        help="формат вывода: text (по умолчанию), json (машиночитаемый: diagnostics + summary) "
-             "или codeclimate (отчёт GitLab Code Quality – виджет в merge request)",
+        help=i18n.t("cli.help.format"),
     )
     parser.add_argument(
         "--stdin",
         action="store_true",
-        help="проверить один буфер из stdin (для интеграции с редактором); "
-             "вид файла и путь в позициях задаёт --filename",
+        help=i18n.t("cli.help.stdin"),
     )
     parser.add_argument(
         "--index",
         action="store_true",
-        help="вместо проверки вывести JSON-индекс проекта (объекты, методы, компоненты форм) "
-             "для навигации в редакторе; путь – корень проекта",
+        help=i18n.t("cli.help.index"),
     )
     parser.add_argument(
         "--filename",
-        metavar="ИМЯ",
-        help="имя проверяемого буфера при --stdin (напр. Форма.xbsl); расширение задаёт вид файла",
+        metavar=i18n.t("cli.help.meta.name"),
+        help=i18n.t("cli.help.filename"),
     )
     data_note = ""
     try:
@@ -776,9 +759,14 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["lint"]:
         argv = argv[1:]  # an explicit alias of the default mode
 
+    # The language must be known BEFORE build_parser: the check-mode help (help=) is assembled in
+    # the chosen language. Prescan argv for --lang; env and locale are read by t() via current_lang().
+    i18n.set_lang(i18n.lang_from_argv(argv))
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    # Re-pin from the parsed value: argparse also accepts an abbreviation (--lan en) that the
+    # prescan does not catch; for the runtime this is the authoritative source.
     i18n.set_lang(args.lang)  # None keeps the env/locale lookup order
     if args.data_dir:
         dataset.set_data_root(args.data_dir)

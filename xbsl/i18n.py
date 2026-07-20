@@ -20,6 +20,11 @@ The language is chosen by: set_lang() (CLI --lang) > env XBSL_LANG (or the pre-r
 XBSLLINT_LANG) > system locale > ru.
 An unknown key is returned as is, so a plugin written against 0.3 – which passed literal
 strings rather than keys – keeps working.
+
+The check-mode --help text is translated too (the `cli.help.*` keys). Its parser is built after
+the language is resolved: cli.main reads --lang out of argv with lang_from_argv() before
+build_parser(), because argparse learns --lang only when it parses. The scaffolding and
+`templates` sub-parsers keep Russian help for now (they take no --lang and emit JSON).
 """
 
 from __future__ import annotations
@@ -83,6 +88,168 @@ _CORE_MESSAGES = {
         "ru": "Режим --fix несовместим с --baseline / --write-baseline.",
         "en": "--fix is incompatible with --baseline / --write-baseline.",
     },
+    # -- help: check-mode argparse help (cli.py build_parser / _commands_help) --
+    # The scaffolding and templates sub-parsers keep Russian help (no --lang, JSON output).
+    "cli.help.usage": {
+        "ru": "%(prog)s [пути] [опции]        (без команды: проверка исходников)\n"
+              "       %(prog)s <команда> [опции]",
+        "en": "%(prog)s [paths] [options]       (no command: check the sources)\n"
+              "       %(prog)s <command> [options]",
+    },
+    "cli.help.description": {
+        "ru": "Линтер исходников 1С:Элемент (пары .yaml/.xbsl).\n\n"
+              "Без команды проверяет указанные пути – это режим по умолчанию.\n"
+              "Команды ниже адресуют остальные части инструментария.",
+        "en": "Linter for 1C:Element sources (.yaml/.xbsl pairs).\n\n"
+              "With no command it checks the given paths – this is the default mode.\n"
+              "The commands below address the other parts of the toolkit.",
+    },
+    "cli.help.paths": {
+        "ru": "файлы или каталоги для проверки",
+        "en": "files or directories to check",
+    },
+    "cli.help.select": {
+        "ru": "проверять только эти правила (через запятую или повтором флага: id, группа – "
+              "часть id до '/' (напр. style) – или буква тира A/B/C/D)",
+        "en": "check only these rules (comma-separated or by repeating the flag: id, group – "
+              "the part of the id before '/' (e.g. style) – or a tier letter A/B/C/D)",
+    },
+    "cli.help.ignore": {
+        "ru": "исключить эти правила (через запятую или повтором флага: id, группа или буква тира)",
+        "en": "exclude these rules (comma-separated or by repeating the flag: id, group or tier letter)",
+    },
+    "cli.help.enable": {
+        "ru": "добавить выключенные по умолчанию правила ПОВЕРХ стандартного набора "
+              "(--select набор заменяет); формы значений те же",
+        "en": "add rules disabled by default ON TOP of the standard set "
+              "(--select replaces the set); the value forms are the same",
+    },
+    "cli.help.baseline": {
+        "ru": "гасить находки, замороженные в файле базлайна (создаётся --write-baseline); "
+              "новые находки выводятся как обычно",
+        "en": "suppress findings frozen in a baseline file (created by --write-baseline); "
+              "new findings are reported as usual",
+    },
+    "cli.help.write-baseline": {
+        "ru": "вместо отчёта записать все текущие находки в файл базлайна "
+              "(заморозить долг; пути в файле – относительно его каталога)",
+        "en": "instead of a report, write all current findings to a baseline file "
+              "(freeze the debt; paths in the file are relative to its directory)",
+    },
+    "cli.help.fix": {
+        "ru": "исправить механические находки на месте (хвостовые пробелы, типографские "
+              "символы, переводы строк) и вывести оставшиеся; правит только однозначно",
+        "en": "fix mechanical findings in place (trailing spaces, typographic "
+              "characters, line endings) and report the rest; only unambiguous fixes",
+    },
+    "cli.help.jobs": {
+        "ru": "процессов для файловых правил: 0 – авто (включается на больших прогонах), "
+              "1 – последовательно, N – явное число воркеров",
+        "en": "processes for file-scope rules: 0 – auto (kicks in on large runs), "
+              "1 – sequential, N – an explicit worker count",
+    },
+    "cli.help.list-rules": {
+        "ru": "вывести список правил и выйти",
+        "en": "print the list of rules and exit",
+    },
+    "cli.help.where": {
+        "ru": "показать корень данных Элемента (путь, источник, версии) и выйти",
+        "en": "show the Element data root (path, source, versions) and exit",
+    },
+    "cli.help.element-version": {
+        "ru": "версия данных Элемента (по умолчанию – последняя из бандла)",
+        "en": "Element data version (default: the latest in the bundle)",
+    },
+    "cli.help.data-dir": {
+        "ru": "корень данных Элемента (каталог с index.json); также env XBSL_DATA_DIR",
+        "en": "Element data root (a directory with index.json); also env XBSL_DATA_DIR",
+    },
+    "cli.help.lang": {
+        "ru": "язык вывода линтера (по умолчанию: env XBSL_LANG / локаль системы / ru)",
+        "en": "linter output language (default: env XBSL_LANG / system locale / ru)",
+    },
+    "cli.help.format": {
+        "ru": "формат вывода: text (по умолчанию), json (машиночитаемый: diagnostics + summary) "
+              "или codeclimate (отчёт GitLab Code Quality – виджет в merge request)",
+        "en": "output format: text (default), json (machine-readable: diagnostics + summary) "
+              "or codeclimate (a GitLab Code Quality report – the merge request widget)",
+    },
+    "cli.help.stdin": {
+        "ru": "проверить один буфер из stdin (для интеграции с редактором); "
+              "вид файла и путь в позициях задаёт --filename",
+        "en": "check a single buffer from stdin (for editor integration); "
+              "--filename sets the file kind and the reported path",
+    },
+    "cli.help.index": {
+        "ru": "вместо проверки вывести JSON-индекс проекта (объекты, методы, компоненты форм) "
+              "для навигации в редакторе; путь – корень проекта",
+        "en": "instead of checking, print a JSON project index (objects, methods, form components) "
+              "for editor navigation; the path is the project root",
+    },
+    "cli.help.filename": {
+        "ru": "имя проверяемого буфера при --stdin (напр. Форма.xbsl); расширение задаёт вид файла",
+        "en": "name of the buffer checked with --stdin (e.g. Форма.xbsl); the extension sets the file kind",
+    },
+    "cli.help.meta.rule-selector": {
+        "ru": "ID/ГРУППА/ТИР",
+        "en": "ID/GROUP/TIER",
+    },
+    "cli.help.meta.file": {
+        "ru": "ФАЙЛ",
+        "en": "FILE",
+    },
+    "cli.help.meta.version": {
+        "ru": "ВЕРСИЯ",
+        "en": "VERSION",
+    },
+    "cli.help.meta.dir": {
+        "ru": "КАТАЛОГ",
+        "en": "DIR",
+    },
+    "cli.help.meta.name": {
+        "ru": "ИМЯ",
+        "en": "NAME",
+    },
+    "cli.help.server.lsp": {
+        "ru": "сервер LSP для редактора",
+        "en": "LSP server for the editor",
+    },
+    "cli.help.server.mcp": {
+        "ru": "сервер MCP для агента",
+        "en": "MCP server for the agent",
+    },
+    "cli.help.server.web": {
+        "ru": "веб-панель",
+        "en": "web panel",
+    },
+    "cli.help.commands.header": {
+        "ru": "команды:",
+        "en": "commands:",
+    },
+    "cli.help.commands.lint-name": {
+        "ru": "lint <пути>",
+        "en": "lint <paths>",
+    },
+    "cli.help.commands.lint-desc": {
+        "ru": "проверить исходники – то же, что без команды",
+        "en": "check the sources – the same as with no command",
+    },
+    "cli.help.commands.templates": {
+        "ru": "шаблоны кода: list, export, import, save",
+        "en": "code templates: list, export, import, save",
+    },
+    "cli.help.commands.self-update": {
+        "ru": "обновить xbsl распаковкой колеса с PyPI",
+        "en": "update xbsl by unpacking the wheel from PyPI",
+    },
+    "cli.help.commands.scaffold-header": {
+        "ru": "скаффолдинг метаданных (создание и правка исходников):",
+        "en": "metadata scaffolding (create and edit sources):",
+    },
+    "cli.help.commands.footer": {
+        "ru": "Опции команды: xbsl <команда> --help. Опции выше относятся к режиму проверки.",
+        "en": "Command options: xbsl <command> --help. The options above apply to the check mode.",
+    },
 }
 
 
@@ -122,6 +289,26 @@ def set_lang(lang: str | None) -> None:
     if lang is not None and lang not in LANGS:
         raise MessageError(f"Unknown language '{lang}'. Available: {', '.join(LANGS)}")
     _selected = lang
+
+
+def lang_from_argv(argv) -> str | None:
+    """Read --lang out of raw argv, before the parser is built.
+
+    The parser is built with translated help=, but argparse learns --lang only when it parses –
+    too late to choose the help language. So the value is scanned out of argv beforehand.
+    Accepts "--lang en" and "--lang=en". A value outside LANGS returns None: the language stays
+    at its default and argparse rejects the bad value with its own message. env / locale need no
+    prescan – t() already reads them through current_lang() when the parser is built.
+    """
+    for i, arg in enumerate(argv):
+        value = None
+        if arg == "--lang" and i + 1 < len(argv):
+            value = argv[i + 1]
+        elif arg.startswith("--lang="):
+            value = arg[len("--lang="):]
+        if value is not None:
+            return value if value in LANGS else None
+    return None
 
 
 def _system_lang() -> str | None:

@@ -149,3 +149,43 @@ def test_system_locale_is_recognised(monkeypatch):
     monkeypatch.delenv("XBSL_LANG", raising=False)
     monkeypatch.setattr(i18n._locale, "getlocale", lambda *a: ("English_United States", "1252"))
     assert i18n.current_lang() == "en"
+
+
+# --- Prescan of --lang in argv (help is assembled before parsing) --------------------
+
+def test_lang_from_argv_reads_separate_value():
+    assert i18n.lang_from_argv(["--lang", "en", "Форма.xbsl"]) == "en"
+
+
+def test_lang_from_argv_reads_equals_form():
+    assert i18n.lang_from_argv(["--lang=ru", "lint"]) == "ru"
+
+
+def test_lang_from_argv_is_none_without_flag():
+    assert i18n.lang_from_argv(["Форма.xbsl"]) is None
+
+
+def test_lang_from_argv_rejects_unknown_value():
+    # An unknown language is not pinned - argparse rejects it later with its own message.
+    assert i18n.lang_from_argv(["--lang", "de"]) is None
+
+
+def test_lang_from_argv_ignores_dangling_flag():
+    assert i18n.lang_from_argv(["lint", "--lang"]) is None
+
+
+def test_check_mode_help_follows_lang_flag(capsys):
+    """--lang translates the check-mode --help text, not only the runtime output: the language
+    is resolved before the parser is built. Both directions are checked with an explicit flag,
+    which does not depend on the machine locale or on the Element data. _restore_lang puts ru back.
+    """
+    from xbsl import cli
+
+    with pytest.raises(SystemExit) as info:
+        cli.main(["--lang", "en", "--help"])
+    assert info.value.code == 0
+    assert "Linter for 1C:Element sources" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit):
+        cli.main(["--lang", "ru", "--help"])
+    assert "Линтер исходников" in capsys.readouterr().out
