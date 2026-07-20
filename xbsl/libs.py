@@ -46,7 +46,9 @@ _VENDOR_KEYS = ("Поставщик", "Vendor")
 _NAME_KEYS = ("Имя", "Name")
 _VERSION_KEYS = ("Версия", "Version")
 _KIND_KEYS = ("ВидЭлемента", "ElementKind")
-_SCOPE_KEYS = ("ОбластьВидимости", "VisibilityArea")
+#: The English spelling comes from the metamodel annotation @PropertyInfo(ru="ОбластьВидимости",
+#: en="VisibilityScope"); the earlier "VisibilityArea" here matched nothing.
+_SCOPE_KEYS = ("ОбластьВидимости", "VisibilityScope")
 
 # The scope written when an element is visible outside its library; anything else (the
 # default is ВПодсистеме) stays internal to the library.

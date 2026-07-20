@@ -66,7 +66,8 @@ MESSAGES = {
     },
     "style/enum-name-vid.title": {
         "ru": "Имя перечисления начинается с \"Тип\"",
-        "en": "Enumeration name starts with \"Тип\"",
+        # Both spellings are matched (_ENUM_BAD_PREFIXES), so the title names both.
+        "en": "Enumeration name starts with \"Тип\"/\"Type\"",
     },
     "style/enum-name-vid.bad-prefix": {
         "ru": "Имя перечисления '{name}' начинается с '{prefix}' – "
