@@ -344,3 +344,87 @@ def test_call_from_ordinary_module_not_checked(tmp_path):
         discover([str(tmp_path)]), select={"code/client-module-in-http-service"}
     )
     assert not _has(d, "code/client-module-in-http-service")
+
+
+# --- code/query-needs-server -----------------------------------------------------------
+
+RULE_QUERY = "code/query-needs-server"
+
+_ЗАПРОС = (
+    "    знч Итог = Запрос{\n"
+    "        ВЫБРАТЬ ПЕРВЫЕ 1\n"
+    "            Код КАК Код\n"
+    "        ИЗ\n"
+    "            Тест\n"
+    "    }\n"
+)
+
+
+def _модуль(tmp_path, module, yaml):
+    (tmp_path / "Модуль.yaml").write_text(yaml, encoding="utf-8")
+    (tmp_path / "Модуль.xbsl").write_text(module, encoding="utf-8")
+    return engine.run(discover([str(tmp_path)]), select={RULE_QUERY})
+
+
+_КЛИЕНТ_И_СЕРВЕР = "ВидЭлемента: ОбщийМодуль\nИмя: Модуль\nОкружение: КлиентИСервер\n"
+
+
+def test_query_without_server_annotation_flagged(tmp_path):
+    d = _модуль(tmp_path, "метод Считать()\n" + _ЗАПРОС + ";\n", _КЛИЕНТ_И_СЕРВЕР)
+    assert _has(d, RULE_QUERY)
+    found = next(x for x in d if x.rule_id == RULE_QUERY)
+    assert "Считать" in found.message and found.line == 2
+
+
+def test_query_with_server_annotation_ok(tmp_path):
+    d = _модуль(tmp_path, "@НаСервере\nметод Считать()\n" + _ЗАПРОС + ";\n", _КЛИЕНТ_И_СЕРВЕР)
+    assert not _has(d, RULE_QUERY)
+
+
+def test_blank_line_and_comment_do_not_break_the_bond(tmp_path):
+    # checked on a server probe: neither separator detaches the annotation from its method
+    d = _модуль(
+        tmp_path,
+        "@НаСервере\n\nметод СПустойСтрокой()\n" + _ЗАПРОС + ";\n"
+        "@НаСервере\n// комментарий\nметод СКомментарием()\n" + _ЗАПРОС + ";\n",
+        _КЛИЕНТ_И_СЕРВЕР,
+    )
+    assert not _has(d, RULE_QUERY)
+
+
+def test_server_module_not_checked(tmp_path):
+    d = _модуль(
+        tmp_path,
+        "метод Считать()\n" + _ЗАПРОС + ";\n",
+        "ВидЭлемента: ОбщийМодуль\nИмя: Модуль\nОкружение: Сервер\n",
+    )
+    assert not _has(d, RULE_QUERY)
+
+
+def test_kind_without_documented_environment_not_checked(tmp_path):
+    # an HttpСервис runs on the server and has no Окружение property - left alone
+    d = _модуль(
+        tmp_path,
+        "метод Считать()\n" + _ЗАПРОС + ";\n",
+        "ВидЭлемента: HttpСервис\nИмя: Модуль\nКорневойUrl: /x\n",
+    )
+    assert not _has(d, RULE_QUERY)
+
+
+def test_form_module_is_client(tmp_path):
+    d = _модуль(
+        tmp_path,
+        "метод Считать()\n" + _ЗАПРОС + ";\n",
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Модуль\n",
+    )
+    assert _has(d, RULE_QUERY)
+
+
+def test_variable_named_query_is_not_a_query_block(tmp_path):
+    # the lexer reports `Запрос` as a keyword even when it is just a variable name
+    d = _модуль(
+        tmp_path,
+        "метод Считать()\n    знч Запрос = 1\n    возврат Запрос\n;\n",
+        _КЛИЕНТ_И_СЕРВЕР,
+    )
+    assert not _has(d, RULE_QUERY)

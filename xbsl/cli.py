@@ -222,7 +222,7 @@ def _apply_fixes(sources, diagnostics, args) -> int:
 
 
 _META_COMMANDS = (
-    "new-project", "new-object", "add-field", "add-route", "add-form",
+    "new-project", "new-object", "add-field", "add-route", "add-method", "add-form",
     "add-subsystem", "add-dependency", "rename-object", "set-access",
     "object-info", "project-info", "form-tree", "form-edit", "form-handlers",
 )
@@ -376,6 +376,16 @@ def _scaffold_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("add-route", help="добавить маршруты в существующий HttpСервис")
     p.add_argument("yaml_path")
     p.add_argument("routes")
+
+    p = sub.add_parser("add-method", help="добавить метод в модуль .xbsl, не разрывая аннотации")
+    p.add_argument("module_path")
+    p.add_argument("name")
+    p.add_argument("--params", default="", help="список параметров как в сигнатуре")
+    p.add_argument("--returns", help="тип возвращаемого значения")
+    p.add_argument("--annotations", help="аннотации через пробел, например 'НаСервере ВПроекте'")
+    p.add_argument("--after", help="вставить после этого метода")
+    p.add_argument("--before", help="вставить перед этим методом")
+    p.add_argument("--body", help="одна строка тела вместо заготовки // TODO")
 
     p = sub.add_parser("add-form", help="создать формы объекта и зарегистрировать в Интерфейс")
     p.add_argument("root")
@@ -538,6 +548,13 @@ def _scaffold_main(argv: list[str]) -> int:
             )
         elif args.command == "add-route":
             result = scaffold.op_add_route(Path(args.yaml_path), args.routes)
+        elif args.command == "add-method":
+            result = scaffold.op_add_method(
+                Path(args.module_path), args.name,
+                params=args.params, returns=args.returns,
+                annotations=args.annotations, after=args.after, before=args.before,
+                body=args.body,
+            )
         elif args.command == "add-form":
             result = scaffold.op_add_form(
                 Path(args.root), name=args.name,

@@ -110,6 +110,103 @@ def test_new_object_catalog(tmp_path):
     assert wider["ОбластьВидимости"] == "ВПроекте"
 
 
+_МОДУЛЬ = (
+    "@НаСервере\n"
+    "метод Первый(): Число\n"
+    "    возврат 1\n"
+    ";\n\n"
+    "@НаСервере @ВПроекте\n"
+    "метод Второй(): Число\n"
+    "    возврат 2\n"
+    ";\n"
+)
+
+
+def _annotations_of(text):
+    from xbsl import engine
+    from xbsl.parser import Method, parse
+
+    module, errors = parse(engine.load_text("Модуль.xbsl", text))
+    assert not errors, errors
+    return {m.name: sorted(a.name for a in m.annotations)
+            for m in module.members if isinstance(m, Method)}
+
+
+def _module(tmp_path):
+    p = tmp_path / "Модуль.xbsl"
+    p.write_text(_МОДУЛЬ, encoding="utf-8")
+    return p
+
+
+def test_add_method_keeps_annotation_bonds(tmp_path):
+    # The whole point of the operation: an insertion must never split an annotation block
+    # from its method. Checked for every placement, by parsing the result.
+    for kwargs in ({"after": "Первый"}, {"before": "Второй"}, {}):
+        p = _module(tmp_path)
+        result = scaffold.op_add_method(p, "Новый", annotations="НаСервере", **kwargs)
+        anns = _annotations_of(result.changes[0].content)
+        assert anns["Первый"] == ["НаСервере"]
+        assert anns["Второй"] == ["ВПроекте", "НаСервере"]
+        assert anns["Новый"] == ["НаСервере"]
+
+
+def test_text_anchor_insertion_is_what_this_replaces(tmp_path):
+    # The trap, reproduced: inserting before the "метод Второй" line hands the neighbour's
+    # annotations to the new method and leaves Второй with none.
+    naive = _МОДУЛЬ.replace(
+        "метод Второй", "@НаСервере\nметод Новый()\n    возврат\n;\n\nметод Второй", 1
+    )
+    anns = _annotations_of(naive)
+    assert anns["Второй"] == []
+    assert anns["Новый"] == ["ВПроекте", "НаСервере", "НаСервере"]
+
+
+def test_add_method_placement_and_signature(tmp_path):
+    p = _module(tmp_path)
+    text = scaffold.op_add_method(
+        p, "Считать", params="Ид: Строка", returns="Число",
+        annotations="@НаСервере", after="Первый", body="возврат 0",
+    ).changes[0].content
+    assert "метод Считать(Ид: Строка): Число" in text
+    assert "    возврат 0" in text
+    assert text.index("метод Считать") > text.index("метод Первый")
+    assert text.index("метод Считать") < text.index("метод Второй")
+
+
+def test_add_method_rejects_duplicates_and_unknown_anchors(tmp_path):
+    p = _module(tmp_path)
+    with pytest.raises(scaffold.ScaffoldError):
+        scaffold.op_add_method(p, "Первый")
+    with pytest.raises(scaffold.ScaffoldError):
+        scaffold.op_add_method(p, "Новый", after="НетТакого")
+    with pytest.raises(scaffold.ScaffoldError):
+        scaffold.op_add_method(p, "Новый", after="Первый", before="Второй")
+    with pytest.raises(scaffold.ScaffoldError):
+        scaffold.op_add_method(p, "Плохое имя")
+    with pytest.raises(scaffold.ScaffoldError):
+        scaffold.op_add_method(p.with_suffix(".yaml"), "Новый")
+
+
+def test_add_method_refuses_a_broken_module(tmp_path):
+    # A module the parser cannot read gives no reliable borders - better to refuse.
+    p = tmp_path / "Модуль.xbsl"
+    p.write_text("метод Первый(\n", encoding="utf-8")
+    with pytest.raises(scaffold.ScaffoldError):
+        scaffold.op_add_method(p, "Новый")
+
+
+def test_new_object_form_wraps_content_in_a_template(tmp_path):
+    # `Форма.Содержимое` is typed ШаблонФормы?: a Группа placed there directly makes the
+    # server reject the build ("Значение типа "Группа" не может быть присвоено в "ШаблонФормы?"),
+    # which is what the generated skeleton used to do.
+    result = scaffold.op_new_object(tmp_path, "КомпонентИнтерфейса", "ФормаПробы")
+    apply_result(result)
+    parsed = _valid_yaml((tmp_path / "ФормаПробы.yaml").read_text(encoding="utf-8"))
+    content = parsed["Наследует"]["Содержимое"]
+    assert content["Тип"] == "ПроизвольныйШаблонФормы"
+    assert content["Содержимое"]["Тип"] == "Группа"
+
+
 def test_new_object_rejects_duplicates_and_bad_names(tmp_path):
     apply_result(scaffold.op_new_object(tmp_path, "Справочник", "Товары"))
     with pytest.raises(ScaffoldError, match="уже существует"):

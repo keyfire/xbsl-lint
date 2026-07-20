@@ -99,7 +99,8 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   {
     match: (r) => r === "code/client-annotation-in-server-module"
       || r === "code/client-module-in-http-service"
-      || r === "code/server-call-from-handler",
+      || r === "code/server-call-from-handler"
+      || r === "code/query-needs-server",
     page: EXEC,
   },
   {

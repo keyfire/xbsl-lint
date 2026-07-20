@@ -237,6 +237,7 @@ xbsl add-form . --name Товары                        # object + list forms
 xbsl add-form . --name Товары --forms list-cards     # list form as a card grid
 xbsl new-object ... HttpСервис Каталог --routes "GET /, POST /, GET /{id}"
 xbsl add-route  .../Каталог.yaml "DELETE /{id}"      # url template + handler stub
+xbsl add-method .../Товары.Объект.xbsl Пересчитать --annotations НаСервере --after Записать
 xbsl add-subsystem vendor/App Задачи
 xbsl add-dependency . acme CurrencyConverter 2.0      # library into the project's Библиотеки
 xbsl rename-object . Товары Номенклатура             # rename files + update references
@@ -402,7 +403,8 @@ Tools: `lint_paths(paths)`, `lint_source(filename, content)`, `list_rules()`; do
 above); `type_members(name)` – the members of a stdlib type with the return-type roots of its
 methods in one compact answer (cheaper than a docs page when only the member list matters);
 metadata scaffolding – `meta_new_project`, `meta_new_object`, `meta_add_field`,
-`meta_add_route`, `meta_add_form`, `meta_add_subsystem`, `meta_add_dependency`,
+`meta_add_route`, `meta_add_method`, `meta_add_form`, `meta_add_subsystem`,
+`meta_add_dependency`,
 `meta_rename_object` (with a `dry_run` plan mode), `meta_set_access`, `meta_object_info`,
 `meta_project_info`.
 Every writing `meta_*` tool applies the changes and returns the lint of the written files in the

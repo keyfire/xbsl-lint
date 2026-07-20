@@ -38,6 +38,7 @@ from collections.abc import Iterable
 from xbsl import i18n
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
+from xbsl.lexer import tokens
 from xbsl.rules._syntax import code_tokens
 from xbsl.rules.enum_values import _shadowed_names
 from xbsl.rules.handlers import _HANDLER_RE, _IDENT_RE
@@ -391,4 +392,137 @@ def client_module_in_http_service(facts: dict[str, dict]) -> Iterable[Diagnostic
                 Severity.WARNING,
                 i18n.t("code/client-module-in-http-service.call",
                        name=f"{root}.{member}", root=root),
+            )
+
+
+# --- A query block in a method that compiles as client code -----------------------------
+
+MESSAGES_QUERY = {
+    "code/query-needs-server.title": {
+        "ru": "Запрос в методе без @НаСервере",
+        "en": "Query in a method without @НаСервере",
+    },
+    "code/query-needs-server.found": {
+        "ru": "Блок Запрос{{}} в методе '{name}' без @НаСервере: модуль исполняется на "
+              "клиенте ({env}), тип Запрос там недоступен – компилятор откажет.",
+        "en": "A Запрос{{}} block in method '{name}' without @НаСервере: the module runs "
+              "on the client ({env}), where the type Запрос does not exist - the compiler "
+              "will reject it.",
+    },
+}
+i18n.register(MESSAGES_QUERY)
+
+
+def _client_environment(data: dict) -> str | None:
+    """The environment label when the module provably runs on the client, else None.
+
+    Only the two kinds whose client side is beyond doubt are judged: a form module (an
+    interface component is client code by definition) and a common module that says so
+    itself. Everything else - HttpСервис, object and manager modules of catalogs and
+    registers, the kinds without a documented environment - is left alone: a missed case
+    is a false negative, a guessed one would be a false positive on working code.
+    """
+    kind = data.get("ВидЭлемента")
+    if kind == "КомпонентИнтерфейса":
+        return "Клиент"
+    if kind == "ОбщийМодуль":
+        env = data.get("Окружение")
+        if isinstance(env, str) and "Клиент" in env:
+            return env
+    return None
+
+
+def _query_openings(source: SourceFile) -> list[tuple[int, int, int]]:
+    """(line, col, offset of the `{`) of every `Запрос{...}` block.
+
+    The `{` is what tells a query literal from a variable that happens to be named Запрос -
+    the lexer reports the word as a keyword in both cases. The position returned is the
+    keyword's, which is where the compiler points as well.
+    """
+    toks = tokens(source)
+    n = len(toks)
+    out: list[tuple[int, int, int]] = []
+    for i, t in enumerate(toks):
+        if not (t.kind == "KEYWORD" and t.canonical == "QUERY"):
+            continue
+        j = i + 1
+        while j < n and toks[j].kind == "COMMENT":
+            j += 1
+        if j < n and toks[j].kind == "OP" and toks[j].value == "{":
+            out.append((t.line, t.col, toks[j].start))
+    return out
+
+
+def _query_server_mapper(source: SourceFile) -> dict | None:
+    """The map phase: the yaml says whether the module runs on the client, the module says
+    which of its methods hold a query block without @НаСервере (position of the block)."""
+    if not _HAVE_YAML:
+        return None
+    if source.kind == "yaml":
+        data = _parsed_object(source)
+        if data is None:
+            return None
+        env = _client_environment(data)
+        if env is None:
+            return None
+        return {"k": "y", "stem": _pair_stem(source.rel), "env": env}
+    if source.kind != "xbsl":
+        return None
+    openings = _query_openings(source)
+    if not openings:
+        return None
+    toks = code_tokens(source)
+    if not toks:
+        return None
+    _decls, methods = _module_decls(toks)
+    bodies = _method_bodies(toks, methods, _decl_anchors(toks))
+    anns = {name: a for name, a, _ in methods}
+    found: list[tuple[str, int, int]] = []
+    for name, (start, end) in bodies.items():
+        if "НаСервере" in anns.get(name, frozenset()) or start >= len(toks):
+            continue
+        lo = toks[start].start
+        hi = toks[end - 1].end if end - 1 < len(toks) else len(source.text)
+        for line, col, brace in openings:
+            if lo <= brace < hi:
+                found.append((name, line, col))
+                break  # one finding per method: the fix is the same annotation
+    return {"k": "x", "stem": _pair_stem(source.rel), "queries": found} if found else None
+
+
+@rule(
+    "code/query-needs-server", "code/query-needs-server.title", "D",
+    scope="project", severity=Severity.ERROR, mapper=_query_server_mapper,
+)
+def query_needs_server(facts: dict[str, dict]) -> Iterable[Diagnostic]:
+    """A `Запрос{...}` block in a client-side method - the compiler rejects such a project.
+
+    Checked on a two-subsystem probe built and applied on a server: in a common module with
+    `Окружение: КлиентИСервер`, the method carrying @НаСервере compiles as `<Сервер>` and the
+    one without it as `<Клиент>`, failing with `Type "Запрос" is unavailable in the current
+    environment`. Neither a blank line nor a comment between the annotation block and the
+    method breaks their bond - that was checked on the same probe, so nothing here judges
+    the layout; only the presence of the annotation counts.
+
+    This is the check that pays for the class of errors where inserting a method by a text
+    anchor steals the annotations of its neighbour: the robbed method loses @НаСервере, and
+    the compiler then reports it far from the cause. On the corpora all 57 client-side
+    methods holding a query carry @НаСервере - the rule is a guard, with zero findings.
+    """
+    client_stems: dict[str, str] = {}
+    for fact in facts.values():
+        if fact["k"] == "y":
+            client_stems[fact["stem"]] = fact["env"]
+    if not client_stems:
+        return
+    for rel, fact in facts.items():
+        if fact["k"] != "x":
+            continue
+        env = client_stems.get(fact["stem"])
+        if env is None:
+            continue
+        for name, line, col in fact["queries"]:
+            yield Diagnostic(
+                rel, line, col, "code/query-needs-server", Severity.ERROR,
+                i18n.t("code/query-needs-server.found", name=name, env=env),
             )

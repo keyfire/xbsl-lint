@@ -345,6 +345,36 @@ def meta_add_route(yaml_path: str, routes: str) -> dict:
 
 
 @mcp.tool()
+def meta_add_method(
+    module_path: str,
+    name: str,
+    params: str = "",
+    returns: str = "",
+    annotations: str = "",
+    after: str = "",
+    before: str = "",
+    body: str = "",
+) -> dict:
+    """Insert a method into an existing .xbsl module without tearing annotation blocks apart.
+
+    Use this instead of editing the module by a text anchor: an anchor like "метод Имя" lands
+    between an annotation block and the method it belongs to, so the new method inherits the
+    neighbour's @НаСервере/@Локально while the neighbour loses them - valid syntax the linter
+    cannot see, which surfaces only as unrelated compiler errors on deploy. The insertion
+    point here is always a method border, annotations included.
+
+    Placement: `after` or `before` name an existing method (mutually exclusive), otherwise the
+    method is appended. `annotations` is a whitespace-separated list, `@` optional; `body` is a
+    single line put in place of the `// TODO` stub.
+    """
+    return _meta(
+        scaffold.op_add_method, Path(module_path), name,
+        params=params, returns=returns or None, annotations=annotations or None,
+        after=after or None, before=before or None, body=body or None,
+    )
+
+
+@mcp.tool()
 def meta_add_form(
     root: str,
     name: str | None = None,

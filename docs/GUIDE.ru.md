@@ -236,6 +236,7 @@ xbsl add-form . --name Товары                        # формы объе
 xbsl add-form . --name Товары --forms list-cards     # форма списка карточками
 xbsl new-object ... HttpСервис Каталог --routes "GET /, POST /, GET /{id}"
 xbsl add-route  .../Каталог.yaml "DELETE /{id}"      # шаблон URL + заготовка обработчика
+xbsl add-method .../Товары.Объект.xbsl Пересчитать --annotations НаСервере --after Записать
 xbsl add-subsystem vendor/Приложение Задачи
 xbsl add-dependency . acme CurrencyConverter 2.0      # библиотека в раздел Библиотеки проекта
 xbsl rename-object . Товары Номенклатура             # файлы + ссылки по всему проекту
@@ -398,7 +399,8 @@ claude mcp add xbsl -- xbsl-mcp
 см. выше); `type_members(name)` – члены stdlib-типа с корнями типов возвратов его методов одним
 компактным ответом (дешевле страницы доков, когда нужен только список членов);
 скаффолдинг метаданных – `meta_new_project`, `meta_new_object`, `meta_add_field`,
-`meta_add_route`, `meta_add_form`, `meta_add_subsystem`, `meta_add_dependency`,
+`meta_add_route`, `meta_add_method`, `meta_add_form`, `meta_add_subsystem`,
+`meta_add_dependency`,
 `meta_rename_object` (с режимом плана `dry_run`), `meta_set_access`, `meta_object_info`,
 `meta_project_info`.
 Каждый пишущий `meta_*` применяет изменения и в том же ответе возвращает линт записанных

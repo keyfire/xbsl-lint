@@ -461,13 +461,18 @@ KIND_SPECS: dict[str, KindSpec] = {
     "SoapСервис": KindSpec(module=True),
     "ГлобальноеКлиентскоеСобытие": KindSpec(),
     "ФрагментКомандногоИнтерфейса": KindSpec(),
+    # `Форма.Содержимое` is typed `ШаблонФормы?`, so a Группа cannot sit there directly -
+    # the server rejects the build with `Значение типа "Группа" не может быть присвоено в
+    # "ШаблонФормы?"`. The template wrapper is what real forms carry.
     "КомпонентИнтерфейса": KindSpec(
         extra=(
             "Наследует:",
             "    Тип: Форма",
             "    Содержимое:",
-            "        Тип: Группа",
-            "        Компоновка: Вертикальная",
+            "        Тип: ПроизвольныйШаблонФормы",
+            "        Содержимое:",
+            "            Тип: Группа",
+            "            Компоновка: Вертикальная",
         ),
     ),
     "КлючДоступа": KindSpec(module=True),
@@ -1707,6 +1712,112 @@ def _new_soap_service(
     result.notes.append(
         f"Операция-пример {operation}: задайте её сигнатуру и опишите типы ошибок в "
         "Обработчики.Ошибки (типы-исключения) – по контракту сервиса"
+    )
+    return result
+
+
+def _method_spans(text: str) -> list[tuple[str, int, int]]:
+    """(name, start, end) of every method of a module, annotations included in the span.
+
+    The parser puts the annotation block inside the method node, which is exactly what makes
+    insertion safe: both borders of a method are outside anybody's annotation block.
+    """
+    from xbsl import engine as _engine
+    from xbsl import parser as _parser
+    from xbsl.parser import parse as _parse
+
+    src = _engine.load_text("Модуль.xbsl", text)
+    module, errors = _parse(src)
+    if errors:
+        from xbsl.lexer import linemap as _linemap
+
+        line, _col = _linemap(src).linecol(errors[0].start)
+        raise ScaffoldError(
+            "Модуль не разбирается парсером – вставка метода отменена "
+            f"(строка {line}: {errors[0].message})"
+        )
+    spans: list[tuple[str, int, int]] = []
+    for m in module.members:
+        if isinstance(m, _parser.Method):
+            spans.append((m.name, m.start, m.end))
+    return spans
+
+
+def op_add_method(
+    module_path: Path,
+    name: str,
+    *,
+    params: str = "",
+    returns: str | None = None,
+    annotations: str | None = None,
+    after: str | None = None,
+    before: str | None = None,
+    body: str | None = None,
+    reader=None,
+) -> ScaffoldResult:
+    """Insert a method into an existing .xbsl module without tearing annotations apart.
+
+    The trap this replaces: inserting by a text anchor like `"метод Имя"` lands BETWEEN an
+    annotation block and the method it belongs to, so the new method silently inherits the
+    neighbour's @НаСервере/@Локально and the neighbour loses them. The compiler then reports
+    the damage far from the cause. Here the insertion point is always a method BORDER (the
+    parser counts the annotation block as part of its method), so no block is ever split.
+
+    Placement: `after`/`before` name an existing method, otherwise the method goes to the end
+    of the module. `annotations` is a whitespace-separated list, with or without the `@`.
+    """
+    module_path = Path(module_path)
+    if module_path.suffix != ".xbsl":
+        raise ScaffoldError(f"Нужен модуль .xbsl, а не {module_path.name}")
+    text, nl = _load_for_edit(module_path, reader)
+    name = _check_identifier(name, "метода")
+    if after and before:
+        raise ScaffoldError("Укажите либо after, либо before, но не оба")
+
+    spans = _method_spans(text)
+    existing = {n for n, _, _ in spans}
+    if name in existing:
+        raise ScaffoldError(f"Метод '{name}' в модуле уже есть")
+
+    anchor_name = after or before
+    if anchor_name and anchor_name not in existing:
+        known = ", ".join(sorted(existing)) or "методов нет"
+        raise ScaffoldError(f"Метод '{anchor_name}' в модуле не найден (есть: {known})")
+
+    header = f"метод {name}({params})"
+    if returns:
+        header += f": {returns}"
+    lines = []
+    if annotations:
+        marks = [a if a.startswith("@") else f"@{a}" for a in annotations.split()]
+        lines.append(" ".join(marks))
+    lines.append(header)
+    lines.append(f"    {body}" if body else "    // TODO")
+    lines.append(";")
+    block = "\n".join(lines)
+
+    if anchor_name:
+        span = next(s for s in spans if s[0] == anchor_name)
+        point = span[2] if after else span[1]
+    else:
+        point = len(text.rstrip("\r\n"))
+
+    head, tail = text[:point], text[point:]
+    if after or not anchor_name:
+        new_text = head.rstrip("\r\n") + "\n\n" + block + "\n" + tail.lstrip("\r\n")
+        if tail.strip():
+            new_text = head.rstrip("\r\n") + "\n\n" + block + "\n\n" + tail.lstrip("\r\n")
+    else:
+        new_text = head.rstrip("\r\n") + ("\n\n" if head.strip() else "") + block + "\n\n" + tail
+    if not new_text.endswith("\n"):
+        new_text += "\n"
+    if nl != "\n":
+        new_text = re.sub(r"(?<!\r)\n", nl, new_text)
+
+    cursor_line = new_text[: new_text.find(block)].count("\n") + len(lines) - 2
+    result = ScaffoldResult()
+    result.changes.append(
+        FileChange(module_path, new_text, created=False, cursor=(cursor_line, 4))
     )
     return result
 

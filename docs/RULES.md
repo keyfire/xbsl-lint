@@ -7,7 +7,7 @@ sidebar:
 ---
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl --list-rules` (or the MCP `list_rules`). Currently there are 89 rules.
+runtime is `xbsl --list-rules` (or the MCP `list_rules`). Currently there are 90 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -150,6 +150,7 @@ the execution model (client/server), form handlers, properties and queries.
 | `code/server-call-from-handler` | warning | on | project | Server method is unavailable to a client handler | [docs](https://1cmycloud.com/docs/help/topics/module-execution/) |
 | `code/client-annotation-in-server-module` | warning | on | project | Client annotation in a server common module | [docs](https://1cmycloud.com/docs/help/topics/module-execution/) |
 | `code/client-module-in-http-service` | warning | on | project | Client common module in an HTTP service | [docs](https://1cmycloud.com/docs/help/topics/module-execution/) |
+| `code/query-needs-server` | error | on | project | A `Запрос{...}` block in a method of a client-side module (a form, or a common module whose `Окружение` involves the client) that carries no `@НаСервере` - the type does not exist on the client and the compiler rejects the build | [docs](https://1cmycloud.com/docs/help/topics/module-execution/) |
 | `code/local-method-cross-component` | warning | on | project | Cross-component call of a local method | [docs](https://1cmycloud.com/docs/help/topics/modular-development/) |
 | `naming/yo` | warning | on | file | Letter "ё" in a name | [docs](https://1cmycloud.com/docs/help/topics/project-element-names-standard/) |
 | `naming/underscore` | warning | on | file | Underscore in a name | [docs](https://1cmycloud.com/docs/help/topics/project-element-names-standard/) |
