@@ -30,10 +30,10 @@ ships as a Python engine and a VS Code extension built on top of it.
 
 ## Where to go next
 
-- **[Guide](GUIDE.md)** – installation, CLI flags, CI setup, the baseline mechanism, metadata
+- **[Guide](/GUIDE)** – installation, CLI flags, CI setup, the baseline mechanism, metadata
   scaffolding, extending the linter with your own rules, and the LSP and MCP servers.
-- **[Rules](RULES.md)** – the full list of linter checks, with severities and scope.
-- **[Visual designer](DESIGNER.md)** – specification and roadmap for the in-editor form
+- **[Rules](/RULES)** – the full list of linter checks, with severities and scope.
+- **[Visual designer](/DESIGNER)** – specification and roadmap for the in-editor form
   designer.
 - **[README on GitHub](https://github.com/keyfire/xbsl/blob/main/README.md)** – the short
   project tour and quick-start commands.
