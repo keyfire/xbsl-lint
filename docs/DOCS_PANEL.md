@@ -34,8 +34,7 @@ The panel is the single "what is this thing" answer for the whole extension:
 | --- | --- |
 | Hovering a name in `.xbsl` | the hover shows the type description and a **Documentation** link - a click opens the page |
 | Editor context menu, *XBSL: documentation for symbol* | the page of the type under the cursor; for a method or an ambiguous name - a list of candidates |
-| The designer **Palette**, *Open documentation* | the page of the component you are about to insert |
-| The **Properties** panel, *Open documentation* | the page of the component or the property you are editing |
+| The designer **Palette**, *Open documentation* | the page of the component you are about to insert (a short description also rides in the palette item's tooltip) |
 | The "Contents" tree and search | plain navigation through the reference |
 
 For an ambiguous name the candidates are **ranked by the receiver before the dot**:

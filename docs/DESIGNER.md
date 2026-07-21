@@ -196,9 +196,9 @@ The **Properties** panel edits the selected component (and, from the metadata tr
 ## Documentation panel
 
 The **Documentation (1C:Element)** container holds the platform help built from your 1C:Element
-distribution. This is where the designer answers "what is this component or property": the **Open
-documentation** action in the palette and in the properties panel opens the page right here,
-without leaving the editor. In detail - [Documentation panel](/DOCS_PANEL).
+distribution. This is where the designer answers "what is this component": the **Open
+documentation** action on a palette item opens the page right here, without leaving the editor.
+In detail - [Documentation panel](/DOCS_PANEL).
 
 ## Structural search
 

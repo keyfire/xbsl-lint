@@ -456,7 +456,7 @@ method or an ambiguous name a pick-list of candidates is shown, ranked by the re
 
 **Where the other entry points lead.** Hovering a name in an `.xbsl` shows the type description and
 a **Documentation** link; in the form designer the *Open documentation* action sits on a palette
-item and on a property in the properties panel. All of them open the page in this same panel –
+item (a short description also rides in its tooltip). Both open the page in this same panel –
 reading up on an unfamiliar component costs no trip out of the editor.
 
 The data comes from the linter's LSP server, so it needs [LSP mode](#lsp-mode-default) and the
