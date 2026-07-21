@@ -62,11 +62,28 @@ class DatasetError(RuntimeError):
     pass
 
 
+#: Caches derived from the dataset, dropped whenever the root or the version changes. A module
+#: that precomputes tables over the data (the metamodel does) registers its own reset here -
+#: otherwise pinning another root would still answer from the previous one.
+_RESET_HOOKS: list = []
+
+
+def register_reset(hook) -> None:
+    """Register a callable to run when the pinned data root or version changes."""
+    _RESET_HOOKS.append(hook)
+
+
+def _clear_caches() -> None:
+    _load_cached.cache_clear()
+    for hook in _RESET_HOOKS:
+        hook()
+
+
 def set_data_root(path: str | os.PathLike[str] | None) -> None:
     """Pin the data root for the process (CLI --data-dir). Clears the cache."""
     global _root_override
     _root_override = Path(path) if path is not None else None
-    _load_cached.cache_clear()
+    _clear_caches()
 
 
 def data_root() -> Path:
@@ -119,7 +136,7 @@ def set_version(version: str | None) -> None:
     """Pin the data version for the process (CLI --element-version). Clears the cache."""
     global _selected
     _selected = version
-    _load_cached.cache_clear()
+    _clear_caches()
 
 
 def resolve_version(override: str | None = None) -> str:

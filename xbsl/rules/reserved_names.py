@@ -39,12 +39,11 @@ from collections.abc import Iterable
 from dataclasses import replace
 from functools import lru_cache
 
-from xbsl import dataset, i18n
+from xbsl import dataset, i18n, metamodel
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
 from xbsl.lexer import linemap
 from xbsl.rules._syntax import code_tokens, declarations, signatures
-from xbsl.rules.yaml_properties import _allowed_for_class, _metamodel
 from xbsl.rules.yaml_schema import _HAVE_YAML, _parsed
 
 MESSAGES = {
@@ -212,9 +211,8 @@ def _catalog_component_props() -> dict[str, frozenset[str]]:
 def _builtin_props(base: str) -> frozenset[str]:
     """Built-in properties of the base type: the metamodel first, then the catalog
     unioned with the vetted safety-net table."""
-    mm = _metamodel()
-    if mm and base in mm.get("classes", {}):
-        return _allowed_for_class(base)
+    if metamodel.has_class(base):
+        return metamodel.class_property_names(base)
     return (_catalog_component_props().get(base, frozenset())
             | _BUILTIN_COMPONENT_PROPS.get(base, frozenset()))
 

@@ -30,6 +30,19 @@ def _terms() -> dict[str, dict[str, str]]:
     return _cache
 
 
+def _reset() -> None:
+    """Drop the pairs when the data root or version changes (dataset hook).
+
+    Without this the process would keep answering from the previously pinned dataset - a
+    pinned root with no terms.json still handed out the English spellings of the old one.
+    """
+    global _cache
+    _cache = None
+
+
+dataset.register_reset(_reset)
+
+
 def english(name: str, section: str) -> str | None:
     """The English spelling of a name in the given role, when the platform declares one."""
     return _terms().get(section, {}).get(name)

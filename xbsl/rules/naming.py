@@ -32,7 +32,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 
-from xbsl import i18n
+from xbsl import i18n, metamodel
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
 from xbsl.lexer import linemap
@@ -628,14 +628,8 @@ def presentation(source: SourceFile) -> Iterable[Diagnostic]:
     if got is None:
         return
     vid, data = got
-    from xbsl.rules.yaml_properties import _allowed_for_class, _metamodel
-
-    mm = _metamodel()
-    if not mm:
-        return
-    cls = mm["vid2class"].get(vid)
-    if not cls or "Представление" not in _allowed_for_class(cls):
-        return  # the kind has no such property - nothing to require
+    if "Представление" not in metamodel.properties(vid):
+        return  # the kind has no such property (or no metamodel) - nothing to require
 
     ref = _object_name(_names(source))
     value = data.get("Представление")
