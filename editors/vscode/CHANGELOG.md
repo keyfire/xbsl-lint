@@ -8,6 +8,16 @@
 > are in the [Russian changelog](https://github.com/keyfire/xbsl/blob/main/editors/vscode/CHANGELOG.ru.md).
 > See also the [note on names](README.md#navigation-and-completion).
 
+## 0.27.1
+
+- **Panels survive an editor restart.** The form preview, the documentation page and the
+  templates panel were dropped whenever VS Code restarted and had to be opened by hand again.
+  The tab now comes back on its own: the preview remembers the form it was showing and opens its
+  document while restoring, the documentation returns to the page you were reading. A panel with
+  nothing to show (the form was renamed or deleted) closes instead of lingering empty.
+- The extension activates on window startup, so the trees and panels are ready regardless of
+  which container was active when you closed the editor.
+
 ## 0.27.0
 
 - **The properties panel now also shows what a metadata object does NOT set.** It used to list
