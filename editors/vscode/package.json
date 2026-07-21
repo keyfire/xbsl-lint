@@ -85,14 +85,16 @@
       "xbslElement": [
         {
           "id": "xbslMetadata",
-          "name": "%view.metadataContainer%",
-          "icon": "$(list-tree)"
+          "name": "%view.metadataTree%",
+          "icon": "$(list-tree)",
+          "initialSize": 3
         },
         {
-          "id": "xbslFormPalette",
+          "id": "xbslPalette",
           "name": "%view.formPalette%",
           "icon": "resources/form-palette.svg",
-          "when": "xbsl.formDesigner.open"
+          "when": "xbsl.formDesigner.open",
+          "initialSize": 2
         }
       ],
       "xbslDocsContainer": [
@@ -649,22 +651,22 @@
         },
         {
           "command": "xbsl.forms.search",
-          "when": "view == xbslFormPalette",
+          "when": "view == xbslPalette",
           "group": "navigation@0"
         },
         {
           "command": "xbsl.formPalette.refresh",
-          "when": "view == xbslFormPalette",
+          "when": "view == xbslPalette",
           "group": "navigation@1"
         },
         {
           "command": "xbsl.formStructure.insertPreset",
-          "when": "view == xbslFormPalette",
+          "when": "view == xbslPalette",
           "group": "1_presets@0"
         },
         {
           "command": "xbsl.formStructure.managePresets",
-          "when": "view == xbslFormPalette",
+          "when": "view == xbslPalette",
           "group": "1_presets@1"
         }
       ],
@@ -951,27 +953,27 @@
         },
         {
           "command": "xbsl.formPalette.insert",
-          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettecomponent\\b/",
+          "when": "view == xbslPalette && viewItem =~ /\\bpalettecomponent\\b/",
           "group": "inline"
         },
         {
           "command": "xbsl.formPalette.insert",
-          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettecomponent\\b/",
+          "when": "view == xbslPalette && viewItem =~ /\\bpalettecomponent\\b/",
           "group": "1_insert@1"
         },
         {
           "command": "xbsl.formPalette.addFavorite",
-          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettenonfav\\b/",
+          "when": "view == xbslPalette && viewItem =~ /\\bpalettenonfav\\b/",
           "group": "2_favorites@1"
         },
         {
           "command": "xbsl.formPalette.removeFavorite",
-          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettefav\\b/",
+          "when": "view == xbslPalette && viewItem =~ /\\bpalettefav\\b/",
           "group": "2_favorites@1"
         },
         {
           "command": "xbsl.formPalette.openDocs",
-          "when": "view == xbslFormPalette && viewItem =~ /\\bpalettecomponent\\b/",
+          "when": "view == xbslPalette && viewItem =~ /\\bpalettecomponent\\b/",
           "group": "3_docs@1"
         }
       ]

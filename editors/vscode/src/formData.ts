@@ -25,8 +25,9 @@ import {
   propertyNameError,
 } from "./formDataCore";
 import { DataRow, flattenData, DataModel, propertyRowId } from "./formDesignerCore";
-import { FormStructureController } from "./formStructure";
+import { FormStructureModel } from "./formStructure";
 import { lspActive, lspRequest } from "./lspClient";
+import { editorColumnFor } from "./reveal";
 import { componentEnums } from "./uiSchemaClient";
 
 export interface FormOwnerRef {
@@ -36,7 +37,7 @@ export interface FormOwnerRef {
 }
 
 export interface FormDataDeps {
-  structure: FormStructureController;
+  structure: FormStructureModel;
   // The owner OBJECT of a form by the form's yaml path (the metadata tree index);
   // undefined for common forms - the object section is hidden then.
   formOwner: (yamlPath: string) => Promise<FormOwnerRef | undefined>;
@@ -54,24 +55,8 @@ export interface DataHost {
   showData(snapshot: DataSnapshot): void;
 }
 
-export interface FormDataController {
-  setHost(host: DataHost | undefined): void;
-  setTarget(uri: vscode.Uri): void;
-  matchesTarget(uri: vscode.Uri): boolean;
-  load(): Promise<void>;
-  setSelection(id: string | undefined): void;
-  toggleRow(id: string, expanded: boolean): void;
-  //: A single activation: a component property jumps to its yaml line.
-  reveal(id: string): Promise<void>;
-  //: The drag payload of a row, undefined for the rows that cannot become a field.
-  payloadFor(id: string): DataDragPayload | undefined;
-  //: Insert the row as an input component into the current structure selection.
-  insert(id: string): Promise<void>;
-  //: Menu and toolbar actions (addProperty / renameProperty / retypeProperty / removeProperty).
-  runCommand(command: string, id?: string): Promise<void>;
-}
-
-class FormDataModel {
+// One model per open form panel, paired with that panel's structure model.
+export class FormDataModel {
   private host?: DataHost;
   private target?: vscode.Uri;
   private records?: ComponentPropertyRecord[];
@@ -290,9 +275,8 @@ class FormDataModel {
     }
     const doc = await vscode.workspace.openTextDocument(this.target);
     const pos = doc.positionAt(Math.min(offset, doc.getText().length));
-    const existing = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === this.uriKey());
     const editor = await vscode.window.showTextDocument(doc, {
-      viewColumn: existing?.viewColumn ?? vscode.ViewColumn.One,
+      viewColumn: editorColumnFor(this.target, vscode.ViewColumn.One),
       preserveFocus,
       preview: false,
     });
@@ -479,57 +463,52 @@ class FormDataModel {
     }
     await this.performOp("property_remove", { name: record.name });
   }
+
+  // Menu and toolbar actions of the pane, by their short command id.
+  async runCommand(command: string, id?: string): Promise<void> {
+    switch (command) {
+      case "insert":
+        if (id) {
+          await this.insert(id);
+        }
+        return;
+      case "addProperty":
+        await this.addProperty();
+        return;
+      case "renameProperty":
+        await this.renameProperty(id);
+        return;
+      case "retypeProperty":
+        await this.retypeProperty(id);
+        return;
+      case "removeProperty":
+        await this.removeProperty(id);
+        return;
+      default:
+        return;
+    }
+  }
 }
 
-export function registerFormData(context: vscode.ExtensionContext, deps: FormDataDeps): FormDataController {
-  const model = new FormDataModel(deps);
-  const selected = (id?: string): string | undefined => id;
+export function createFormDataModel(deps: FormDataDeps): FormDataModel {
+  return new FormDataModel(deps);
+}
 
+// The commands of the data pane, registered once; the form they act on is the active panel's.
+export function registerFormDataCommands(
+  context: vscode.ExtensionContext,
+  current: () => FormDataModel | undefined
+): void {
   context.subscriptions.push(
-    vscode.commands.registerCommand("xbsl.formData.refresh", () => void model.load()),
+    vscode.commands.registerCommand("xbsl.formData.refresh", () => void current()?.load()),
     vscode.commands.registerCommand("xbsl.formData.insert", (id?: string) => {
       if (id) {
-        void model.insert(id);
+        void current()?.insert(id);
       }
     }),
-    vscode.commands.registerCommand("xbsl.formData.addProperty", () => void model.addProperty()),
-    vscode.commands.registerCommand("xbsl.formData.renameProperty", (id?: string) => void model.renameProperty(selected(id))),
-    vscode.commands.registerCommand("xbsl.formData.retypeProperty", (id?: string) => void model.retypeProperty(selected(id))),
-    vscode.commands.registerCommand("xbsl.formData.removeProperty", (id?: string) => void model.removeProperty(selected(id)))
+    vscode.commands.registerCommand("xbsl.formData.addProperty", () => void current()?.addProperty()),
+    vscode.commands.registerCommand("xbsl.formData.renameProperty", (id?: string) => void current()?.renameProperty(id)),
+    vscode.commands.registerCommand("xbsl.formData.retypeProperty", (id?: string) => void current()?.retypeProperty(id)),
+    vscode.commands.registerCommand("xbsl.formData.removeProperty", (id?: string) => void current()?.removeProperty(id))
   );
-
-  return {
-    setHost: (host) => model.setHost(host),
-    setTarget: (uri) => model.setTarget(uri),
-    matchesTarget: (uri) => model.matchesTarget(uri),
-    load: () => model.load(),
-    setSelection: (id) => model.setSelection(id),
-    toggleRow: (id, expanded) => model.toggleRow(id, expanded),
-    reveal: (id) => model.reveal(id),
-    payloadFor: (id) => model.payloadFor(id),
-    insert: (id) => model.insert(id),
-    runCommand: async (command, id) => {
-      switch (command) {
-        case "insert":
-          if (id) {
-            await model.insert(id);
-          }
-          return;
-        case "addProperty":
-          await model.addProperty();
-          return;
-        case "renameProperty":
-          await model.renameProperty(id);
-          return;
-        case "retypeProperty":
-          await model.retypeProperty(id);
-          return;
-        case "removeProperty":
-          await model.removeProperty(id);
-          return;
-        default:
-          return;
-      }
-    },
-  };
 }

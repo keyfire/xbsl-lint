@@ -29,6 +29,7 @@ import {
   FormNodeAtPayload,
   ModuleHandlersPayload,
   PanelModel,
+  RemoveHandlerResponse,
   UiComponentDto,
   WritePayload,
   WritePlan,
@@ -121,6 +122,7 @@ function labels(): Record<string, string> {
     toYaml: vscode.l10n.t("Show in yaml"),
     openInYaml: vscode.l10n.t("Open in yaml"),
     reset: vscode.l10n.t("Reset – remove the property from the yaml"),
+    resetHandler: vscode.l10n.t("Unbind the event – with a question about the module method"),
     notSet: vscode.l10n.t("(not set)"),
     noHandler: vscode.l10n.t("(no handler)"),
     createHandler: vscode.l10n.t("(create a handler...)"),
@@ -242,6 +244,12 @@ ${cspMeta(nonce)}
   .valline .combo { flex: 1; min-width: 0; }
   .valline .combo input { width: 100%; box-sizing: border-box; }
   .valline .rbtn { flex: none; }
+  /* An editor that is not a single line (color, font, a composite block, a long text) still
+     gets its reset NEXT TO THE FIELD - top right of the block - so the "x" is in one place for
+     every row instead of hiding up in the caption. */
+  .withreset { display: flex; gap: 5px; align-items: flex-start; }
+  .withreset > :first-child { flex: 1; min-width: 0; }
+  .withreset > .rbtn { flex: none; margin-top: 2px; }
   .combo { position: relative; }
   .combo-list { position: absolute; left: 0; right: 0; top: 100%; margin-top: 2px; z-index: 20;
     max-height: 220px; overflow-y: auto; background: var(--vscode-dropdown-background, var(--vscode-input-background));
@@ -599,6 +607,8 @@ ${cspMeta(nonce)}
       });
       line.appendChild(go);
     }
+    // The reset of an event lives in its value line, level with the dropdown.
+    if (row.set) { line.appendChild(resetButton(row)); }
     return line;
   }
 
@@ -606,19 +616,21 @@ ${cspMeta(nonce)}
   // apart the same way the engine does - a leading "=".
   function isBinding(v) { return typeof v === "string" && v.trim().charAt(0) === "="; }
 
-  // Rows rendered through the literal/binding cell (single-line text, number, binding) carry the
-  // reset button in their value line, next to the field - the caption must not add a second one.
+  // Rows whose editor is ONE LINE build their own value line and put the reset inside it, on the
+  // same baseline as the field. The block editors (color, composite, long text) get it wrapped
+  // beside them instead (see buildRow) - and neither puts it in the caption.
   function usesInlineCell(row) {
     const c = row.editor.control;
-    return c === "binding" || c === "number" || (c === "text" && !row.editor.multiline);
+    return c === "binding" || c === "number" || c === "handler" || (c === "text" && !row.editor.multiline);
   }
 
-  // Editors whose own control already unsets the property - the tristate "Авто", the enum "(auto)"
-  // option, the handler "(no handler)" choice. The reset "x" would just duplicate that, so these
-  // rows get no reset button.
+  // Editors whose own control already unsets the property - the tristate "Авто" and the enum
+  // "(auto)" option. The reset "x" would just duplicate that, so these rows get no reset button.
+  // An EVENT is not one of them: its "(no handler)" only unbinds, while the "x" asks whether the
+  // handler method should leave the module with it.
   function hasAutoAffordance(row) {
     const c = row.editor.control;
-    return c === "tristate" || c === "enum" || c === "handler";
+    return c === "tristate" || c === "enum";
   }
 
   function flipButton(label, title, onClick) {
@@ -749,8 +761,14 @@ ${cspMeta(nonce)}
 
   function resetButton(row) {
     const b = el("button", "rbtn", "\\u2715");
-    b.title = L.reset;
-    b.addEventListener("click", (e) => { e.preventDefault(); post({ type: "reset", key: row.key }); });
+    const handler = row.editor.control === "handler";
+    b.title = handler ? L.resetHandler : L.reset;
+    b.addEventListener("click", (e) => {
+      e.preventDefault();
+      // An event row clears TWO things - the binding in the yaml and, if the developer says so,
+      // the method in the module; the extension asks and does both in one edit.
+      post(handler ? { type: "removeHandler", key: row.key } : { type: "reset", key: row.key });
+    });
     return b;
   }
 
@@ -806,14 +824,19 @@ ${cspMeta(nonce)}
     if (row.set && row.propSpan && row.editor.control !== "readonly") {
       cap.appendChild(gotoButton(row));
     }
-    // The reset lives in the caption too - but not for read-only rows (nothing to reset), the
-    // inline-cell rows (their reset sits by the field), or rows whose own control already clears
-    // the value (tristate/enum/handler - the reset would just duplicate their auto/none choice).
-    if (row.set && row.editor.control !== "readonly" && !usesInlineCell(row) && !hasAutoAffordance(row)) {
-      cap.appendChild(resetButton(row));
-    }
     div.appendChild(cap);
-    div.appendChild(editorFor(row));
+    // The reset always sits BY THE FIELD: in the value line for the single-line cells, and
+    // wrapped beside the block for the taller editors (color, composite, long text). Rows whose
+    // own control already clears the value (tristate/enum/handler) and read-only rows get none.
+    const editor = editorFor(row);
+    if (row.set && row.editor.control !== "readonly" && !usesInlineCell(row) && !hasAutoAffordance(row)) {
+      const wrap = el("div", "withreset");
+      wrap.appendChild(editor);
+      wrap.appendChild(resetButton(row));
+      div.appendChild(wrap);
+    } else {
+      div.appendChild(editor);
+    }
     div.appendChild(el("div", "err"));
     div.addEventListener("focusin", () => {
       post({ type: "sticky", key: row.key });
@@ -1684,6 +1707,101 @@ async function runAddHandler(key: string, method?: string, signature?: string): 
   void refreshForOffset(uri, tgt.nodeSpanStart);
 }
 
+// The "x" of an event row: the binding always goes, the handler method goes with it only when
+// asked. The question is deliberately modal - deleting a method is not something to discover
+// after the fact - and the engine does both halves in ONE xbsl/removeHandler plan, so the yaml
+// and the module change in a single undo step.
+async function removeHandler(key: string): Promise<void> {
+  if (target?.kind !== "component") {
+    return;
+  }
+  const tgt = target;
+  if (!lspActive()) {
+    void vscode.window.showWarningMessage(
+      vscode.l10n.t(
+        "The properties panel needs the LSP mode (xbsl.lsp.enabled) and the xbsl engine with the form designer."
+      )
+    );
+    return;
+  }
+  const method = lastModel ? findRow(lastModel, key)?.value : undefined;
+  let dropMethod = false;
+  if (method) {
+    // A quick pick, not a modal dialog: it is the editor's own way of asking, it opens where
+    // the eyes already are (the top of the window) and it answers to the keyboard.
+    const answer = await vscode.window.showQuickPick(
+      [
+        {
+          label: vscode.l10n.t("$(circle-slash) Unbind only"),
+          detail: vscode.l10n.t("The method stays in the form module."),
+          drop: false,
+        },
+        {
+          label: vscode.l10n.t("$(trash) Delete the handler from the module"),
+          detail: vscode.l10n.t("The method and its annotations leave the module with the binding."),
+          drop: true,
+        },
+      ],
+      {
+        title: vscode.l10n.t("Event {0}: handler {1}", key, String(method)),
+        placeHolder: vscode.l10n.t("The event is unbound either way – what about the method?"),
+      }
+    );
+    if (answer === undefined) {
+      return; // cancelled - nothing is written
+    }
+    dropMethod = answer.drop;
+  }
+  const uri = tgt.uri;
+  const yamlVersion = (await vscode.workspace.openTextDocument(uri)).version;
+  const res = await lspRequest<RemoveHandlerResponse>("xbsl/removeHandler", {
+    uri: uri.toString(),
+    node: tgt.nodeId,
+    key,
+    dropMethod,
+  });
+  if (!res) {
+    void vscode.window.showWarningMessage(
+      vscode.l10n.t("The engine does not answer the form requests – update the xbsl package.")
+    );
+    return;
+  }
+  if (res.error) {
+    void vscode.window.showWarningMessage(vscode.l10n.t("XBSL: {0}", res.error));
+    return;
+  }
+  const yamlDoc = await vscode.workspace.openTextDocument(uri);
+  if (yamlDoc.version !== yamlVersion) {
+    void vscode.window.showWarningMessage(
+      vscode.l10n.t("XBSL: the buffer changed while the edit was being computed – try again.")
+    );
+    return;
+  }
+  const we = new vscode.WorkspaceEdit();
+  for (const e of res.yamlEdits ?? []) {
+    we.replace(uri, new vscode.Range(yamlDoc.positionAt(e.start), yamlDoc.positionAt(e.end)), e.newText);
+  }
+  if (res.moduleEdits?.length && res.moduleUri) {
+    const moduleUri = vscode.Uri.parse(res.moduleUri);
+    const moduleDoc = await vscode.workspace.openTextDocument(moduleUri);
+    for (const e of res.moduleEdits) {
+      we.replace(
+        moduleUri,
+        new vscode.Range(moduleDoc.positionAt(e.start), moduleDoc.positionAt(e.end)),
+        e.newText
+      );
+    }
+  }
+  if (!(await vscode.workspace.applyEdit(we))) {
+    void vscode.window.showWarningMessage(vscode.l10n.t("XBSL: the workspace edit was not applied."));
+    return;
+  }
+  for (const note of res.notes ?? []) {
+    void vscode.window.showInformationMessage(vscode.l10n.t("XBSL: {0}", note));
+  }
+  void refreshForOffset(uri, tgt.nodeSpanStart);
+}
+
 // -- provider and registration ----------------------------------------------------------------
 
 class FormPropsViewProvider implements vscode.WebviewViewProvider {
@@ -1722,7 +1840,11 @@ class FormPropsViewProvider implements vscode.WebviewViewProvider {
         // hook 11: a read-only form refuses every write (the webview also disables its editors,
         // so this is a backstop). Navigation (reveal, gotoHandler, sticky, ready) stays allowed.
         const isWrite =
-          m.type === "commit" || m.type === "commitComposite" || m.type === "reset" || m.type === "createHandler";
+          m.type === "commit" ||
+          m.type === "commitComposite" ||
+          m.type === "reset" ||
+          m.type === "createHandler" ||
+          m.type === "removeHandler";
         if (isWrite && lastModel?.readonly) {
           void vscode.window.showInformationMessage(
             vscode.l10n.t("This form is read-only – editing is disabled.")
@@ -1741,6 +1863,8 @@ class FormPropsViewProvider implements vscode.WebviewViewProvider {
           } else {
             void applyOperation("reset_property", m.key);
           }
+        } else if (m.type === "removeHandler" && typeof m.key === "string") {
+          void removeHandler(m.key);
         } else if (m.type === "createHandler" && typeof m.key === "string") {
           void createHandler(m.key);
         } else if (m.type === "gotoHandler" && typeof m.key === "string" && typeof m.method === "string") {

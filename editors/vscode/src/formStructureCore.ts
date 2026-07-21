@@ -629,3 +629,9 @@ export function remapIds(ids: Iterable<string>, oldIndex: FormIndex | undefined,
 // panel's webview (a structure node onto a node, a data record onto a node), so the dragged
 // row id travels in the panel's own script and arrives here as a plain message. The former
 // MIME types and their JSON codecs served the native trees, which the panel replaced.
+//
+// The palette is the exception: it stays a native tree, and a workbench drag cannot hand its
+// payload to a webview. It still declares a drag mime (VS Code refuses to start a drag without
+// one) but the TYPE travels out of band - the palette tells the panel what is being dragged, and
+// the panel matches it with the drop it receives. See formDesigner.notePaletteDrag.
+export const PALETTE_MIME = "application/vnd.xbsl.palette-component";

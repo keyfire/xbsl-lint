@@ -19,10 +19,10 @@ import {
   removePreset,
   sanitizePresets,
 } from "./blockPresetsCore";
-import { flattenStructure, StructureRow } from "./formDesignerCore";
+import { expandAncestors, flattenStructure, StructureRow } from "./formDesignerCore";
 import { lspActive, lspRequest } from "./lspClient";
 import { isReadonlyDoc } from "./readonly";
-import { revealContent } from "./reveal";
+import { editorColumnFor, revealContent } from "./reveal";
 import {
   dropPlan,
   editsOverlap,
@@ -93,36 +93,11 @@ interface ExpansionMemory {
   collapsed: Set<string>;
 }
 
-export interface FormStructureController {
-  //: The form panel registers itself here on creation and clears it on dispose.
-  setHost(host: StructureHost | undefined): void;
-  setTarget(uri: vscode.Uri): void;
-  matchesTarget(uri: vscode.Uri): boolean;
-  hasTarget(): boolean;
-  load(): Promise<void>;
-  scheduleDiagnostics(): void;
-  //: Selection mirrored from the panel (the panel owns the pointer/keyboard selection).
-  setSelection(ids: string[]): void;
-  toggleRow(id: string, expanded: boolean): void;
-  //: A row was activated in the panel: cursor onto its yaml (focus stays in the panel
-  //: unless focusEditor) and the properties panel filled.
-  activate(id: string, focusEditor: boolean): Promise<void>;
-  //: The yaml offset a row points at - the panel highlights the matching frame block.
-  offsetOf(id: string): Promise<number | undefined>;
-  //: The node under a yaml offset (xbsl/formNodeAt) - the reverse sync.
-  nodeIdAt(offset: number): Promise<string | undefined>;
-  //: A drop inside the structure pane: dragged rows, or a record from the data pane.
-  dropNodes(sourceIds: string[], targetId: string): Promise<void>;
-  dropRecord(payload: DataDragPayload, targetId: string): Promise<void>;
-  //: Palette insertion into the current structure selection; true when the edit applied.
-  insertComponentType(type: string): Promise<boolean>;
-  //: Repaint the pane (e.g. after the ui-schema container set is learned).
-  repaint(): void;
-  //: Data-panel insertion: a ready component fragment into the current structure selection.
-  insertFragment(fragment: string): Promise<boolean>;
-}
-
-class FormStructureModel {
+// One model per open form panel: the designer creates one for each form it shows, so two forms
+// side by side keep their own tree, expansion memory and selection. The commands
+// (xbsl.formStructure.*) act on the model of the ACTIVE panel - registerFormStructureCommands
+// takes a getter for it.
+export class FormStructureModel {
   private host?: StructureHost;
   private target?: vscode.Uri;
   private index?: FormIndex;
@@ -191,6 +166,15 @@ class FormStructureModel {
       this.message = vscode.l10n.t('The structure view needs the LSP mode (install the engine with the [lsp] extra: pip install "xbsl[lsp]").');
       this.publish();
       return;
+    }
+    // The tree comes from the engine by uri, but every EDIT applies to the open document (and
+    // the diagnostic badges read it too). A panel opened from the metadata tree runs before
+    // anything shows the yaml, so the document is loaded here - otherwise the first operation
+    // after opening would quietly do nothing.
+    try {
+      await vscode.workspace.openTextDocument(uri);
+    } catch {
+      // an unreadable form still gets its message from the engine below
     }
     const seq = ++this.loadSeq;
     const res = await lspRequest<FormTreeResponse>("xbsl/formTree", { uri: uri.toString() });
@@ -343,6 +327,20 @@ class FormStructureModel {
     this.selection = ids.filter((id) => this.index?.byId.has(id));
   }
 
+  // Selection from OUTSIDE the pane (a click in the frame, the yaml cursor, the result of an
+  // operation). A collapsed ancestor would keep the row out of the flattened rows entirely, so
+  // the whole chain is opened first - the same thing a native tree does on reveal({expand}).
+  revealNode(id: string): void {
+    if (!this.index?.byId.has(id)) {
+      return;
+    }
+    const mem = this.memoryFor();
+    expandAncestors(this.index, id, mem.expanded, mem.collapsed);
+    this.selection = [id];
+    this.publish();
+    this.host?.revealStructure(id);
+  }
+
   private selected(): FormNode[] {
     return this.selection.map((id) => this.index?.byId.get(id)).filter((n): n is FormNode => !!n);
   }
@@ -417,9 +415,8 @@ class FormStructureModel {
     this.suppressCursorSyncUntil = Date.now() + 300;
     const doc = await vscode.workspace.openTextDocument(this.target);
     const pos = doc.positionAt(Math.min(offset, doc.getText().length));
-    const existing = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === this.uriKey());
     const editor = await vscode.window.showTextDocument(doc, {
-      viewColumn: existing?.viewColumn ?? vscode.ViewColumn.One,
+      viewColumn: editorColumnFor(this.target, vscode.ViewColumn.One),
       preserveFocus,
       preview: false,
     });
@@ -499,9 +496,8 @@ class FormStructureModel {
       }
       await this.load();
       if (res.node) {
-        this.setSelection([res.node.id]);
-        this.publish();
-        this.host?.revealStructure(res.node.id);
+        // The fresh node often sits inside a container that is still collapsed in the pane.
+        this.revealNode(res.node.id);
         await this.revealInEditor(res.node.span.start, true);
       }
       return res.node ?? undefined;
@@ -982,111 +978,104 @@ class FormStructureModel {
   }
 }
 
-export function registerFormStructure(context: vscode.ExtensionContext): FormStructureController {
-  const model = new FormStructureModel(context.globalState);
+export function createFormStructureModel(presetStore?: vscode.Memento): FormStructureModel {
+  return new FormStructureModel(presetStore);
+}
+
+// The commands of the structure pane, registered once for the whole extension. Which form they
+// act on is decided at call time by `current` - the model of the active form panel - because
+// several panels (one per form) can be open at the same time.
+export function registerFormStructureCommands(
+  context: vscode.ExtensionContext,
+  current: () => FormStructureModel | undefined
+): void {
   void vscode.commands.executeCommand("setContext", FOCUSED_CONTEXT, false);
   void vscode.commands.executeCommand("setContext", NAMED_CONTEXT, false);
 
   // Commands are invoked from the panel (a row id rides along), from the command palette and
   // from keybindings; without an id they act on the panel's selection.
-  const first = (id?: string): FormNode | undefined => model.selectedNodes(id)[0];
+  const first = (id?: string): FormNode | undefined => current()?.selectedNodes(id)[0];
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("xbsl.formStructure.refresh", () => void model.load()),
+    vscode.commands.registerCommand("xbsl.formStructure.refresh", () => void current()?.load()),
     vscode.commands.registerCommand("xbsl.formStructure.openInEditor", (id?: string) => {
       const target = first(id);
       if (target) {
-        void model.revealInEditor(revealOffset(target), false);
+        void current()?.revealInEditor(revealOffset(target), false);
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.moveUp", (id?: string) => {
       const target = first(id);
       if (target) {
-        void model.moveNode(target, "up");
+        void current()?.moveNode(target, "up");
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.moveDown", (id?: string) => {
       const target = first(id);
       if (target) {
-        void model.moveNode(target, "down");
+        void current()?.moveNode(target, "down");
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.delete", (id?: string) => {
-      void model.deleteNodes(model.selectedNodes(id));
+      const model = current();
+      if (model) {
+        void model.deleteNodes(model.selectedNodes(id));
+      }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.rename", (id?: string) => {
       const target = first(id);
       if (target) {
-        void model.renameNode(target);
+        void current()?.renameNode(target);
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.duplicate", (id?: string) => {
       const target = first(id);
       if (target && target.kind === "component" && target.id !== ROOT_ID) {
-        void model.performOp("duplicate", { node: target.id });
+        void current()?.performOp("duplicate", { node: target.id });
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.wrap", (id?: string) => {
       const target = first(id);
       if (target) {
-        void model.wrapNode(target);
+        void current()?.wrapNode(target);
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.unwrap", (id?: string) => {
       const target = first(id);
       if (target && target.kind === "component" && target.id !== ROOT_ID) {
-        void model.performOp("unwrap", { node: target.id });
+        void current()?.performOp("unwrap", { node: target.id });
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.copyYaml", (id?: string) => {
       const target = first(id);
       if (target) {
-        void model.copyNode(target);
+        void current()?.copyNode(target);
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.pasteYaml", (id?: string) => {
-      void model.pasteFromClipboard(id);
+      void current()?.pasteFromClipboard(id);
     }),
     vscode.commands.registerCommand("xbsl.formStructure.savePreset", (id?: string) => {
       const target = first(id);
       if (target && target.kind === "component" && target.id !== ROOT_ID) {
-        void model.saveAsPreset(target);
+        void current()?.saveAsPreset(target);
       }
     }),
     vscode.commands.registerCommand("xbsl.formStructure.insertPreset", (id?: string) => {
-      void model.insertPreset(id);
+      void current()?.insertPreset(id);
     }),
-    vscode.commands.registerCommand("xbsl.formStructure.managePresets", () => void model.managePresets()),
+    vscode.commands.registerCommand("xbsl.formStructure.managePresets", () => void current()?.managePresets()),
     vscode.commands.registerCommand("xbsl.formStructure.editSelected", (id?: string) => {
-      void model.editSelected(id);
+      void current()?.editSelected(id);
     }),
     vscode.commands.registerCommand("xbsl.formStructure.focusSubtree", (id?: string) => {
       const target = first(id);
       if (target && target.kind === "component") {
-        model.setFocusRoot(target.id);
+        current()?.setFocusRoot(target.id);
       }
     }),
-    vscode.commands.registerCommand("xbsl.formStructure.resetFocus", () => model.setFocusRoot(undefined)),
-    vscode.commands.registerCommand("xbsl.formStructure.filterNamed", () => model.setNamedOnly(true)),
-    vscode.commands.registerCommand("xbsl.formStructure.filterAll", () => model.setNamedOnly(false))
+    vscode.commands.registerCommand("xbsl.formStructure.resetFocus", () => current()?.setFocusRoot(undefined)),
+    vscode.commands.registerCommand("xbsl.formStructure.filterNamed", () => current()?.setNamedOnly(true)),
+    vscode.commands.registerCommand("xbsl.formStructure.filterAll", () => current()?.setNamedOnly(false))
   );
-
-  return {
-    setHost: (host) => model.setHost(host),
-    setTarget: (uri) => model.setTarget(uri),
-    matchesTarget: (uri) => model.matchesTarget(uri),
-    hasTarget: () => model.hasTarget(),
-    load: () => model.load(),
-    scheduleDiagnostics: () => model.scheduleDiagnostics(),
-    setSelection: (ids) => model.setSelection(ids),
-    toggleRow: (id, expanded) => model.toggleRow(id, expanded),
-    activate: (id, focusEditor) => model.activate(id, focusEditor),
-    offsetOf: (id) => model.offsetOf(id),
-    nodeIdAt: (offset) => model.nodeIdAt(offset),
-    dropNodes: (ids, targetId) => model.dropNodes(ids, targetId),
-    dropRecord: (payload, targetId) => model.dropRecord(payload, targetId),
-    insertComponentType: (type) => model.insertComponentType(type),
-    repaint: () => model.repaint(),
-    insertFragment: (fragment) => model.insertFragment(fragment),
-  };
 }

@@ -5,6 +5,27 @@
 
 import * as vscode from "vscode";
 
+// The editor group a form's yaml belongs in. The designer opens yamls constantly (a click in the
+// structure, an operation result, a new form from the metadata tree), and each of them must join
+// the group where the sources already live instead of splitting the layout next to the form
+// panel. Order: the group this very document is open in, then the one holding another source
+// file (yaml or xbsl), then the active text editor, and only then the caller's fallback.
+const SOURCE_LANGUAGES = ["yaml", "xbsl"];
+
+export function editorColumnFor(uri: vscode.Uri, fallback: vscode.ViewColumn): vscode.ViewColumn {
+  const key = uri.toString();
+  const visible = vscode.window.visibleTextEditors.filter((e) => e.viewColumn !== undefined);
+  const same = visible.find((e) => e.document.uri.toString() === key);
+  if (same?.viewColumn) {
+    return same.viewColumn;
+  }
+  const source = visible.find((e) => SOURCE_LANGUAGES.includes(e.document.languageId));
+  if (source?.viewColumn) {
+    return source.viewColumn;
+  }
+  return vscode.window.activeTextEditor?.viewColumn ?? visible[0]?.viewColumn ?? fallback;
+}
+
 export function revealContent(editor: vscode.TextEditor, position: vscode.Position): void {
   const line = editor.document.lineAt(position.line);
   const from = new vscode.Position(position.line, line.firstNonWhitespaceCharacterIndex);

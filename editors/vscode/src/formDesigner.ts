@@ -2,15 +2,21 @@
 // properties, so its structure and its data are edited where the form is shown: the panel
 // holds three areas - the structure tree on the left, the data of the form on the right and
 // the wireframe frame under them, with draggable splitters between. The component palette
-// stays in the sidebar next to the metadata tree and shows up only while this panel is open
+// stays in the sidebar next to the metadata tree and shows up only while a panel is open
 // (the xbsl.formDesigner.open context key).
 //
-// The panel owns the LIFECYCLE of the designer: it follows the active form yaml, reloads the
-// models on edits and diagnostics, and syncs the selection between the three areas, the yaml
-// cursor and the "Properties" panel. The models themselves (formStructure.ts, formData.ts)
-// are passive - they answer with flat row snapshots (formDesignerCore.ts) and perform the
-// engine operations. The frame is rendered by formPreviewCore.ts and is a wireframe, not a
-// render: the platform draws forms server-side.
+// ONE PANEL PER FORM. Opening a second form opens a second panel next to the first (editor
+// tabs, as everywhere else in the editor), and each panel owns its own structure and data
+// models - two forms side by side share nothing but the zoom, theme and splitter positions.
+// The pane commands and the palette act on the panel in FRONT (`active`); an event that names
+// a document (an edit, a diagnostic, a cursor move) goes to the panel of that very form.
+// Closing a panel closes the form's yaml with it, unless the yaml has unsaved changes.
+//
+// A panel owns the lifecycle of its form: it reloads the models on edits and diagnostics and
+// syncs the selection between the three areas, the yaml cursor and the "Properties" panel. The
+// models themselves (formStructure.ts, formData.ts) are passive - they answer with flat row
+// snapshots (formDesignerCore.ts) and perform the engine operations. The frame is rendered by
+// formPreviewCore.ts and is a wireframe, not a render: the platform draws forms server-side.
 //
 // Trees inside a webview mean the tree work is ours: rows arrive flat, expansion, selection,
 // the context menu, the keyboard and the drag and drop are implemented here. Dragging FROM
@@ -28,20 +34,20 @@ import {
   restoredTargetUri,
   selectionForCursor,
 } from "./formPreviewCore";
-import { DataHost, DataSnapshot, FormDataController } from "./formData";
+import { DataHost, DataSnapshot, FormDataModel } from "./formData";
 import { dataMenu, DEFAULT_LAYOUT, sanitizeLayout, structureMenu } from "./formDesignerCore";
-import { FormStructureController, StructureHost, StructureSnapshot } from "./formStructure";
+import { FormStructureModel, StructureHost, StructureSnapshot } from "./formStructure";
+import { editorColumnFor } from "./reveal";
 import { cspMeta, inlineJson, makeNonce } from "./webviewShared";
 
 const VIEW_TYPE = "xbslFormPreview";
 const DEBOUNCE_MS = 300;
 const CURSOR_DEBOUNCE_MS = 150;
+//: How long a tab reveal ignores the echo of the opposite direction.
+const TAB_SYNC_MS = 500;
 const STATE_KEY = "xbsl.formPreview.view";
 const LAYOUT_KEY = "xbsl.formDesigner.layout";
-//: The form the panel was showing, remembered per workspace so a restart brings the same
-//: panel back (see the serializer in registerFormDesigner).
-const TARGET_KEY = "xbsl.formPreview.target";
-//: Set while the panel exists - the palette view in the metadata container follows it.
+//: Set while at least one panel exists - the palette view in the metadata container follows it.
 const OPEN_CONTEXT = "xbsl.formDesigner.open";
 
 interface ViewState {
@@ -51,28 +57,23 @@ interface ViewState {
 
 const DEFAULT_VIEW: ViewState = { zoom: 100, theme: "light" };
 
-let panel: vscode.WebviewPanel | undefined;
-let target: vscode.Uri | undefined;
-let timer: NodeJS.Timeout | undefined;
+// Zoom, theme and the splitter positions are the DESIGNER's settings, not one form's: they are
+// shared by every open panel and remembered globally.
 let view: ViewState = DEFAULT_VIEW;
 let layout = DEFAULT_LAYOUT;
-// Frame selection state. The webview keeps the visual class; this side owns the selected
-// data-off so it survives re-renders (the frame html is rebuilt from scratch on every edit).
-let selectedOffset: number | undefined;
-let lastOffsets: number[] = [];
-let freshTarget = false; // set on a target switch: the first good render derives the selection from the cursor
-let cursorTimer: NodeJS.Timeout | undefined;
-let suppressCursorSyncUntil = 0; // a click inside the panel moves the cursor itself - ignore the echo
-let extContext: vscode.ExtensionContext | undefined;
-let deps: DesignerDeps | undefined;
-// The last snapshots, re-posted when a restored webview announces itself ("ready").
-let lastStructure: StructureSnapshot | undefined;
-let lastData: DataSnapshot | undefined;
-let lastFrame: { body: string; title: string } | undefined;
+let makeModels: (() => DesignerModels) | undefined;
+// One panel per form, keyed by the form's uri; `active` is the one in front (the palette and
+// the xbsl.formStructure.* / xbsl.formData.* commands act on it).
+const designers = new Map<string, Designer>();
+let active: Designer | undefined;
+// A form panel and its yaml are one working set, so activating either brings the other to the
+// front of ITS group. Each such reveal fires the event of the opposite direction, so the pair is
+// synced only outside this short window - otherwise the two would keep waking each other.
+let tabSyncUntil = 0;
 
-export interface DesignerDeps {
-  structure: FormStructureController;
-  data: FormDataController;
+export interface DesignerModels {
+  structure: FormStructureModel;
+  data: FormDataModel;
 }
 
 // Whether the content looks like a form: an interface component with inheritance and content.
@@ -159,33 +160,7 @@ function menuLabel(pane: "structure" | "data", command: string): string {
   }
 }
 
-// -- the panel ---------------------------------------------------------------------------------
-
-function targetDocument(): vscode.TextDocument | undefined {
-  if (!target) {
-    return undefined;
-  }
-  return vscode.workspace.textDocuments.find((d) => d.uri.toString() === target!.toString());
-}
-
-// Switching to another form drops the frame selection - offsets mean nothing across documents.
-function setTarget(uri: vscode.Uri): void {
-  if (target?.toString() !== uri.toString()) {
-    selectedOffset = undefined;
-    lastOffsets = [];
-    freshTarget = true;
-  }
-  target = uri;
-  deps?.structure.setTarget(uri);
-  deps?.data.setTarget(uri);
-  // Remembered for the next session: VS Code restores the tab, the serializer needs to know
-  // WHICH form it was showing.
-  void extContext?.workspaceState.update(TARGET_KEY, uri.toString());
-}
-
-function post(message: unknown): void {
-  void panel?.webview.postMessage(message);
-}
+// -- resources ----------------------------------------------------------------------------------
 
 // Resource images resolved to data URIs (filename -> data URI, or null when not found in the
 // project). Cached for the session - resource files rarely change while editing a form.
@@ -233,126 +208,428 @@ async function resolveResources(names: string[]): Promise<Record<string, string>
   return out;
 }
 
-// A monotonic render generation: an async render (it resolves resource images) must not clobber
-// the webview with a stale result after a newer render started.
-let renderSeq = 0;
+// -- one designer per open form --------------------------------------------------------------
 
-async function renderFrame(): Promise<void> {
-  if (!panel || !target) {
-    return;
+// A form panel with everything that belongs to THAT form: its webview, its structure and data
+// models, its frame state. Two forms open side by side share nothing but the view settings.
+class Designer implements StructureHost, DataHost {
+  readonly structure: FormStructureModel;
+  readonly data: FormDataModel;
+  //: The webview keeps the visual class; this side owns the selected data-off so it survives
+  //: re-renders (the frame html is rebuilt from scratch on every edit).
+  private selectedOffset?: number;
+  private lastOffsets: number[] = [];
+  //: The first good render derives the selection from the yaml cursor.
+  private freshRender = true;
+  private timer?: NodeJS.Timeout;
+  private cursorTimer?: NodeJS.Timeout;
+  private suppressCursorSyncUntil = 0; // a click inside the panel moves the cursor itself
+  private renderSeq = 0;
+  //: The last snapshots, re-posted when a restored webview announces itself ("ready").
+  private lastStructure?: StructureSnapshot;
+  private lastData?: DataSnapshot;
+  private lastFrame?: { body: string; title: string };
+
+  constructor(
+    readonly panel: vscode.WebviewPanel,
+    readonly target: vscode.Uri,
+    private readonly context: vscode.ExtensionContext,
+    models: DesignerModels
+  ) {
+    this.structure = models.structure;
+    this.data = models.data;
+    this.structure.setHost(this);
+    this.data.setHost(this);
+    this.structure.setTarget(target);
+    this.data.setTarget(target);
+    panel.webview.html = shell(panel.webview, context.extensionUri, target);
+    panel.onDidDispose(() => void this.dispose(), undefined, context.subscriptions);
+    panel.onDidChangeViewState(
+      (e) => {
+        if (!e.webviewPanel.active) {
+          return;
+        }
+        active = this;
+        if (Date.now() < tabSyncUntil) {
+          return;
+        }
+        tabSyncUntil = Date.now() + TAB_SYNC_MS;
+        // The yaml of this form comes to the front of the code group; the focus stays here.
+        void this.revealYaml();
+      },
+      undefined,
+      context.subscriptions
+    );
+    panel.webview.onDidReceiveMessage((m) => void this.handleMessage(m), undefined, context.subscriptions);
   }
-  const doc = targetDocument();
-  if (!doc) {
-    return;
+
+  key(): string {
+    return this.target.toString();
   }
-  const my = ++renderSeq;
-  const text = doc.getText();
-  // Resolve resource images (Изображение: info.svg) to data URIs so the wireframe shows them.
-  const resources = await resolveResources(collectResourceImages(text));
-  if (my !== renderSeq || !panel || !target) {
-    return; // a newer render started, or the panel closed, while resolving
+
+  private post(message: unknown): void {
+    void this.panel.webview.postMessage(message);
   }
-  const result = renderFormPreview(text, resources);
-  let body: string;
-  let title = "";
-  if (result.ok) {
-    body = result.html;
-    title = result.title;
-    panel.title = vscode.l10n.t("Form: {0}", result.title);
-    lastOffsets = collectDataOffsets(result.html);
-    if (selectedOffset !== undefined) {
-      // The edit may have shifted the node - keep the selection on the nearest offset.
-      selectedOffset = nearestOffset(lastOffsets, selectedOffset);
-    } else if (freshTarget) {
-      // First good render of this form: light up the node under the yaml cursor.
-      const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === target!.toString());
-      if (editor) {
-        selectedOffset = selectionForCursor(lastOffsets, doc.offsetAt(editor.selection.active));
+
+  // --- StructureHost / DataHost -----------------------------------------------------------
+
+  showStructure(snapshot: StructureSnapshot): void {
+    this.lastStructure = snapshot;
+    this.post({ type: "structure", snapshot });
+  }
+
+  revealStructure(id: string): void {
+    this.post({ type: "revealRow", pane: "structure", id });
+  }
+
+  showData(snapshot: DataSnapshot): void {
+    this.lastData = snapshot;
+    this.post({ type: "data", snapshot });
+  }
+
+  // --- lifecycle ---------------------------------------------------------------------------
+
+  reload(): void {
+    void this.structure.load();
+    void this.data.load();
+    void this.renderFrame();
+  }
+
+  scheduleReload(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+    }
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      this.reload();
+    }, DEBOUNCE_MS);
+  }
+
+  matches(uri: vscode.Uri): boolean {
+    return uri.toString() === this.key();
+  }
+
+  // Closing the form closes its yaml too: the panel and the source are opened together and are
+  // one working set. A yaml with unsaved changes is LEFT alone - closing it would either lose
+  // the edits or throw a save dialog at someone who just closed a preview.
+  private async dispose(): Promise<void> {
+    if (this.timer) {
+      clearTimeout(this.timer);
+    }
+    if (this.cursorTimer) {
+      clearTimeout(this.cursorTimer);
+    }
+    this.structure.setHost(undefined);
+    this.data.setHost(undefined);
+    designers.delete(this.key());
+    if (active === this) {
+      active = designers.values().next().value;
+    }
+    void vscode.commands.executeCommand("setContext", OPEN_CONTEXT, designers.size > 0);
+    const tabs = vscode.window.tabGroups.all
+      .flatMap((group) => group.tabs)
+      .filter(
+        (tab) =>
+          !tab.isDirty && tab.input instanceof vscode.TabInputText && this.matches((tab.input as vscode.TabInputText).uri)
+      );
+    if (tabs.length) {
+      await vscode.window.tabGroups.close(tabs, true);
+    }
+  }
+
+  // --- the frame ----------------------------------------------------------------------------
+
+  // The frame is rendered from the DOCUMENT, not from the disk (so it follows unsaved edits) -
+  // and on the first open the document is usually not loaded yet: the panel is opened from the
+  // metadata tree before anything shows the yaml. Loading it here is what keeps the very first
+  // render from coming up empty; openTextDocument does not open an editor.
+  private async document(): Promise<vscode.TextDocument | undefined> {
+    const open = vscode.workspace.textDocuments.find((d) => d.uri.toString() === this.key());
+    if (open) {
+      return open;
+    }
+    try {
+      return await vscode.workspace.openTextDocument(this.target);
+    } catch {
+      return undefined; // the form is gone (renamed, deleted)
+    }
+  }
+
+  async renderFrame(): Promise<void> {
+    const doc = await this.document();
+    if (!doc) {
+      return;
+    }
+    // A monotonic render generation: an async render (it resolves resource images) must not
+    // clobber the webview with a stale result after a newer render started.
+    const my = ++this.renderSeq;
+    const text = doc.getText();
+    const resources = await resolveResources(collectResourceImages(text));
+    if (my !== this.renderSeq) {
+      return;
+    }
+    const result = renderFormPreview(text, resources);
+    let body: string;
+    let title = "";
+    if (result.ok) {
+      body = result.html;
+      title = result.title;
+      this.panel.title = vscode.l10n.t("Form: {0}", result.title);
+      this.lastOffsets = collectDataOffsets(result.html);
+      if (this.selectedOffset !== undefined) {
+        // The edit may have shifted the node - keep the selection on the nearest offset.
+        this.selectedOffset = nearestOffset(this.lastOffsets, this.selectedOffset);
+      } else if (this.freshRender) {
+        const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === this.key());
+        if (editor) {
+          this.selectedOffset = selectionForCursor(this.lastOffsets, doc.offsetAt(editor.selection.active));
+        }
+      }
+      this.freshRender = false;
+    } else {
+      // A transient parse error while typing: keep the selection, it remaps on the next
+      // successful render; there is nothing to match the cursor against meanwhile.
+      this.lastOffsets = [];
+      if (result.reason === "parse") {
+        body = `<p class="note">${esc(vscode.l10n.t("The yaml does not parse: {0}", result.detail ?? ""))}</p>`;
+      } else {
+        body = `<p class="note">${esc(vscode.l10n.t("No form content here (Наследует → Содержимое) – open a form yaml."))}</p>`;
       }
     }
-    freshTarget = false;
-  } else {
-    // A transient parse error while typing: keep the selection, it remaps on the next
-    // successful render; there is nothing to match the cursor against meanwhile.
-    lastOffsets = [];
-    if (result.reason === "parse") {
-      body = `<p class="note">${esc(vscode.l10n.t("The yaml does not parse: {0}", result.detail ?? ""))}</p>`;
-    } else {
-      body = `<p class="note">${esc(vscode.l10n.t("No form content here (Наследует → Содержимое) – open a form yaml."))}</p>`;
+    this.lastFrame = { body, title };
+    this.post({ type: "frame", body, title, selected: this.selectedOffset ?? null });
+  }
+
+  // --- selection sync -------------------------------------------------------------------------
+
+  // Bring this form's yaml to the front of its group without taking the focus - the panel and
+  // its source follow each other's tab.
+  private async revealYaml(): Promise<void> {
+    try {
+      const doc = await vscode.workspace.openTextDocument(this.target);
+      await vscode.window.showTextDocument(doc, {
+        viewColumn: editorColumnFor(this.target, vscode.ViewColumn.One),
+        preserveFocus: true,
+        preview: false,
+      });
+    } catch {
+      // the form is gone (renamed, deleted) - nothing to bring forward
     }
   }
-  lastFrame = { body, title };
-  post({ type: "frame", body, title, selected: selectedOffset ?? null });
-}
 
-function reload(): void {
-  void deps?.structure.load();
-  void deps?.data.load();
-  void renderFrame();
-}
-
-function scheduleReload(): void {
-  if (timer) {
-    clearTimeout(timer);
+  // Show a location in the yaml editor. On selection and edits the focus stays in the panel
+  // (preserveFocus); on an explicit "Show in yaml" / Ctrl+click it moves to the editor.
+  private async revealOffsetInEditor(offset: number, preserveFocus: boolean): Promise<void> {
+    const doc = await vscode.workspace.openTextDocument(this.target);
+    const pos = doc.positionAt(Math.min(offset, doc.getText().length));
+    const editor = await vscode.window.showTextDocument(doc, {
+      viewColumn: editorColumnFor(this.target, vscode.ViewColumn.One),
+      preserveFocus,
+      preview: false,
+    });
+    editor.selection = new vscode.Selection(pos, pos);
+    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
   }
-  timer = setTimeout(() => {
-    timer = undefined;
-    reload();
-  }, DEBOUNCE_MS);
-}
 
-// Show a location in the yaml editor. On selection and edits the focus stays in the panel
-// (preserveFocus); on an explicit "Show in yaml" / Ctrl+click it moves to the editor.
-async function revealOffsetInEditor(offset: number, preserveFocus: boolean): Promise<void> {
-  if (!target) {
-    return;
+  // A click in the frame: the cursor onto the node's yaml line (no focus steal) and the node's
+  // properties into the sidebar "Properties" view; the structure row lights up too.
+  private selectFrameNode(offset: number): void {
+    void vscode.commands.executeCommand("xbsl.properties.showForNode", this.key(), offset);
+    void this.revealOffsetInEditor(offset, true);
+    void this.syncStructureToOffset(offset);
   }
-  const doc = await vscode.workspace.openTextDocument(target);
-  const pos = doc.positionAt(Math.min(offset, doc.getText().length));
-  const existing = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === target!.toString());
-  const editor = await vscode.window.showTextDocument(doc, {
-    viewColumn: existing?.viewColumn ?? vscode.ViewColumn.One,
-    preserveFocus,
-    preview: false,
-  });
-  editor.selection = new vscode.Selection(pos, pos);
-  editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-}
 
-// A click in the frame: the cursor onto the node's yaml line (no focus steal) and the node's
-// properties into the sidebar "Properties" view; the structure row lights up too.
-function selectFrameNode(offset: number): void {
-  if (!target) {
-    return;
-  }
-  void vscode.commands.executeCommand("xbsl.properties.showForNode", target.toString(), offset);
-  void revealOffsetInEditor(offset, true);
-  void syncStructureToOffset(offset);
-}
-
-// Yaml offset -> structure row: the panel asks the model (xbsl/formNodeAt) and reveals the row.
-async function syncStructureToOffset(offset: number): Promise<void> {
-  const id = await deps?.structure.nodeIdAt(offset);
-  if (id && panel) {
-    deps?.structure.setSelection([id]);
-    post({ type: "revealRow", pane: "structure", id });
-  }
-}
-
-// Yaml cursor -> frame highlight: the containing node is the closest data-off at or below the
-// cursor. Purely visual follow - no focus moves and no properties-panel calls.
-function syncCursorAt(cursor: number): void {
-  if (!panel) {
-    return;
-  }
-  if (lastOffsets.length) {
-    const off = selectionForCursor(lastOffsets, cursor);
-    if (off !== selectedOffset) {
-      selectedOffset = off;
-      post({ type: "highlight", offset: off ?? null });
+  // Yaml offset -> structure row: the panel asks the model (xbsl/formNodeAt) and reveals the row,
+  // expanding whatever collapsed groups stand between it and the root.
+  private async syncStructureToOffset(offset: number): Promise<void> {
+    const id = await this.structure.nodeIdAt(offset);
+    if (id) {
+      this.structure.revealNode(id);
     }
   }
-  void syncStructureToOffset(cursor);
+
+  // Yaml cursor -> frame highlight (debounced): the containing node is the closest data-off at
+  // or below the cursor. Purely visual follow - no focus moves and no properties-panel calls.
+  scheduleCursorSync(cursor: number): void {
+    if (Date.now() < this.suppressCursorSyncUntil) {
+      return;
+    }
+    if (this.cursorTimer) {
+      clearTimeout(this.cursorTimer);
+    }
+    this.cursorTimer = setTimeout(() => {
+      this.cursorTimer = undefined;
+      if (this.lastOffsets.length) {
+        const off = selectionForCursor(this.lastOffsets, cursor);
+        if (off !== this.selectedOffset) {
+          this.selectedOffset = off;
+          this.post({ type: "highlight", offset: off ?? null });
+        }
+      }
+      void this.syncStructureToOffset(cursor);
+    }, CURSOR_DEBOUNCE_MS);
+  }
+
+  // --- messages from the webview ---------------------------------------------------------------
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async handleMessage(m: any): Promise<void> {
+    if (!m) {
+      return;
+    }
+    switch (m.type) {
+      case "ready":
+        // A restored (or reloaded) webview asks for everything it should be showing.
+        this.post({ type: "labels", labels: labels(), layout, view });
+        if (this.lastStructure) {
+          this.post({ type: "structure", snapshot: this.lastStructure });
+        }
+        if (this.lastData) {
+          this.post({ type: "data", snapshot: this.lastData });
+        }
+        if (this.lastFrame) {
+          this.post({ type: "frame", ...this.lastFrame, selected: this.selectedOffset ?? null });
+        }
+        return;
+      case "rowSelect":
+        this.suppressCursorSyncUntil = Date.now() + 300;
+        if (m.pane === "structure") {
+          this.structure.setSelection(Array.isArray(m.ids) ? m.ids : []);
+          if (typeof m.primary === "string") {
+            await this.structure.activate(m.primary, false);
+            const offset = await this.structure.offsetOf(m.primary);
+            if (offset !== undefined && this.lastOffsets.length) {
+              this.selectedOffset = selectionForCursor(this.lastOffsets, offset);
+              this.post({ type: "highlight", offset: this.selectedOffset ?? null });
+            }
+          }
+        } else {
+          this.data.setSelection(typeof m.primary === "string" ? m.primary : undefined);
+          if (typeof m.primary === "string") {
+            await this.data.reveal(m.primary);
+          }
+        }
+        return;
+      case "rowToggle":
+        if (typeof m.id === "string") {
+          if (m.pane === "structure") {
+            this.structure.toggleRow(m.id, !!m.expanded);
+          } else {
+            this.data.toggleRow(m.id, !!m.expanded);
+          }
+        }
+        return;
+      case "rowActivate":
+        if (typeof m.id === "string") {
+          if (m.pane === "structure") {
+            await this.structure.activate(m.id, true); // a double click moves the focus to the yaml
+          } else {
+            await this.data.insert(m.id); // a double click inserts the field into the form
+          }
+        }
+        return;
+      case "rowMenu": {
+        // The menu composition lives in the tested core; here it only gets its labels.
+        const pane: "structure" | "data" = m.pane === "data" ? "data" : "structure";
+        const id = String(m.id ?? "");
+        let items: { command: string; separatorBefore?: boolean }[] = [];
+        if (pane === "structure") {
+          const row = this.lastStructure?.rows.find((r) => r.id === id);
+          items = row ? structureMenu(row, this.lastStructure?.selection.length || 1) : [];
+        } else {
+          const row = this.lastData?.rows.find((r) => r.id === id);
+          items = row ? dataMenu(row) : [];
+        }
+        if (!items.length) {
+          return;
+        }
+        this.post({
+          type: "menu",
+          pane,
+          id,
+          x: m.x,
+          y: m.y,
+          items: items.map((i) => ({ ...i, label: menuLabel(pane, i.command) })),
+        });
+        return;
+      }
+      case "command":
+        if (typeof m.command === "string") {
+          // The command acts on THIS panel wherever it was invoked from.
+          active = this;
+          if (m.pane === "data") {
+            await this.data.runCommand(m.command, typeof m.id === "string" ? m.id : undefined);
+          } else {
+            await vscode.commands.executeCommand(
+              `xbsl.formStructure.${m.command}`,
+              typeof m.id === "string" ? m.id : undefined
+            );
+          }
+        }
+        return;
+      case "drop": {
+        if (typeof m.target !== "string" || !m.payload) {
+          return;
+        }
+        if (m.payload.kind === "nodes" && Array.isArray(m.payload.ids)) {
+          await this.structure.dropNodes(m.payload.ids, m.target);
+        } else if (m.payload.kind === "record" && typeof m.payload.id === "string") {
+          const payload = this.data.payloadFor(m.payload.id);
+          if (payload) {
+            await this.structure.dropRecord(payload, m.target);
+          }
+        }
+        return;
+      }
+      case "frameSelect":
+        if (typeof m.offset === "number") {
+          // The webview highlighted the block already; remember the choice and keep the
+          // cursor-move echo from re-posting a highlight.
+          this.selectedOffset = m.offset;
+          this.suppressCursorSyncUntil = Date.now() + 300;
+          if (this.cursorTimer) {
+            clearTimeout(this.cursorTimer);
+            this.cursorTimer = undefined;
+          }
+          this.selectFrameNode(m.offset);
+        }
+        return;
+      case "frameReveal":
+        if (typeof m.offset === "number") {
+          await this.revealOffsetInEditor(m.offset, false);
+        }
+        return;
+      case "frameDeselect":
+        this.selectedOffset = undefined;
+        return;
+      case "undo":
+      case "redo": {
+        // Every designer edit lands in the yaml document's own undo stack (one WorkspaceEdit per
+        // operation), but the undo COMMAND acts on the focused editor - and the focus is here, in
+        // the panel. So the yaml editor is focused for the moment of the command and the focus
+        // comes straight back to the panel.
+        await this.revealOffsetInEditor(0, false);
+        await vscode.commands.executeCommand(m.type === "undo" ? "undo" : "redo");
+        this.panel.reveal(this.panel.viewColumn, false);
+        return;
+      }
+      case "view": {
+        // Zoom and theme are applied inside the webview; here we only remember the choice.
+        const next = { zoom: Number(m.zoom), theme: m.theme } as ViewState;
+        if (isViewState(next)) {
+          view = next;
+          void this.context.globalState.update(STATE_KEY, view);
+        }
+        return;
+      }
+      case "layout":
+        layout = sanitizeLayout({ left: m.left, top: m.top });
+        void this.context.globalState.update(LAYOUT_KEY, layout);
+        return;
+      default:
+        return;
+    }
+  }
 }
 
 function isViewState(v: unknown): v is ViewState {
@@ -360,9 +637,10 @@ function isViewState(v: unknown): v is ViewState {
   return !!s && typeof s.zoom === "number" && (s.theme === "light" || s.theme === "dark" || s.theme === "editor");
 }
 
-// uri is passed when called from the metadata tree (the form is already open on the left) -
-// then the target is taken from it, not from the active editor; the editor title button passes
-// no uri, the target is the active yaml.
+// A form gets ONE panel: opening it again brings that panel forward instead of making a second
+// one, and a second form opens a panel of its own next to it (editor tabs, as everywhere else).
+// uri is passed when called from the metadata tree; the editor title button passes none and the
+// active yaml is taken.
 function openPanel(context: vscode.ExtensionContext, uri?: vscode.Uri): void {
   let docUri = uri;
   if (!docUri) {
@@ -375,247 +653,86 @@ function openPanel(context: vscode.ExtensionContext, uri?: vscode.Uri): void {
     }
     docUri = editor.document.uri;
   }
-  const column = uri ? vscode.ViewColumn.One : vscode.ViewColumn.Beside;
-  if (!panel) {
-    adoptPanel(
-      context,
-      vscode.window.createWebviewPanel(VIEW_TYPE, "XBSL", column, {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "resources")],
-      })
-    );
-  } else {
-    // Reveal in the intended column (One from the tree, Beside from the title button), not the
-    // panel's own stale column - otherwise a persistent panel drifts relative to the yaml.
-    panel.reveal(column, true);
+  const existing = designers.get(docUri.toString());
+  if (existing) {
+    active = existing;
+    existing.panel.reveal(existing.panel.viewColumn, true);
+    existing.reload();
+    return;
   }
-  setTarget(docUri);
-  reload();
+  // A new panel joins the group where the other form panels already are; the first one takes
+  // column One (from the tree, the yaml goes beside it) or the column next to the yaml.
+  const column = active?.panel.viewColumn ?? (uri ? vscode.ViewColumn.One : vscode.ViewColumn.Beside);
+  const panel = vscode.window.createWebviewPanel(VIEW_TYPE, "XBSL", column, {
+    enableScripts: true,
+    retainContextWhenHidden: true,
+    localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "resources")],
+  });
+  adoptPanel(context, panel, docUri).reload();
 }
 
 // Wiring of a panel - the same for a freshly created one and for one VS Code restored after a
 // restart (deserializeWebviewPanel), so a restored panel is a live designer, not a leftover tab.
-function adoptPanel(context: vscode.ExtensionContext, created: vscode.WebviewPanel): void {
-  panel = created;
-  panel.webview.html = shell(panel.webview, context.extensionUri);
+function adoptPanel(context: vscode.ExtensionContext, panel: vscode.WebviewPanel, target: vscode.Uri): Designer {
+  const designer = new Designer(panel, target, context, makeModels!());
+  designers.set(designer.key(), designer);
+  active = designer;
   void vscode.commands.executeCommand("setContext", OPEN_CONTEXT, true);
-  deps?.structure.setHost(structureHost);
-  deps?.data.setHost(dataHost);
-  panel.onDidDispose(
-    () => {
-      panel = undefined;
-      lastStructure = undefined;
-      lastData = undefined;
-      lastFrame = undefined;
-      deps?.structure.setHost(undefined);
-      deps?.data.setHost(undefined);
-      void vscode.commands.executeCommand("setContext", OPEN_CONTEXT, false);
-      void context.workspaceState.update(TARGET_KEY, undefined);
-    },
-    undefined,
-    context.subscriptions
-  );
-  panel.webview.onDidReceiveMessage((m) => void handleMessage(context, m), undefined, context.subscriptions);
+  return designer;
 }
 
-const structureHost: StructureHost = {
-  showStructure(snapshot) {
-    lastStructure = snapshot;
-    post({ type: "structure", snapshot });
-  },
-  revealStructure(id) {
-    post({ type: "revealRow", pane: "structure", id });
-  },
-};
-
-const dataHost: DataHost = {
-  showData(snapshot) {
-    lastData = snapshot;
-    post({ type: "data", snapshot });
-  },
-};
-
-// -- messages from the webview -----------------------------------------------------------------
-
-async function handleMessage(context: vscode.ExtensionContext, m: any): Promise<void> {
-  if (!m || !deps) {
-    return;
-  }
-  switch (m.type) {
-    case "ready":
-      // A restored (or reloaded) webview asks for everything it should be showing.
-      post({ type: "labels", labels: labels(), layout, view });
-      if (lastStructure) {
-        post({ type: "structure", snapshot: lastStructure });
-      }
-      if (lastData) {
-        post({ type: "data", snapshot: lastData });
-      }
-      if (lastFrame) {
-        post({ type: "frame", ...lastFrame, selected: selectedOffset ?? null });
-      }
-      return;
-    case "rowSelect":
-      suppressCursorSyncUntil = Date.now() + 300;
-      if (m.pane === "structure") {
-        deps.structure.setSelection(Array.isArray(m.ids) ? m.ids : []);
-        if (typeof m.primary === "string") {
-          await deps.structure.activate(m.primary, false);
-          const offset = await deps.structure.offsetOf(m.primary);
-          if (offset !== undefined && lastOffsets.length) {
-            selectedOffset = selectionForCursor(lastOffsets, offset);
-            post({ type: "highlight", offset: selectedOffset ?? null });
-          }
-        }
-      } else {
-        deps.data.setSelection(typeof m.primary === "string" ? m.primary : undefined);
-        if (typeof m.primary === "string") {
-          await deps.data.reveal(m.primary);
-        }
-      }
-      return;
-    case "rowToggle":
-      if (typeof m.id === "string") {
-        if (m.pane === "structure") {
-          deps.structure.toggleRow(m.id, !!m.expanded);
-        } else {
-          deps.data.toggleRow(m.id, !!m.expanded);
-        }
-      }
-      return;
-    case "rowActivate":
-      if (typeof m.id === "string") {
-        if (m.pane === "structure") {
-          await deps.structure.activate(m.id, true); // a double click moves the focus to the yaml
-        } else {
-          await deps.data.insert(m.id); // a double click inserts the field into the form
-        }
-      }
-      return;
-    case "rowMenu": {
-      // The menu composition lives in the tested core; here it only gets its labels.
-      const pane: "structure" | "data" = m.pane === "data" ? "data" : "structure";
-      const id = String(m.id ?? "");
-      let items: { command: string; separatorBefore?: boolean }[] = [];
-      if (pane === "structure") {
-        const row = lastStructure?.rows.find((r) => r.id === id);
-        items = row ? structureMenu(row, lastStructure?.selection.length || 1) : [];
-      } else {
-        const row = lastData?.rows.find((r) => r.id === id);
-        items = row ? dataMenu(row) : [];
-      }
-      if (!items.length) {
-        return;
-      }
-      post({
-        type: "menu",
-        pane,
-        id,
-        x: m.x,
-        y: m.y,
-        items: items.map((i) => ({ ...i, label: menuLabel(pane, i.command) })),
-      });
-      return;
-    }
-    case "command":
-      if (typeof m.command === "string") {
-        if (m.pane === "data") {
-          await deps.data.runCommand(m.command, typeof m.id === "string" ? m.id : undefined);
-        } else {
-          await vscode.commands.executeCommand(
-            `xbsl.formStructure.${m.command}`,
-            typeof m.id === "string" ? m.id : undefined
-          );
-        }
-      }
-      return;
-    case "drop": {
-      if (typeof m.target !== "string" || !m.payload) {
-        return;
-      }
-      if (m.payload.kind === "nodes" && Array.isArray(m.payload.ids)) {
-        await deps.structure.dropNodes(m.payload.ids, m.target);
-      } else if (m.payload.kind === "record" && typeof m.payload.id === "string") {
-        const payload = deps.data.payloadFor(m.payload.id);
-        if (payload) {
-          await deps.structure.dropRecord(payload, m.target);
-        }
-      }
-      return;
-    }
-    case "frameSelect":
-      if (typeof m.offset === "number") {
-        // The webview highlighted the block already; remember the choice and keep the
-        // cursor-move echo from re-posting a highlight.
-        selectedOffset = m.offset;
-        suppressCursorSyncUntil = Date.now() + 300;
-        if (cursorTimer) {
-          clearTimeout(cursorTimer);
-          cursorTimer = undefined;
-        }
-        selectFrameNode(m.offset);
-      }
-      return;
-    case "frameReveal":
-      if (typeof m.offset === "number") {
-        await revealOffsetInEditor(m.offset, false);
-      }
-      return;
-    case "frameDeselect":
-      selectedOffset = undefined;
-      return;
-    case "view": {
-      // Zoom and theme are applied inside the webview; here we only remember the choice.
-      const next = { zoom: Number(m.zoom), theme: m.theme } as ViewState;
-      if (isViewState(next)) {
-        view = next;
-        void context.globalState.update(STATE_KEY, view);
-      }
-      return;
-    }
-    case "layout":
-      layout = sanitizeLayout({ left: m.left, top: m.top });
-      void context.globalState.update(LAYOUT_KEY, layout);
-      return;
-    default:
-      return;
-  }
-}
+// -- events and registration --------------------------------------------------------------------
 
 function updateContext(editor: vscode.TextEditor | undefined): void {
   const isForm = !!editor && looksLikeForm(editor.document);
   void vscode.commands.executeCommand("setContext", "xbsl.formYaml", isForm);
 }
 
-export function registerFormDesigner(context: vscode.ExtensionContext, designerDeps: DesignerDeps): void {
-  extContext = context;
-  deps = designerDeps;
+// What the rest of the extension needs from the designer: which form is in front. The palette
+// and the pane commands act on that one.
+export interface DesignerAccess {
+  activeStructure(): FormStructureModel | undefined;
+  activeData(): FormDataModel | undefined;
+}
+
+export function registerFormDesigner(
+  context: vscode.ExtensionContext,
+  models: () => DesignerModels
+): DesignerAccess {
+  makeModels = models;
   const saved = context.globalState.get(STATE_KEY);
   if (isViewState(saved)) {
     view = saved;
   }
   layout = sanitizeLayout(context.globalState.get(LAYOUT_KEY));
 
+  // An event names a document, not a panel: it goes to the designer of THAT form, wherever its
+  // panel sits and whether or not it is the active one.
+  const designerFor = (uri: vscode.Uri): Designer | undefined => designers.get(uri.toString());
+
   context.subscriptions.push(
     vscode.commands.registerCommand("xbsl.previewForm", (arg?: unknown) =>
       openPanel(context, arg instanceof vscode.Uri ? arg : undefined)
     ),
-    // Session restore: without a serializer VS Code drops the tab on restart and the form has
-    // to be opened by hand again. The restored panel is wired exactly like a fresh one.
+    // Session restore: without a serializer VS Code drops the tabs on restart and every form has
+    // to be opened by hand again. Each restored panel carries the form it was showing in its own
+    // webview state, so several of them come back at once.
     vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, {
       async deserializeWebviewPanel(restored: vscode.WebviewPanel, state: unknown): Promise<void> {
         restored.webview.options = {
           enableScripts: true,
           localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "resources")],
         };
-        adoptPanel(context, restored);
-        const uri = restoredTargetUri(state, context.workspaceState.get(TARGET_KEY));
+        const uri = restoredTargetUri(state, undefined);
         if (!uri) {
           restored.dispose(); // nothing to show - do not leave an empty tab behind
           return;
         }
         const parsed = vscode.Uri.parse(uri);
+        if (designers.has(parsed.toString())) {
+          restored.dispose(); // this form already has its panel
+          return;
+        }
         try {
           // On a fresh start the yaml is not loaded yet, and rendering reads the document, not
           // the disk - without this the restored tab would come back empty.
@@ -624,58 +741,51 @@ export function registerFormDesigner(context: vscode.ExtensionContext, designerD
           restored.dispose(); // the form is gone (renamed, deleted) - nothing to restore
           return;
         }
-        setTarget(parsed);
-        reload();
+        adoptPanel(context, restored, parsed).reload();
       },
     }),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       updateContext(editor);
-      // The panel follows the active form yaml - like the Markdown preview.
-      if (panel && editor && editor.document.uri.scheme === "file" && looksLikeForm(editor.document)) {
-        setTarget(editor.document.uri);
-        scheduleReload();
+      // The other direction of the same pairing: a yaml tab brought forward brings its form
+      // panel forward too (the focus stays in the editor).
+      if (!editor || Date.now() < tabSyncUntil) {
+        return;
+      }
+      const designer = designerFor(editor.document.uri);
+      if (designer) {
+        tabSyncUntil = Date.now() + TAB_SYNC_MS;
+        active = designer;
+        designer.panel.reveal(designer.panel.viewColumn, true);
       }
     }),
-    vscode.workspace.onDidChangeTextDocument((e) => {
-      if (panel && target && e.document.uri.toString() === target.toString()) {
-        scheduleReload();
-      }
-    }),
+    vscode.workspace.onDidChangeTextDocument((e) => designerFor(e.document.uri)?.scheduleReload()),
     vscode.languages.onDidChangeDiagnostics((e) => {
-      if (panel && target && e.uris.some((u) => u.toString() === target!.toString())) {
-        designerDeps.structure.scheduleDiagnostics();
+      for (const uri of e.uris) {
+        designerFor(uri)?.structure.scheduleDiagnostics();
       }
     }),
     // The frame and the structure follow the yaml selection (debounced): the block of the node
     // under the cursor highlights and its structure row is revealed.
     vscode.window.onDidChangeTextEditorSelection((e) => {
-      if (!panel || !target || e.textEditor.document.uri.toString() !== target.toString()) {
-        return;
+      const designer = designerFor(e.textEditor.document.uri);
+      const position = e.selections[0]?.active;
+      if (designer && position) {
+        designer.scheduleCursorSync(e.textEditor.document.offsetAt(position));
       }
-      if (Date.now() < suppressCursorSyncUntil) {
-        return;
-      }
-      const active = e.selections[0]?.active;
-      if (!active) {
-        return;
-      }
-      const cursor = e.textEditor.document.offsetAt(active);
-      if (cursorTimer) {
-        clearTimeout(cursorTimer);
-      }
-      cursorTimer = setTimeout(() => {
-        cursorTimer = undefined;
-        syncCursorAt(cursor);
-      }, CURSOR_DEBOUNCE_MS);
     })
   );
   updateContext(vscode.window.activeTextEditor);
   void vscode.commands.executeCommand("setContext", OPEN_CONTEXT, false);
+
+  return {
+    activeStructure: () => active?.structure,
+    activeData: () => active?.data,
+  };
 }
 
 // -- the webview shell ---------------------------------------------------------------------------
 
-function shell(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+function shell(webview: vscode.Webview, extensionUri: vscode.Uri, target: vscode.Uri): string {
   const nonce = makeNonce();
   const codicons = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "resources", "codicons", "codicon.css")
@@ -692,9 +802,11 @@ function shell(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 ${cspMeta(nonce, { style: webview.cspSource, font: webview.cspSource, img: `data: ${webview.cspSource}` })}
 <link rel="stylesheet" href="${codicons}">
 <style>
-  html, body { height: 100%; }
+  /* The editor gives a webview body its own padding by default; the panel is a full-bleed
+     layout with its own splitters, so every inset is reset here. */
+  html, body { height: 100%; width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
   body { background: var(--vscode-editor-background); color: var(--vscode-foreground);
-    font-family: var(--vscode-font-family, "Segoe UI", sans-serif); font-size: 13px; margin: 0;
+    font-family: var(--vscode-font-family, "Segoe UI", sans-serif); font-size: 13px;
     display: flex; flex-direction: column; overflow: hidden; }
   /* --- panes and splitters --- */
   /* The two splitters own the sizes: the trees row and the structure pane carry an explicit
@@ -716,6 +828,7 @@ ${cspMeta(nonce, { style: webview.cspSource, font: webview.cspSource, img: `data
     cursor: pointer; padding: 1px 3px; border-radius: 3px; line-height: 1; }
   .hbtn:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2)); }
   .hbtn.on { opacity: 1; color: var(--vscode-charts-blue, #3794ff); }
+  #zoombox { display: inline-flex; align-items: center; gap: 2px; }
   .pane-head select { background: var(--vscode-dropdown-background, transparent); color: var(--vscode-dropdown-foreground, inherit);
     border: 1px solid var(--vscode-dropdown-border, rgba(128,128,128,.4)); border-radius: 3px;
     font-size: 11px; font-family: inherit; padding: 0 2px; }
@@ -731,14 +844,26 @@ ${cspMeta(nonce, { style: webview.cspSource, font: webview.cspSource, img: `data
   .trow { display: flex; align-items: center; gap: 4px; padding: 1px 6px 1px 0; white-space: nowrap;
     cursor: pointer; user-select: none; }
   .trow:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,.12)); }
-  .trow.sel { background: var(--vscode-list-inactiveSelectionBackground, rgba(128,128,128,.22)); }
-  .rows:focus-within .trow.sel { background: var(--vscode-list-activeSelectionBackground, rgba(38,146,222,.4));
+  /* The selected node is the panel's CURRENT node - shared by the structure, the frame and the
+     properties panel - so it keeps the full selection color no matter which area holds the
+     focus. A list that dimmed its selection when the click happened in the frame would hide
+     exactly what the click was for. Which pane has the keyboard is shown by its own outline. */
+  .trow.sel { background: var(--vscode-list-activeSelectionBackground, rgba(38,146,222,.4));
     color: var(--vscode-list-activeSelectionForeground, inherit); }
+  .rows:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
   .trow.drop { outline: 1px dashed var(--vscode-focusBorder); outline-offset: -1px; }
-  .trow .tw { width: 16px; flex: none; opacity: .8; font-size: 14px; }
-  .trow .ic { flex: none; opacity: .9; font-size: 15px; }
-  .trow .lbl { overflow: hidden; text-overflow: ellipsis; }
-  .trow .desc { opacity: .6; font-size: .9em; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  /* Icons and the twisty take the editor's OWN icon color at full strength (16px, as in a
+     native tree): dimming them with opacity was what made the pane read as "drawn" next to
+     the real trees. The same goes for the row description. */
+  .trow .tw, .trow .ic { flex: none; font-size: 16px; color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
+  .trow .tw { width: 16px; }
+  .trow.sel .tw, .trow.sel .ic { color: var(--vscode-list-activeSelectionIconForeground, inherit); }
+  /* The name wins over the value preview: the preview is squeezed (and dropped to a tooltip)
+     first, and a name too long even for the whole row scrolls the pane rather than turning
+     into an ellipsis nobody can expand. */
+  .trow .lbl { flex: 0 0 auto; white-space: pre; }
+  .trow .desc { color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+    font-size: .9em; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .trow.sev0 .ic, .trow.sev0 .desc { color: var(--vscode-list-errorForeground, #f66); opacity: 1; }
   .trow.sev1 .ic, .trow.sev1 .desc { color: var(--vscode-list-warningForeground, #cca700); opacity: 1; }
   .trow.broken .lbl { opacity: .6; font-style: italic; }
@@ -856,24 +981,29 @@ ${cspMeta(nonce, { style: webview.cspSource, font: webview.cspSource, img: `data
       <span class="sub" id="frame-sub"></span>
       <span class="sp"></span>
       <select id="theme">${themeOptions}</select>
-      <button class="hbtn" id="zo" title="">&#8722;</button><span class="sub" id="zv">${view.zoom}%</span><button class="hbtn" id="zi" title="">+</button>
+      <span id="zoombox"><button class="hbtn" id="zo" title="">&#8722;</button><span class="sub" id="zv">${view.zoom}%</span><button class="hbtn" id="zi" title="">+</button></span>
     </div>
     <div id="canvas" class="theme-${view.theme}"><div id="root"></div></div>
   </div>
 </div>
 <div class="ctx" id="ctx"></div>
 <script nonce="${nonce}">
-${panelScript()}
+${panelScript(target)}
 </script></body></html>`;
 }
 
 // The webview script. Written with string concatenation (no template literals): the whole
 // block lives inside a TS template literal, where a backtick or a dollar-brace would be
 // interpolated by the extension instead of reaching the browser.
-function panelScript(): string {
+function panelScript(target: vscode.Uri): string {
   return String.raw`
   const vsapi = acquireVsCodeApi();
   const state = Object.assign({ tabs: {}, sel: undefined, uri: "" }, vsapi.getState() || {});
+  // The form this panel shows, kept in the webview's OWN state: VS Code hands that state back to
+  // the serializer after a restart, and with a panel per form it is the only way each of them
+  // knows what to restore.
+  state.uri = ${inlineJson(target.toString())};
+  vsapi.setState(state);
   let L = ${inlineJson(labels())};
   let layout = ${inlineJson(layout)};
   let zoom = ${view.zoom};
@@ -1153,6 +1283,18 @@ function panelScript(): string {
   structureRows.addEventListener("keydown", (e) => onKey(e, "structure"));
   dataRows.addEventListener("keydown", (e) => onKey(e, "data"));
 
+  // Undo/redo anywhere in the panel (trees and frame alike): with the focus inside a webview
+  // the editor never sees the shortcut, so the panel forwards it to the yaml document.
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) { return; }
+    const key = e.key.toLowerCase();
+    const undoKey = key === "z" || key === "я";
+    const redoKey = key === "y" || key === "н";
+    if (!undoKey && !redoKey) { return; }
+    post({ type: redoKey || e.shiftKey ? "redo" : "undo" });
+    e.preventDefault();
+  });
+
   // --- drag and drop ------------------------------------------------------------------------------
 
   // The payload rides in a module variable, not only in the DataTransfer: both ends of the drag
@@ -1188,6 +1330,9 @@ function panelScript(): string {
   dataRows.addEventListener("dragstart", (e) => onDragStart(e, "data"));
   document.addEventListener("dragend", () => { dragPayload = null; markDrop(null); });
 
+  // Only drags that STARTED in this panel are accepted: a drag out of the sidebar palette never
+  // arrives here (measured - neither payload nor drop event crosses into a webview), so there is
+  // nothing to accept from outside.
   structureRows.addEventListener("dragover", (e) => {
     if (!dragPayload || structure.readonly) { return; }
     const rowEl = e.target.closest(".trow");
@@ -1219,13 +1364,34 @@ function panelScript(): string {
 
   // --- the frame ------------------------------------------------------------------------------------
 
+  // The zoom is applied at once and REMEMBERED with a delay: a wheel spin is dozens of steps,
+  // and every one of them would otherwise be a message and a globalState write.
+  let viewSaveTimer = null;
   function applyView() {
     root.style.zoom = zoom / 100;
     el("zv").textContent = zoom + "%";
-    post({ type: "view", zoom: zoom, theme: el("theme").value });
+    if (viewSaveTimer) { clearTimeout(viewSaveTimer); }
+    viewSaveTimer = setTimeout(function () {
+      viewSaveTimer = null;
+      post({ type: "view", zoom: zoom, theme: el("theme").value });
+    }, 250);
   }
-  el("zi").addEventListener("click", () => { zoom = Math.min(300, zoom + 25); applyView(); });
-  el("zo").addEventListener("click", () => { zoom = Math.max(50, zoom - 25); applyView(); });
+  function bumpZoom(delta) {
+    const next = Math.min(300, Math.max(50, zoom + delta));
+    if (next === zoom) { return; }
+    zoom = next;
+    applyView();
+  }
+  el("zi").addEventListener("click", () => bumpZoom(25));
+  el("zo").addEventListener("click", () => bumpZoom(-25));
+  // The wheel over the zoom control tunes it finely (the buttons keep their quarter steps);
+  // Ctrl+wheel over the frame does the same, as it does in the editor.
+  el("zoombox").addEventListener("wheel", (e) => { e.preventDefault(); bumpZoom(e.deltaY < 0 ? 5 : -5); }, { passive: false });
+  canvas.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && !e.metaKey) { return; }
+    e.preventDefault();
+    bumpZoom(e.deltaY < 0 ? 5 : -5);
+  }, { passive: false });
   el("theme").addEventListener("change", (e) => { canvas.className = "theme-" + e.target.value; applyView(); });
 
   // Visual selection only: the class, the saved state and (optionally) the scroll. Telling the

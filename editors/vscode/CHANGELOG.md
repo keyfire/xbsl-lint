@@ -15,6 +15,29 @@
   right, the form frame under them, with draggable splitters between (their position is
   remembered). The separate "Structure" and "Data" sidebar views are gone, and so is the
   "Designer" container.
+- **A panel per form.** A second form opens its own tab next to the first, and each panel keeps
+  its own tree, selection and expansion memory; opening the same form again brings its panel
+  forward instead of making a second one. A panel and its yaml travel as a pair: picking a tab on
+  one side brings the other forward, and closing the panel closes the form's yaml (an unsaved one
+  is left alone). A new yaml joins the group where the sources already are instead of splitting
+  the layout.
+- **The keyboard works inside the panel:** the arrows walk the tree, `Alt+Up`/`Alt+Down` move a
+  component, `F2` renames, `Delete` removes, `Ctrl+C`/`Ctrl+V` carry a yaml fragment, and
+  `Ctrl+Z`/`Ctrl+Y` undo and redo right from the panel (with the focus inside a webview the
+  editor never saw the shortcut). The frame zoom follows the wheel over the zoom control and
+  `Ctrl+wheel` over the frame itself.
+- **The selection really follows the cursor.** A click on a frame block and a cursor move in the
+  yaml expand whatever collapsed groups stand in the way and land on the node; the selected node
+  keeps the full selection color wherever the focus is - it is shared by the three areas, the
+  yaml cursor and the properties panel.
+- **An event can be cleared for good.** The event row got its reset, and it asks what to do with
+  the method: unbind only, or delete the handler from the module. The deletion takes the method
+  with its annotations and the blank line that separated it, and the yaml and the module change
+  in a single undo step (the new engine operation `xbsl/removeHandler`).
+- **A type's hover carries a description,** not just a link: the sentence from the platform
+  documentation on top, the page link under it.
+- The reset "x" of the properties panel now sits next to the field in every editor - for color,
+  font and long text it used to drift up into the row caption.
 - **The palette moved next to the metadata tree** and shows up only while the form panel is open.
   Insertion is a double click on a palette component into the structure selection. Dragging from
   the palette into the panel is gone: the platform does not carry a native tree's drag into a

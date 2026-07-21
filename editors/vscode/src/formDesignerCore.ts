@@ -131,6 +131,34 @@ function structureRow(
   };
 }
 
+// Open every collapsed ancestor of a node, so a reveal from outside the pane (a click in the
+// form frame, the yaml cursor, the result of an operation) can actually land on it: a row under
+// a collapsed group is not in the flattened rows at all. Mutates the expansion memory and
+// answers whether anything had to be opened.
+export function expandAncestors(
+  index: FormIndex,
+  id: string,
+  expanded: Set<string>,
+  collapsed: Set<string>
+): boolean {
+  if (!index.byId.has(id)) {
+    return false;
+  }
+  let changed = false;
+  let parent = index.parentOf.get(id);
+  while (parent !== undefined) {
+    if (collapsed.delete(parent)) {
+      changed = true;
+    }
+    if (!expanded.has(parent)) {
+      expanded.add(parent);
+      changed = true;
+    }
+    parent = index.parentOf.get(parent);
+  }
+  return changed;
+}
+
 // --- data rows --------------------------------------------------------------------------------
 
 export type DataRowKind = "section" | "property" | "attribute" | "tabular" | "column";

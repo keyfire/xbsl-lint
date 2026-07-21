@@ -1,14 +1,21 @@
-// The "Component palette" view (native TreeView in the 1C:Element Designer container):
+// The "Component palette" view (a native TreeView under the metadata tree, view id xbslPalette):
 // insertable interface components from the engine's xbsl/uiSchema catalog plus the project's own
 // КомпонентИнтерфейса elements. Sections: Frequent (insertion counters in globalState),
 // Favorites (starred, globalState), Project, then platform packages by the last package
 // segment. The view sits next to the metadata tree and shows up only while the form panel is
 // open (the xbsl.formDesigner.open context key) - the panel is where the insertion lands.
 // Insertion is a double activation (double click or Enter twice) or the inline "+" button, and
-// goes into the structure selection of the form panel; DRAGGING a palette item into the panel
-// is impossible - the platform does not carry a native tree's drag into a webview, which is
-// exactly why insertion is click-driven. Without generated ui-schema data the palette degrades
-// to a hint node plus the project section. Pure section building lives in formPaletteCore.ts.
+// goes into the structure selection of the form panel. DRAGGING a palette item into the panel
+// is impossible, and this was MEASURED, not assumed: a drag out of a native tree never reaches
+// the webview at all - neither the payload nor the drop event - so even announcing the dragged
+// type out of band (the panel accepting an unidentified drop) changed nothing. That is why
+// insertion is click-driven. Without generated ui-schema data the palette degrades to a hint
+// node plus the project section. Pure section building lives in formPaletteCore.ts.
+//
+// The view id is deliberately NOT the old xbslFormPalette: the editor remembers where a view
+// lives, so moving one to another container in the manifest leaves existing installations with
+// the view in its old place - and when the old container is gone, the editor invents a
+// standalone one for it. A fresh id has no remembered location and lands where it is declared.
 
 import * as vscode from "vscode";
 import { iconFor } from "./componentIcons";
@@ -21,7 +28,7 @@ import {
   PaletteSectionModel,
   bumpUsage,
 } from "./formPaletteCore";
-import { FormStructureController } from "./formStructure";
+import { FormStructureModel } from "./formStructure";
 import { cachedContainerTypes, resetUiSchemaCache, uiCatalog, warmContainers } from "./uiSchemaClient";
 import { resetMetaSchemaCache } from "./metaSchemaClient";
 
@@ -36,7 +43,9 @@ export interface ProjectComponentRef {
 
 export interface FormPaletteDeps {
   projectComponents: () => Promise<ProjectComponentRef[]>;
-  structure: FormStructureController;
+  //: The structure model of the ACTIVE form panel (undefined when no form is open) - the
+  //: palette inserts into whichever form is in front.
+  structure: () => FormStructureModel | undefined;
 }
 
 type PaletteElement =
@@ -116,7 +125,7 @@ class FormPaletteProvider implements vscode.TreeDataProvider<PaletteElement> {
       // container icons and the structure view plans drops for types beyond the static
       // fallback list.
       warmContainers(() => {
-        this.deps.structure.repaint();
+        this.deps.structure()?.repaint();
         this.emitter.fire(undefined);
       });
     }
@@ -258,7 +267,14 @@ class FormPaletteProvider implements vscode.TreeDataProvider<PaletteElement> {
     if (!element || element.kind !== "component") {
       return;
     }
-    if (await this.deps.structure.insertComponentType(element.item.name)) {
+    const structure = this.deps.structure();
+    if (!structure) {
+      void vscode.window.showInformationMessage(
+        vscode.l10n.t("XBSL: open a form in the designer – the palette inserts into its structure selection.")
+      );
+      return;
+    }
+    if (await structure.insertComponentType(element.item.name)) {
       await this.noteInserted(element.item.name);
     }
   }
@@ -281,7 +297,7 @@ class FormPaletteProvider implements vscode.TreeDataProvider<PaletteElement> {
 
 export function registerFormPalette(context: vscode.ExtensionContext, deps: FormPaletteDeps): void {
   const provider = new FormPaletteProvider(context, deps);
-  const view = vscode.window.createTreeView<PaletteElement>("xbslFormPalette", {
+  const view = vscode.window.createTreeView<PaletteElement>("xbslPalette", {
     treeDataProvider: provider,
   });
 

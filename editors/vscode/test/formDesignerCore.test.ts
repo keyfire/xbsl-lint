@@ -7,6 +7,7 @@ import {
   DataModel,
   DEFAULT_LAYOUT,
   dataMenu,
+  expandAncestors,
   flattenData,
   flattenStructure,
   isRowExpanded,
@@ -188,6 +189,24 @@ test("the container predicate reaches the icon and the container flag", () => {
     (r) => r.id === accordion.id
   )!;
   assert.strictEqual(schema.container, true);
+});
+
+test("expandAncestors opens the whole chain, so a reveal can land inside a collapsed group", () => {
+  // The frame click / yaml cursor picks a node the pane does not currently show: BUTTON sits
+  // under Группа, and Группа is closed by default - the row is not in the flat list at all.
+  const expanded = new Set<string>();
+  const collapsed = new Set<string>([GROUP.id, INNER_SLOT.id]);
+  assert.ok(!flattenStructure(INDEX, { ...BASE, collapsed }).some((r) => r.id === BUTTON.id));
+  assert.strictEqual(expandAncestors(INDEX, BUTTON.id, expanded, collapsed), true);
+  // Both the group and its slot are open now; the node itself is NOT force-expanded.
+  assert.deepStrictEqual([...collapsed], []);
+  assert.ok(expanded.has(GROUP.id) && expanded.has(INNER_SLOT.id) && expanded.has(CONTENT_SLOT.id));
+  assert.ok(!expanded.has(BUTTON.id));
+  const rows = flattenStructure(INDEX, { expanded, collapsed });
+  assert.ok(rows.some((r) => r.id === BUTTON.id));
+  // Nothing to open twice, and an unknown id is a no-op rather than a crash.
+  assert.strictEqual(expandAncestors(INDEX, BUTTON.id, expanded, collapsed), false);
+  assert.strictEqual(expandAncestors(INDEX, "Наследует/Ушедший[9]", expanded, collapsed), false);
 });
 
 // --- data flattening ----------------------------------------------------------------------

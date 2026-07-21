@@ -22,6 +22,7 @@ import {
   standardAttrNames,
 } from "./metadataCore";
 import { updatePropsFromSelection } from "./formProps";
+import { editorColumnFor } from "./reveal";
 
 // Element kind -> tree group + codicon. Several kinds may share one group. The group name is an
 // English key: it both groups and serves as the l10n key (in the English UI the bundle is not loaded
@@ -1202,12 +1203,17 @@ async function previewForm(node?: XbslNode): Promise<void> {
   if (!node?.yamlPath) {
     return;
   }
-  // The form panel on the LEFT (column One), the yaml on the RIGHT (column Two, focused): the
-  // panel keeps its own tab group, so revealing a node in the yaml does not hide the designer.
+  // The form panel takes column One and the yaml goes to the group where the sources already
+  // live (column Two when there is none yet): the panel keeps its own tab group, so revealing a
+  // node in the yaml does not hide the designer, and a second form does not split the layout
+  // again - its yaml joins the editors that are already open.
   const uri = vscode.Uri.file(node.yamlPath);
   await vscode.commands.executeCommand("xbsl.previewForm", uri);
   const doc = await vscode.workspace.openTextDocument(uri);
-  await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Two, preview: false });
+  await vscode.window.showTextDocument(doc, {
+    viewColumn: editorColumnFor(uri, vscode.ViewColumn.Two),
+    preview: false,
+  });
 }
 
 // Click on an object/field/module: the source on the left (the description with the cursor on the

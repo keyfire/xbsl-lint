@@ -44,6 +44,12 @@ The remaining panels live in activity-bar containers and follow the active edito
 
 ## The form panel
 
+**Every form gets a panel of its own**, living as a normal editor tab: a second form opens next to
+the first, each panel keeps its own tree, selection and expansion memory, and opening the same form
+again brings its panel forward. A panel and its `.yaml` travel as a pair - picking a tab on one
+side brings the other forward, closing the panel closes the form's yaml (unless it has unsaved
+changes), and a new yaml joins the group where the sources already are.
+
 The panel is three areas with draggable splitters (their position is remembered):
 
 | Left | Right |
@@ -60,8 +66,12 @@ The form as a tree of slots (`Content`, `Commands`, pages, columns, ...) and com
 icon per kind and linter badges on nodes.
 
 - **Cursor sync.** Put the cursor on a node in the yaml – it highlights in the tree and in the
-  frame and fills the Properties panel. Select a node in the tree – the cursor moves to its yaml;
-  a double click moves the focus there too.
+  frame and fills the Properties panel, expanding whatever collapsed groups stand in the way.
+  Select a node in the tree – the cursor moves to its yaml; a double click moves the focus there
+  too. The selected node is shared by the three areas and keeps its full color wherever the focus
+  is.
+- **Undo.** `Ctrl+Z` / `Ctrl+Y` work right in the panel: every designer operation is one undo step
+  of the yaml document.
 - **Arrange** (context menu + keys): **Move up / Move down** (`Alt+Up` / `Alt+Down`), **Wrap in
   a container** (pick the container type), **Unwrap container**, **Duplicate**, **Rename**
   (`F2`), **Delete component** (`Delete`).
@@ -93,7 +103,8 @@ The frame is an honest wireframe of the form structure, not a render. It highlig
 component and follows both the structure selection and the yaml cursor; a click on a block selects
 the component, `Ctrl+click` jumps to its yaml. An `Image` component with `Image: file.svg` shows
 the picture itself (resource images are resolved under `**/Resources/`). The area header carries
-the frame theme (light, dark, editor) and the zoom.
+the frame theme (light, dark, editor) and the zoom - the buttons, the wheel over the control, or
+`Ctrl+wheel` over the frame.
 
 ## Palette panel
 
@@ -130,6 +141,9 @@ The **Properties** panel edits the selected component (and, from the metadata tr
   and bindings already used in the form.
 - **Events.** An event property offers a dropdown of the module's compatible handlers;
   "create handler" writes a stub with the right signature into the `.xbsl` and jumps to it.
+  Resetting an event asks what to do with the method - unbind only, or delete the handler from the
+  module; the deletion takes the method with its annotations, and the yaml and the module change
+  in one undo step.
 - **Metadata objects, the same way.** For a selected object (`Catalog`, `Document`, `HttpService`,
   ...) the applicable properties come from the platform metamodel, so the **All properties**
   section also shows what the file does not set yet: `Presentation`, `Hierarchical`,

@@ -108,6 +108,19 @@ export interface AddHandlerResponse {
   error?: string;
 }
 
+// The answer of xbsl/removeHandler - the mirror of AddHandlerResponse: the yaml always loses
+// the binding, the module loses the method only when the caller asked (methodRemoved says what
+// actually happened, notes say why it did not).
+export interface RemoveHandlerResponse {
+  method?: string | null;
+  methodRemoved?: boolean;
+  yamlEdits?: EngineEditDto[];
+  moduleUri?: string;
+  moduleEdits?: EngineEditDto[];
+  notes?: string[];
+  error?: string;
+}
+
 export interface EngineEditDto {
   start: number;
   end: number;

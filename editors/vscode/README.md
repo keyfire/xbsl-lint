@@ -253,6 +253,12 @@ its own properties, so its structure and its data are edited where the form is s
 tree on the left, the data on the right, the form frame under them, with draggable splitters
 between (their position is remembered).
 
+**A panel per form.** A second form opens its own tab next to the first; each panel keeps its own
+tree, selection and expansion memory. A panel and its yaml travel as a pair: picking a tab on one
+side brings the other forward, and closing the panel closes the form's yaml (an unsaved one is
+left alone). The keyboard works inside the panel: the arrows walk the tree, plus `Alt+Up`/
+`Alt+Down`, `F2`, `Delete`, `Ctrl+C`/`Ctrl+V` and `Ctrl+Z`/`Ctrl+Y`.
+
 **Structure** – the tree of slots and components with an icon per kind and linter badges. The
 context menu and the keys: `Alt+Up`/`Alt+Down` move a component, `F2` renames, `Delete` removes,
 `Ctrl+C`/`Ctrl+V` carry a yaml fragment, plus wrapping into a container, duplicating, focusing on a
@@ -267,8 +273,13 @@ place (`Boolean` -> a checkbox, otherwise an input with `Value: =...`).
 with captions and `=bindings`, buttons (the primary one filled), checkboxes, tables with their real
 columns, switchable tabs (`Pages`), cards, image and HTML-container placeholders, and the form's
 command bar. Unknown and custom component types render as labeled boxes with their content inside,
-so nothing disappears. The area header has a zoom (−/+) and a theme picker: light (the platform web
-client look, the default), dark, or the editor theme – the choice is remembered.
+so nothing disappears. The area header has a zoom (−/+, the wheel over the control and
+`Ctrl+wheel` over the frame) and a theme picker: light (the platform web client look, the
+default), dark, or the editor theme – the choice is remembered.
+
+**The selection is shared by the three areas.** A click on a frame block and a cursor move in the
+yaml expand whatever collapsed groups stand in the way, land on the node in the structure and fill
+the "Properties" panel; the selected node keeps the full selection color wherever the focus is.
 
 **The component palette** sits next to the metadata tree and appears while the form panel is open.
 A double click on a palette component inserts it into the selected structure node. Dragging from

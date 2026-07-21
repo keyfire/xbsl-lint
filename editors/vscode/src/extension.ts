@@ -3,10 +3,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { LinterConfig, RawDiag, RawReport } from "./report";
 import { registerDeploy } from "./deploy";
-import { registerFormData } from "./formData";
+import { createFormDataModel, registerFormDataCommands } from "./formData";
 import { registerFormPalette } from "./formPalette";
 import { registerFormDesigner } from "./formDesigner";
-import { registerFormStructure } from "./formStructure";
+import { createFormStructureModel, registerFormStructureCommands } from "./formStructure";
 import { baselineForLint, registerExcludeAction } from "./excludeAction";
 import { lintBuffer, lintPath, makeDiagnostic, RunHandle, toDiagnostic } from "./linter";
 import { activateLsp, lspActive, lspBaselinePassed, lspRequest } from "./lspClient";
@@ -437,15 +437,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // (xbsl/formTree, xbsl/formEdit, xbsl/objectInfo); the form panel paints both of them next to
   // the wireframe frame and drives their lifecycle, and the palette (in the metadata container)
   // inserts into the panel's structure selection.
-  const formStructure = registerFormStructure(context);
-  const formData = registerFormData(context, {
-    structure: formStructure,
-    formOwner: metadataTree.formOwnerByPath,
+  // Each open form panel gets a pair of models of its own (two forms side by side keep their own
+  // tree, selection and expansion); the pane commands and the palette act on the panel in front.
+  const designer = registerFormDesigner(context, () => {
+    const structure = createFormStructureModel(context.globalState);
+    return {
+      structure,
+      data: createFormDataModel({ structure, formOwner: metadataTree.formOwnerByPath }),
+    };
   });
-  registerFormDesigner(context, { structure: formStructure, data: formData });
+  registerFormStructureCommands(context, () => designer.activeStructure());
+  registerFormDataCommands(context, () => designer.activeData());
   registerFormPalette(context, {
     projectComponents: metadataTree.interfaceComponents,
-    structure: formStructure,
+    structure: () => designer.activeStructure(),
   });
   // Structural search across the project's forms (hook 10): find components by type and property
   // predicates, jump to the match. A thin client of the engine's xbsl/searchForms.
