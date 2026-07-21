@@ -7,7 +7,7 @@ sidebar:
 ---
 
 Полный перечень проверок линтера. Файл дополняется при добавлении правил; актуальный
-список в рантайме – `xbsl --list-rules` (или MCP `list_rules`). Сейчас правил: 90.
+список в рантайме – `xbsl --list-rules` (или MCP `list_rules`). Сейчас правил: 91.
 
 ## Граница: линтер дополняет компилятор, но не заменяет его
 
@@ -62,6 +62,7 @@ sidebar:
 | `yaml/id-required` | warning | вкл | файл | У объекта нет Ид | – |
 | `yaml/name-matches-file` | warning | вкл | файл | Имя не совпадает с именем файла | – |
 | `yaml/id-unique` | error | вкл | проект | Дубли Ид в проекте | – |
+| `yaml/standard-field-length` | error | вкл | файл | Длина стандартного реквизита сверх лимита платформы (`Наименование` > 400, `Код` > 50) – применение отвергает реквизит, и он выпадает из объекта | [доки](https://1cmycloud.com/docs/help/topics/catalog-properties/) |
 | `project/identifier` | warning | вкл | файл | Имя или поставщик проекта не идентификатор | [доки](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |
 | `project/presentation` | warning | вкл | файл | Представление проекта не заполнено | [доки](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |
 | `project/version` | warning | вкл | файл | Версия проекта не A.B.C | [доки](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |

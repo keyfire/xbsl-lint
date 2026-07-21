@@ -58,6 +58,18 @@ MESSAGES = {
         "ru": "У объекта не задан Ид верхнего уровня.",
         "en": "The object has no top-level Ид.",
     },
+    "yaml/standard-field-length.title": {
+        "ru": "Длина стандартного реквизита сверх лимита",
+        "en": "A standard field longer than the limit",
+    },
+    "yaml/standard-field-length.over": {
+        "ru": "Длина стандартного реквизита '{field}' – {value}, лимит платформы – {limit}. "
+              "Применение отвергнет реквизит, он выпадет из объекта, и компиляция посыплется "
+              "по всему проекту ошибками \"Поле {field} не найдено\".",
+        "en": "The standard field '{field}' has Длина {value} against the platform limit of "
+              "{limit}. Apply rejects the field, it drops out of the object, and the "
+              "compilation then fails project-wide with \"field {field} not found\".",
+    },
     "yaml/name-matches-file.title": {
         "ru": "Имя не совпадает с именем файла",
         "en": "Имя does not match the file name",
@@ -86,6 +98,17 @@ _ID_LINE_RE = re.compile(r"(?m)^[ \t]*Ид:[ \t]*(\S+)")
 _NAME_LINE_RE = re.compile(
     r"(?m)^([ \t]*(?:-[ \t]+)?)Имя:[ \t]*(['\"]?)([^\r\n#]*?)\2[ \t]*(?:#.*)?\r?$"
 )
+
+# The platform limits on the length of the standard fields, both verified by the compiler on a
+# probe: 51 and 401 are rejected ('The length of attribute "Код" must fall between zero and 50',
+# same wording for Наименование and 400), while 50 and 400 pass. The Наименование limit is
+# documented as well ("Свойства элемента проекта вида Справочник"); the Код one is not, so it
+# rests on the probe. Длина belongs to the standard fields only - a developer's field carries
+# МаксимальнаяДлина instead, so the name lookup cannot collide with an ordinary field.
+_STANDARD_LENGTH_LIMITS = {"Наименование": 400, "Код": 50}
+# Lines of a field entry: the name and the Длина value (the position of a finding).
+_FIELD_NAME_RE = re.compile(r"^[ \t]*(?:-[ \t]+)?Имя:[ \t]*['\"]?([^\r\n#'\"]*?)['\"]?[ \t]*$")
+_LENGTH_RE = re.compile(r"^([ \t]*(?:-[ \t]+)?)Длина:[ \t]*(\d+)[ \t]*$")
 
 
 # libyaml (CSafeLoader) parses 5-10x faster than the pure-Python loader and dominates the
@@ -178,6 +201,56 @@ def yaml_id_required(source: SourceFile) -> Iterable[Diagnostic]:
             source.rel, 1, 1, "yaml/id-required", Severity.WARNING,
             i18n.t("yaml/id-required.missing"),
         )
+
+
+@rule(
+    "yaml/standard-field-length", "yaml/standard-field-length.title", "A",
+    severity=Severity.ERROR,
+)
+def yaml_standard_field_length(source: SourceFile) -> Iterable[Diagnostic]:
+    if not _HAVE_YAML or source.kind != "yaml":
+        return
+    data, err = _parsed(source)
+    if err is not None or not _is_object(data):
+        return
+    fields = data.get("Реквизиты")
+    if not isinstance(fields, list):
+        return
+    for item in fields:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("Имя")
+        limit = _STANDARD_LENGTH_LIMITS.get(name)
+        length = item.get("Длина")
+        if limit is None or not isinstance(length, int) or isinstance(length, bool):
+            continue
+        if name == "Код" and item.get("Тип") not in (None, "Строка"):
+            continue  # a numeric Код counts digits - a different limit, not measured
+        if length <= limit:
+            continue
+        line, col = _length_position(source, name, length)
+        yield Diagnostic(
+            source.rel, line, col, "yaml/standard-field-length", Severity.ERROR,
+            i18n.t("yaml/standard-field-length.over", field=name, value=length, limit=limit),
+        )
+
+
+def _length_position(source: SourceFile, field: str, length: int) -> tuple[int, int]:
+    """The `Длина:` line of the given standard field, or the file start when unmatched.
+
+    The value is known from the parsed document; the scan only locates it, so an exotic
+    layout (a flow-style mapping) costs a position, never a false finding.
+    """
+    current: str | None = None
+    for number, text in enumerate(source.text.splitlines(), 1):
+        name = _FIELD_NAME_RE.match(text)
+        if name:
+            current = name.group(1)
+            continue
+        value = _LENGTH_RE.match(text)
+        if value and current == field and int(value.group(2)) == length:
+            return number, len(value.group(1)) + 1
+    return 1, 1
 
 
 @rule("yaml/name-matches-file", "yaml/name-matches-file.title", "A", severity=Severity.WARNING)

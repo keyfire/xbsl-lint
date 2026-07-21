@@ -7,7 +7,7 @@ sidebar:
 ---
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl --list-rules` (or the MCP `list_rules`). Currently there are 90 rules.
+runtime is `xbsl --list-rules` (or the MCP `list_rules`). Currently there are 91 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -63,6 +63,7 @@ The file exists, parses, the object has a unique UUID, the name matches the file
 | `yaml/id-required` | warning | on | file | The object has no Id | – |
 | `yaml/name-matches-file` | warning | on | file | Name does not match the file name | – |
 | `yaml/id-unique` | error | on | project | Duplicate Id in the project | – |
+| `yaml/standard-field-length` | error | on | file | A standard field longer than the platform limit (`Наименование` > 400, `Код` > 50) - apply rejects the field and it drops out of the object | [docs](https://1cmycloud.com/docs/help/topics/catalog-properties/) |
 | `project/identifier` | warning | on | file | Project name or vendor is not an identifier | [docs](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |
 | `project/presentation` | warning | on | file | Project presentation is empty | [docs](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |
 | `project/version` | warning | on | file | Project version is not A.B.C | [docs](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |
