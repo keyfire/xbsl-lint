@@ -1464,3 +1464,43 @@ def test_project_info_lists_libraries(tmp_path):
     assert project["libraries"] == [
         {"Имя": "CurrencyConverter", "Поставщик": "acme", "Версия": "2.0"}
     ]
+
+
+# --- the kind may be given in either language -----------------------------------------------
+
+
+def test_resolve_kind_accepts_the_russian_spelling():
+    assert scaffold.resolve_kind("Справочник") == "Справочник"
+
+
+def test_resolve_kind_leaves_an_unknown_word_alone():
+    # the caller reports it as an unsupported kind, with the list of the supported ones
+    assert scaffold.resolve_kind("НетТакогоВида") == "НетТакогоВида"
+
+
+def test_resolve_kind_maps_english_names(monkeypatch):
+    monkeypatch.setattr(scaffold, "_kind_by_english", lambda: {"catalog": "Справочник"})
+    assert scaffold.resolve_kind("Catalog") == "Справочник"
+    assert scaffold.resolve_kind("catalog") == "Справочник"
+
+
+def test_new_object_accepts_an_english_kind(tmp_path, monkeypatch):
+    monkeypatch.setattr(scaffold, "_kind_by_english", lambda: {"catalog": "Справочник"})
+    apply_result(scaffold.op_new_object(tmp_path, "Catalog", "Товары"))
+    text = (tmp_path / "Товары.yaml").read_text(encoding="utf-8")
+    assert "ВидЭлемента: Справочник" in text
+
+
+def test_without_the_dictionary_only_russian_is_accepted(tmp_path, monkeypatch):
+    monkeypatch.setattr(scaffold, "_kind_by_english", dict)
+    with pytest.raises(scaffold.ScaffoldError):
+        scaffold.op_new_object(tmp_path, "Catalog", "Товары")
+
+
+@pytest.mark.needs_data
+def test_english_kinds_come_from_the_real_dictionary():
+    scaffold._kind_by_english.cache_clear()
+    pairs = scaffold._kind_by_english()
+    assert pairs.get("catalog") == "Справочник"
+    assert pairs.get("interfacecomponent") == "КомпонентИнтерфейса"
+    assert len(pairs) >= 30

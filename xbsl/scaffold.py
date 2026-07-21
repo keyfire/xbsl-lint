@@ -26,9 +26,10 @@ from __future__ import annotations
 import re
 import uuid as _uuid
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
-from xbsl import engine, fixer
+from xbsl import dataset, engine, fixer
 
 PROJECT_FILE = "Проект.yaml"
 SUBSYSTEM_FILE = "Подсистема.yaml"
@@ -1041,6 +1042,34 @@ def _load_for_edit(yaml_path: Path, reader=None) -> tuple[str, str]:
 # --- operations: object, field, subsystem, project ---------------------------------------
 
 
+@lru_cache(maxsize=1)
+def _kind_by_english() -> dict[str, str]:
+    """{English name of an element kind: the Russian one the scaffolding works in}.
+
+    The platform is bilingual and a project may be written in either language, so the tool
+    accepts both spellings of a kind. The pairs come from the term dictionary (documentation
+    plus the compiler meta objects), never from a translation; without the data the map is
+    empty and only the Russian spellings are accepted, as before.
+    """
+    pairs: dict[str, str] = {}
+    for name, section in (("terms.json", "types"), ("terms_full.json", "common")):
+        try:
+            data = dataset.load_json(name)
+        except (dataset.DatasetError, KeyError, ValueError):
+            continue
+        for russian, english in (data.get(section) or {}).items():
+            if russian in KIND_SPECS:
+                pairs.setdefault(english.casefold(), russian)
+    return pairs
+
+
+def resolve_kind(kind: str) -> str:
+    """The Russian spelling of an element kind, whichever language it was given in."""
+    if kind in KIND_SPECS:
+        return kind
+    return _kind_by_english().get(kind.casefold(), kind)
+
+
 def op_new_object(
     directory: Path,
     kind: str,
@@ -1059,6 +1088,7 @@ def op_new_object(
     Разрешения.ПоУмолчанию; individual rights are set by op_set_access); routes -
     HttpСервис routes ("GET /, POST /, GET /{id}"); report - the report source and layout.
     """
+    kind = resolve_kind(kind)
     spec = KIND_SPECS.get(kind)
     if spec is None:
         raise ScaffoldError(

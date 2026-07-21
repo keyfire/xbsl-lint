@@ -85,15 +85,16 @@ yaml: 33 element kinds, forms generated with real content, context-aware `rename
 access-control editing. The same operations through the CLI, MCP and LSP:
 
 ```sh
-xbsl new-object <subsystem-dir> <kind> <name>   # kinds: Catalog, Document, Enum, ...
-xbsl add-field <object>.yaml <section> <name> --type <type>   # sections: Attributes, ...
-xbsl add-form . --name <object>                # object + list forms, registered
-xbsl rename-object . <old> <new>               # rename files + update references
+xbsl new-object vendor/App/Main Catalog Goods            # the kind in either language
+xbsl add-field vendor/App/Main/Goods.yaml <section> Color --type <type>
+xbsl add-form . --name Goods                            # object + list forms, registered
+xbsl rename-object . Goods Products                     # rename files + update references
 ```
 
-The platform is bilingual: every metadata name has both an English and a Russian spelling for
-the same thing, and a project is written in one of them. The tool takes the spellings your
-project uses - `xbsl new-object --help` lists the kinds it can create.
+The platform is bilingual: an element kind has an English name and a Russian one for the
+same thing, and the tool takes either spelling (the kinds are resolved through the term dictionary
+extracted from your distribution). Section names of `add-field` still go in the project's own
+language; `xbsl new-object --help` lists the kinds it can create.
 
 All subcommands with their options –
 [the guide](https://github.com/keyfire/xbsl/blob/main/docs/GUIDE.md#metadata-scaffolding).
