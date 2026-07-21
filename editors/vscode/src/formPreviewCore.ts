@@ -486,3 +486,19 @@ export function nearestOffset(offsets: number[], previous: number): number | und
   }
   return best;
 }
+
+// -- session restore ---------------------------------------------------------------------------
+
+// Which form a restored preview panel should show. VS Code hands the serializer the state the
+// webview saved for itself; that is the authority, and the value remembered by the extension is
+// the fallback for a panel that never got to save one (an older session, a crash). A blank or
+// non-string value on either side is ignored, so the panel comes back empty rather than pointed
+// at nonsense.
+export function restoredTargetUri(webviewState: unknown, remembered: unknown): string | undefined {
+  const pick = (value: unknown): string | undefined => {
+    const text = typeof value === "string" ? value.trim() : "";
+    return text || undefined;
+  };
+  const state = webviewState as { uri?: unknown } | undefined;
+  return pick(state?.uri) ?? pick(remembered);
+}

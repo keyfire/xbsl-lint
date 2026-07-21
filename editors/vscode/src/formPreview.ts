@@ -9,13 +9,24 @@
 // The editor title button is visible only for form yamls - the xbsl.formYaml context key.
 
 import * as vscode from "vscode";
-import { collectDataOffsets, collectResourceImages, esc, nearestOffset, renderFormPreview, selectionForCursor } from "./formPreviewCore";
+import {
+  collectDataOffsets,
+  collectResourceImages,
+  esc,
+  nearestOffset,
+  renderFormPreview,
+  restoredTargetUri,
+  selectionForCursor,
+} from "./formPreviewCore";
 import { revealContent } from "./reveal";
 
 const VIEW_TYPE = "xbslFormPreview";
 const DEBOUNCE_MS = 300;
 const CURSOR_DEBOUNCE_MS = 150;
 const STATE_KEY = "xbsl.formPreview.view";
+//: The form the panel was showing, remembered per workspace so a restart brings the same
+//: preview back (see the serializer in registerFormPreview).
+const TARGET_KEY = "xbsl.formPreview.target";
 
 interface ViewState {
   zoom: number; // percent
@@ -35,6 +46,9 @@ let lastOffsets: number[] = [];
 let freshTarget = false; // set on a target switch: the first good render derives the selection from the cursor
 let cursorTimer: NodeJS.Timeout | undefined;
 let suppressCursorSyncUntil = 0; // a preview click moves the cursor itself - ignore the echo
+// The extension context, so the target can be remembered from setTarget (called from places
+// that have no context of their own).
+let extContext: vscode.ExtensionContext | undefined;
 
 // Whether the content looks like a form: an interface component with inheritance and content.
 function looksLikeForm(doc: vscode.TextDocument): boolean {
@@ -145,6 +159,10 @@ function shell(body: string, nonce: string): string {
   const vsapi = acquireVsCodeApi();
   let zoom = ${view.zoom};
   const state = vsapi.getState() || { tabs: {}, sel: undefined };
+  // The form on display, kept in the webview's own state: VS Code hands it back to the
+  // serializer after a restart, so the restored tab knows what to render.
+  state.uri = ${JSON.stringify(target ? target.toString() : "")};
+  vsapi.setState(state);
 
   const applyView = () => {
     document.getElementById("root").style.zoom = zoom / 100;
@@ -247,6 +265,9 @@ function setTarget(uri: vscode.Uri): void {
     freshTarget = true;
   }
   target = uri;
+  // Remembered for the next session: VS Code restores the tab, the serializer needs to know
+  // WHICH form it was showing.
+  void extContext?.workspaceState.update(TARGET_KEY, uri.toString());
 }
 
 // Resource images resolved to data URIs (filename -> data URI, or null when not found in the
@@ -421,40 +442,13 @@ function openPreview(context: vscode.ExtensionContext, uri?: vscode.Uri): void {
   // button (no uri): beside the active yaml.
   const column = uri ? vscode.ViewColumn.One : vscode.ViewColumn.Beside;
   if (!panel) {
-    panel = vscode.window.createWebviewPanel(VIEW_TYPE, "XBSL", column, {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-    });
-    panel.onDidDispose(() => {
-      panel = undefined;
-    }, undefined, context.subscriptions);
-    panel.webview.onDidReceiveMessage((m) => {
-      if (!m) {
-        return;
-      }
-      if (m.type === "reveal" && typeof m.offset === "number") {
-        void revealOffset(m.offset, false);
-      } else if (m.type === "select" && typeof m.offset === "number") {
-        // A preview click: the webview highlighted the block already; remember the choice
-        // and keep the cursor-move echo (revealOffset below) from re-posting a highlight.
-        selectedOffset = m.offset;
-        suppressCursorSyncUntil = Date.now() + 300;
-        if (cursorTimer) {
-          clearTimeout(cursorTimer);
-          cursorTimer = undefined;
-        }
-        selectNode(m.offset);
-      } else if (m.type === "deselect") {
-        selectedOffset = undefined;
-      } else if (m.type === "view") {
-        // Zoom and theme are applied inside the webview; here we only remember the choice.
-        const next = { zoom: Number(m.zoom), theme: m.theme } as ViewState;
-        if (isViewState(next)) {
-          view = next;
-          void context.globalState.update(STATE_KEY, view);
-        }
-      }
-    }, undefined, context.subscriptions);
+    adoptPanel(
+      context,
+      vscode.window.createWebviewPanel(VIEW_TYPE, "XBSL", column, {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+      })
+    );
   } else {
     // Reveal in the intended column (One from the tree, Beside from the title button), not the
     // panel's own stale column - otherwise a persistent panel drifts relative to the yaml.
@@ -463,12 +457,51 @@ function openPreview(context: vscode.ExtensionContext, uri?: vscode.Uri): void {
   void render();
 }
 
+// Wiring of a preview panel - the same for a freshly created one and for one VS Code restored
+// after a restart (deserializeWebviewPanel), so a restored panel is a live preview, not a
+// leftover tab.
+function adoptPanel(context: vscode.ExtensionContext, created: vscode.WebviewPanel): void {
+  panel = created;
+  panel.onDidDispose(() => {
+    panel = undefined;
+    void context.workspaceState.update(TARGET_KEY, undefined);
+  }, undefined, context.subscriptions);
+  panel.webview.onDidReceiveMessage((m) => {
+    if (!m) {
+      return;
+    }
+    if (m.type === "reveal" && typeof m.offset === "number") {
+      void revealOffset(m.offset, false);
+    } else if (m.type === "select" && typeof m.offset === "number") {
+      // A preview click: the webview highlighted the block already; remember the choice
+      // and keep the cursor-move echo (revealOffset below) from re-posting a highlight.
+      selectedOffset = m.offset;
+      suppressCursorSyncUntil = Date.now() + 300;
+      if (cursorTimer) {
+        clearTimeout(cursorTimer);
+        cursorTimer = undefined;
+      }
+      selectNode(m.offset);
+    } else if (m.type === "deselect") {
+      selectedOffset = undefined;
+    } else if (m.type === "view") {
+      // Zoom and theme are applied inside the webview; here we only remember the choice.
+      const next = { zoom: Number(m.zoom), theme: m.theme } as ViewState;
+      if (isViewState(next)) {
+        view = next;
+        void context.globalState.update(STATE_KEY, view);
+      }
+    }
+  }, undefined, context.subscriptions);
+}
+
 function updateContext(editor: vscode.TextEditor | undefined): void {
   const isForm = !!editor && looksLikeForm(editor.document);
   void vscode.commands.executeCommand("setContext", "xbsl.formYaml", isForm);
 }
 
 export function registerFormPreview(context: vscode.ExtensionContext): void {
+  extContext = context;
   const saved = context.globalState.get(STATE_KEY);
   if (isViewState(saved)) {
     view = saved;
@@ -477,6 +510,30 @@ export function registerFormPreview(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("xbsl.previewForm", (arg?: unknown) =>
       openPreview(context, arg instanceof vscode.Uri ? arg : undefined)
     ),
+    // Session restore: without a serializer VS Code drops the tab on restart and the form has
+    // to be opened by hand again. The restored panel is wired exactly like a fresh one and
+    // re-renders the form it was showing.
+    vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, {
+      async deserializeWebviewPanel(restored: vscode.WebviewPanel, state: unknown): Promise<void> {
+        adoptPanel(context, restored);
+        const uri = restoredTargetUri(state, context.workspaceState.get(TARGET_KEY));
+        if (!uri) {
+          restored.dispose(); // nothing to show - do not leave an empty tab behind
+          return;
+        }
+        const parsed = vscode.Uri.parse(uri);
+        setTarget(parsed);
+        try {
+          // On a fresh start the yaml is not loaded yet, and rendering reads the document, not
+          // the disk - without this the restored tab would come back empty.
+          await vscode.workspace.openTextDocument(parsed);
+        } catch {
+          restored.dispose(); // the form is gone (renamed, deleted) - nothing to restore
+          return;
+        }
+        await render();
+      },
+    }),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       updateContext(editor);
       // The panel follows the active form yaml - like the Markdown preview.

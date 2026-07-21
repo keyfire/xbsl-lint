@@ -8,6 +8,8 @@ import * as vscode from "vscode";
 import { docsAsset, docsForSymbol, docsPage, DocPage } from "./docsClient";
 
 const VIEW_TYPE = "xbslDocs";
+//: The article shown last, remembered per workspace so a restart brings it back.
+const PAGE_KEY = "xbsl.docsPanel.page";
 let panel: vscode.WebviewPanel | undefined;
 
 // Page open listener (the "Contents" tree uses it to position itself on the document).
@@ -132,17 +134,10 @@ function shell(bodyHtml: string, sourceUrl: string | undefined, anchor: string |
 </script></body></html>`;
 }
 
-function ensurePanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
-  if (panel) {
-    panel.reveal(panel.viewColumn ?? vscode.ViewColumn.Beside, true);
-    return panel;
-  }
-  panel = vscode.window.createWebviewPanel(
-    VIEW_TYPE,
-    vscode.l10n.t("Documentation"),
-    { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
-    { enableScripts: true, retainContextWhenHidden: true }
-  );
+// Wiring of the documentation panel - shared by a freshly created panel and by one VS Code
+// restored after a restart (see registerDocsPanel).
+function adoptPanel(context: vscode.ExtensionContext, created: vscode.WebviewPanel): vscode.WebviewPanel {
+  panel = created;
   panel.onDidDispose(() => (panel = undefined), undefined, context.subscriptions);
   panel.webview.onDidReceiveMessage((m) => {
     if (!m) {
@@ -159,10 +154,47 @@ function ensurePanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
   return panel;
 }
 
+function ensurePanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
+  if (panel) {
+    panel.reveal(panel.viewColumn ?? vscode.ViewColumn.Beside, true);
+    return panel;
+  }
+  return adoptPanel(
+    context,
+    vscode.window.createWebviewPanel(
+      VIEW_TYPE,
+      vscode.l10n.t("Documentation"),
+      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+      { enableScripts: true, retainContextWhenHidden: true }
+    )
+  );
+}
+
+// Session restore: VS Code drops a webview tab on restart unless a serializer claims it. The
+// page shown last is remembered per workspace (openPage below), so the restored tab comes back
+// with the same article instead of an empty shell.
+export function registerDocsPanel(context: vscode.ExtensionContext): void {
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, {
+      async deserializeWebviewPanel(restored: vscode.WebviewPanel, state: unknown): Promise<void> {
+        adoptPanel(context, restored);
+        const saved = (state as { id?: unknown })?.id ?? context.workspaceState.get(PAGE_KEY);
+        const id = typeof saved === "string" && saved.trim() ? saved.trim() : undefined;
+        if (!id) {
+          restored.dispose(); // nothing to show - do not leave an empty tab behind
+          return;
+        }
+        await openPage(context, id);
+      },
+    })
+  );
+}
+
 async function render(context: vscode.ExtensionContext, page: DocPage, anchor?: string): Promise<void> {
   const p = ensurePanel(context);
   p.title = page.title || vscode.l10n.t("Documentation");
   p.webview.html = shell(await inlineImages(page.html), page.url || undefined, anchor, nonce());
+  void context.workspaceState.update(PAGE_KEY, page.id); // what the serializer reopens after a restart
   openListener?.(page.id); // position the "Contents" tree on this document
 }
 

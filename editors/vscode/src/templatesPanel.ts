@@ -21,6 +21,7 @@ import {
 // Data and writing go through the engine (`xbsl templates ...`) so the panel works the same
 // in both extension modes (LSP and CLI) and keeps no writing logic of its own.
 
+const TEMPLATES_VIEW_TYPE = "xbsl.templates";
 const DEFAULT_TEMPLATES_FILE = ".xbsl-templates.json";
 
 // Re-reading of the set by the running LSP server. The panel is registered before the mode
@@ -148,11 +149,17 @@ class TemplatesPanel {
       return;
     }
     const panel = vscode.window.createWebviewPanel(
-      "xbsl.templates",
+      TEMPLATES_VIEW_TYPE,
       vscode.l10n.t("XBSL: code templates"),
       vscode.ViewColumn.Active,
       { enableScripts: true, retainContextWhenHidden: true },
     );
+    await TemplatesPanel.adopt(panel);
+  }
+
+  // Take over a panel - a freshly created one, or one VS Code restored after a restart.
+  public static async adopt(panel: vscode.WebviewPanel): Promise<void> {
+    TemplatesPanel.current?.dispose();
     TemplatesPanel.current = new TemplatesPanel(panel);
     await TemplatesPanel.current.refresh();
   }
@@ -509,6 +516,13 @@ async function exportTemplates(): Promise<void> {
 
 export function registerTemplates(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
+    // Session restore: without a serializer VS Code drops the tab on restart. The panel holds no
+    // per-session target - the template list is re-read - so restoring is just re-adoption.
+    vscode.window.registerWebviewPanelSerializer(TEMPLATES_VIEW_TYPE, {
+      async deserializeWebviewPanel(restored: vscode.WebviewPanel): Promise<void> {
+        await TemplatesPanel.adopt(restored);
+      },
+    }),
     vscode.commands.registerCommand("xbsl.templates.manage", () => TemplatesPanel.show()),
     vscode.commands.registerCommand("xbsl.templates.import", async () => {
       await importTemplates();

@@ -1,7 +1,7 @@
 // Tests of the form wireframe rendering (yaml -> HTML) and of the targeted property edits
 // that serve the metadata properties panel. Run with plain node (see npm test).
 
-import { collectDataOffsets, collectResourceImages, nearestOffset, propertyEdit, renderFormPreview, selectionForCursor } from "../src/formPreviewCore";
+import { collectDataOffsets, collectResourceImages, nearestOffset, propertyEdit, renderFormPreview, restoredTargetUri, selectionForCursor } from "../src/formPreviewCore";
 
 let failures = 0;
 
@@ -181,6 +181,21 @@ const withImg = renderFormPreview(IMG_FORM, { "info.svg": "data:image/svg+xml;ba
 check("Картинка renders an <img> when the resource is resolved", withImg.ok && withImg.html.includes("<img class=\"rimg\" src=\"data:image/svg+xml;base64,"));
 const withoutImg = renderFormPreview(IMG_FORM);
 check("Картинка keeps the placeholder when the resource is not resolved", withoutImg.ok && !withoutImg.html.includes("<img") && withoutImg.html.includes("🖼"));
+
+// --- session restore ---------------------------------------------------------------------
+
+check(
+  "restoredTargetUri prefers the state the webview saved",
+  restoredTargetUri({ uri: "file:///p/Карточка.yaml" }, "file:///p/Старая.yaml") === "file:///p/Карточка.yaml"
+);
+check(
+  "restoredTargetUri falls back to the remembered target",
+  restoredTargetUri(undefined, "file:///p/Карточка.yaml") === "file:///p/Карточка.yaml"
+);
+check(
+  "restoredTargetUri ignores a blank or non-string value",
+  restoredTargetUri({ uri: "   " }, 42) === undefined && restoredTargetUri(null, null) === undefined
+);
 
 if (failures > 0) {
   console.error(`итого: ${failures} FAIL`);

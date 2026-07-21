@@ -7,7 +7,7 @@
 import * as vscode from "vscode";
 import { DocNode, docsSearch, docsTree } from "./docsClient";
 import { isXbslSource } from "./report";
-import { openForSymbol, openPage, setDocsOpenListener } from "./docsPanel";
+import { openForSymbol, openPage, registerDocsPanel, setDocsOpenListener } from "./docsPanel";
 import { ruleDoc, ruleOfCode } from "./ruleDocs";
 
 const KIND_ICON: Record<string, string> = {
@@ -181,6 +181,7 @@ export function registerDocs(context: vscode.ExtensionContext): void {
   const provider = new DocsTreeProvider();
   const view = vscode.window.createTreeView("xbslDocs", { treeDataProvider: provider });
   provider.attach(view);
+  registerDocsPanel(context); // the panel survives a restart with the page it was showing
   // Opening a page in the panel positions the tree on that document.
   setDocsOpenListener((id) => void provider.revealPage(id));
   context.subscriptions.push(

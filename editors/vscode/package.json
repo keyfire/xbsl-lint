@@ -38,7 +38,8 @@
   "activationEvents": [
     "onLanguage:xbsl",
     "workspaceContains:**/*.xbsl",
-    "onView:xbslMetadata"
+    "onView:xbslMetadata",
+    "onStartupFinished"
   ],
   "contributes": {
     "languages": [
