@@ -43,6 +43,15 @@ python -m xbsl <path>   # run over sources
    positives**. If a rule fires massively on existing code, make it `info` and disabled by default
    instead of forcing everyone to fix legacy code.
 5. Add a test under `tests/` (see `tests/test_rules.py` for examples).
+6. Update the accompanying metadata in the same change: the row in the tables of
+   `docs/RULES.md` and `docs/RULES.ru.md` (id, severity, default, scope, one-line description,
+   docs link), the rule count there and in both READMEs, the entry in
+   `editors/vscode/src/ruleDocs.ts` – when a platform documentation section stands behind the
+   rule, the per-level counts in the group descriptions (`editors/vscode/package.nls.json` and
+   `.ru.json`), and for a new group the `xbsl.groups.<group>` setting in
+   `editors/vscode/package.json` as well. All of it is checked against the registry by
+   `tests/test_metadata_sync.py`, so a forgotten place shows up right away instead of at the
+   next extension release.
 
 The lexer and the language/type data are extracted from the platform itself (the Xtext/ANTLR
 grammar and the distribution docs), not made up – stick to this principle: verify against the
