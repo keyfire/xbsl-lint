@@ -50,6 +50,12 @@
   selection still follows the yaml cursor, the form frame and the "Properties" panel.
 - The editor title button opens the form designer rather than a preview; the frame itself is the
   same wireframe with its own theme and zoom.
+- **The documentation was reshot for the new layout:** the gifs of the old designer are gone,
+  replaced by screenshots of the form panel (three areas, the palette as a section under the
+  metadata tree), of the cursor following, and of the properties panel with events and reset. The
+  designer page gained a "Following the cursor" section (both directions of the link) and an
+  "Examples: what it looks like in practice" table, and the platform help got a page of its own -
+  "Documentation panel".
 
 ## 0.27.1
 

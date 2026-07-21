@@ -101,7 +101,7 @@ xbsl rename-object . Товары Номенклатура # файлы + ссы
 **Редакторы.** [Расширение VS Code](https://github.com/keyfire/xbsl/blob/main/editors/vscode/README.ru.md)
 ([Marketplace](https://marketplace.visualstudio.com/items?itemName=keyfire.xbsl),
 [Open VSX](https://open-vsx.org/extension/keyfire/xbsl)): подсветка синтаксиса, живая и
-проектная диагностика, переходы к определению и автодополнение, предпросмотр форм, дерево
+проектная диагностика, переходы к определению и автодополнение, конструктор форм, дерево
 метаданных и кнопка деплоя. Под капотом – `xbsl-lsp`, Language Server для любого редактора с
 LSP ([подробнее](https://github.com/keyfire/xbsl/blob/main/docs/GUIDE.ru.md#lsp-сервер)).
 

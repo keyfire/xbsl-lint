@@ -12,6 +12,8 @@ The extension includes a visual designer for 1C:Element interface components
 under them. Next to it live the component palette in the sidebar and the typed properties panel.
 The text editor stays the primary surface; the designer is a contextual lens over it.
 
+![The form panel: structure on the left, data on the right, the form frame under them; the component palette is a section under the metadata tree](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-designer.png)
+
 Two things to keep in mind:
 
 - **Every action is a minimal text edit.** The designer never rewrites or reformats the
@@ -65,11 +67,9 @@ shown; the Properties panel stays separate and follows the selection.
 The form as a tree of slots (`Content`, `Commands`, pages, columns, ...) and components, with an
 icon per kind and linter badges on nodes.
 
-- **Cursor sync.** Put the cursor on a node in the yaml – it highlights in the tree and in the
-  frame and fills the Properties panel, expanding whatever collapsed groups stand in the way.
-  Select a node in the tree – the cursor moves to its yaml; a double click moves the focus there
-  too. The selected node is shared by the three areas and keeps its full color wherever the focus
-  is.
+- **Cursor sync.** The node under the yaml cursor lights up in the tree and in the frame, and
+  selecting a node in the tree moves the cursor to its yaml – see
+  [Following the cursor](#following-the-cursor).
 - **Undo.** `Ctrl+Z` / `Ctrl+Y` work right in the panel: every designer operation is one undo step
   of the yaml document.
 - **Arrange** (context menu + keys): **Move up / Move down** (`Alt+Up` / `Alt+Down`), **Wrap in
@@ -106,6 +106,39 @@ the picture itself (resource images are resolved under `**/Resources/`). The are
 the frame theme (light, dark, editor) and the zoom - the buttons, the wheel over the control, or
 `Ctrl+wheel` over the frame.
 
+## Following the cursor
+
+The text and the panels show ONE place of the form. The yaml cursor, the structure node, the
+frame block and the contents of the properties panel are tied together both ways, so you can
+switch between "type it" and "click it" at every step without hunting for the node again.
+
+![The cursor sits on the Description field in the yaml – the same node is selected in the structure and highlighted in the form frame](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-cursor.png)
+
+**From the yaml cursor to the panels.** Put the cursor inside a node (or just walk the file with
+the arrow keys):
+
+- the **frame** highlights that component's block;
+- the **structure** selects the node's row, expanding the collapsed groups on the way from the
+  root – nothing to hunt for;
+- the **properties panel** fills with the node under the cursor (while it is open);
+- the focus stays in the editor: the follow is visual and never interrupts typing.
+
+**From the panels to the yaml.**
+
+| Action | What happens |
+| --- | --- |
+| Click a structure node | the cursor lands on the node's first property line, the focus stays in the panel |
+| Double click a node | the same plus the focus moves to the yaml editor |
+| Click a frame block | the component is selected: the structure row, the properties panel, the yaml cursor |
+| `Ctrl+click` a frame block | jumps to that block's yaml |
+| *Show in yaml* in the properties panel | jumps to the property's line |
+
+The selected node is shared by the three areas and keeps its **full color wherever the focus
+is** – losing focus (going to the palette, say) still leaves you looking at what you work on.
+
+The same following covers metadata: the properties panel follows the cursor in an object's yaml
+(`Catalog`, `Document`, ...), and the metadata tree reveals the element of the active editor.
+
 ## Palette panel
 
 The **Palette** sits next to the metadata tree and shows up while the form panel is open. It
@@ -126,6 +159,8 @@ ui schema.
 
 The **Properties** panel edits the selected component (and, from the metadata tree's
 **Properties**, metadata objects too – it is one shared panel).
+
+![The properties panel of a button: the "Set" section, the "Events" section with the OnClick handler picked, the jump and reset buttons](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-props.png)
 
 - **Set on top, all below.** The **Set** section lists the keys present in the yaml; below it,
   collapsible groups hold every applicable property. Search filters by property name *and* by
@@ -160,12 +195,10 @@ The **Properties** panel edits the selected component (and, from the metadata tr
 
 ## Documentation panel
 
-The **Documentation (1C:Element)** container is a searchable tree of the platform's own
-documentation, built from your 1C:Element distribution. **Search the documentation** (the search
-button on its title bar) finds pages by name; **Documentation for the symbol** (the editor's
-right-click menu on a type or a variable) and the **Open documentation** action in the palette
-and the properties panel open the matching page here – this is where the designer answers "what
-is this component or property".
+The **Documentation (1C:Element)** container holds the platform help built from your 1C:Element
+distribution. This is where the designer answers "what is this component or property": the **Open
+documentation** action in the palette and in the properties panel opens the page right here,
+without leaving the editor. In detail - [Documentation panel](/DOCS_PANEL).
 
 ## Structural search
 
@@ -184,6 +217,25 @@ drops it into any form (from the Palette title bar or a structure node's context
 For a read-only source – a library form from an `.xlib`, a git/diff view, or a file flagged
 read-only – the panels show a banner and disable the editors, and structure edits are refused
 with a message, so browsing such a form never risks a stray write.
+
+## Examples: what it looks like in practice
+
+Short scenarios - from the task to the action. Each of them writes a minimal edit into the yaml
+(or into the paired `.xbsl`) and rolls back with a single `Ctrl+Z`.
+
+| Task | How |
+| --- | --- |
+| Put an object attribute on the form | In the **Data** area double click the attribute (or drag it onto a structure node): you get a `Checkbox` for `Boolean` and an `Input` with `Value: =Object.Attribute` for the rest |
+| Add a component that is not there yet | Select a container in the structure and double click the component in the **Palette**; for an unfamiliar component start with **Open documentation** |
+| Reorder fields | Select a node and press `Alt+Up` / `Alt+Down` - the yaml order changes line by line |
+| Lay two fields out in a row | Select them (`Ctrl`-click), **Wrap in a container** → `Group`, then set `Layout: Horizontal` on the group |
+| Attach a handler to a button | Select the button and pick **create handler** on the `OnClick` event: a stub with the right signature is written into the form module and the editor jumps to it |
+| Drop a handler together with its method | Reset (`✕`) on the event asks whether to unbind or to delete the method from the module; the deletion takes its annotations too, and the yaml and the module change in one undo step |
+| Align a dozen fields at once | Multi-select in the structure → **Edit selected together...** → the key (say `StretchHorizontally`) and the value for all of them |
+| Move a block into another form | **Copy yaml fragment** (`Ctrl+C`) on the node, **Paste yaml from the clipboard** (`Ctrl+V`) in the other form; save a layout you rebuild often as a **block preset** |
+| Find every table with a fixed height | **Search forms by structure**: type `Table` plus the `Height=200` predicate |
+| Find your way around someone else's big form | Walk the yaml with the cursor - the structure and the frame follow; **Focus on this subtree** narrows the tree to one branch, the filter leaves only named components |
+| Look at a library form | Open its yaml from the `.xlib`: the panels show the read-only banner and refuse edits |
 
 ## Scripting (agents, CLI, MCP)
 

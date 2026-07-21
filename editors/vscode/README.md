@@ -245,7 +245,7 @@ global theme and other languages stay untouched; the extension manages only its 
 
 ## Form designer
 
-![Form designer: wireframe, themes and live updates](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-preview.gif)
+![The form panel: structure on the left, data on the right, the form frame under them; the component palette is a section under the metadata tree](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-designer.png)
 
 The command **XBSL: form designer** (`xbsl.previewForm`, also a button in the editor title of form
 yamls – files whose `ElementKind` is `InterfaceComponent`) opens the form panel. A form depends on
@@ -280,13 +280,17 @@ default), dark, or the editor theme – the choice is remembered.
 **The selection is shared by the three areas.** A click on a frame block and a cursor move in the
 yaml expand whatever collapsed groups stand in the way, land on the node in the structure and fill
 the "Properties" panel; the selected node keeps the full selection color wherever the focus is.
+The way back is the same: a click on a structure node puts the cursor on its yaml, a double click
+moves the focus there too, and `Ctrl+click` on a frame block jumps to its yaml.
+
+![The cursor sits on the Description field in the yaml – the same node is selected in the structure and highlighted in the form frame](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-cursor.png)
 
 **The component palette** sits next to the metadata tree and appears while the form panel is open.
 A double click on a palette component inserts it into the selected structure node. Dragging from
 the palette into the panel is impossible - the platform does not carry a drag from its own tree
 into a webview, which is why insertion is click-driven.
 
-![Properties panel: select an element, edit via dropdowns, the yaml follows](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/props-panel.gif)
+![The properties panel of a button: the "Set" section, the "Events" section with the OnClick handler picked, the jump and reset buttons](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-props.png)
 
 **Properties panel.** A click on an element selects it and opens a separate **Properties**
 panel (its own tab – drag it below or aside, wherever suits), like the platform web editor:
@@ -420,8 +424,11 @@ catalogs and the `ProductStatus` enumeration built by the tree are then availabl
 
 ## Documentation
 
-The **1C:Element** container in the Activity Bar hosts, below the metadata explorer, a
-**Documentation** view – the platform reference the way the docs site shows it.
+A container of its own – **Documentation (1C:Element)** in the Activity Bar – shows the platform
+reference the way the docs site does, but built from your own distribution: it matches the platform
+version you use and works offline.
+
+![The documentation panel: the Contents tree on the left with the Std::Collections section expanded, the Array type page on the right with code samples and the Primary source link](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/docs-panel.png)
 
 **The tree.** A curated "Contents" that mirrors the site: the developer and administrator guides,
 the type reference (`Std::Collections` → `Array` → ...) and the query language. It is built from the
@@ -430,14 +437,20 @@ distribution's own sidebar, so the structure matches the site. Clicking a node o
 **Search.** The search button in the view title (command *XBSL: search the documentation*) runs a
 full-text search over the whole reference and guide; pick a hit to open it.
 
-**The page.** Opens in a side panel: the cleaned article with code, tables and images, plus a
-**Primary source** link to the same page on the docs site. Internal links navigate within the panel,
-and opening a page reveals it in the Contents tree.
+**The page.** Opens as an editor tab beside the current one and does not steal the focus: the
+cleaned article with code (samples carry a **Copy** button), tables and images, plus a **Primary
+source** link to the same page on the docs site. A page's sections are nested under its tree node,
+internal links navigate within the same tab, and opening a page reveals it in the Contents tree.
 
 **Documentation for the symbol.** Right-click a type or variable in an `.xbsl` file – *XBSL:
 documentation for the symbol* – to open its page. For a type its reference page opens directly; for a
 method or an ambiguous name a pick-list of candidates is shown, ranked by the receiver before the dot
 (so `Job.Setup` prefers the scheduled-job pages, not a guide topic).
+
+**Where the other entry points lead.** Hovering a name in an `.xbsl` shows the type description and
+a **Documentation** link; in the form designer the *Open documentation* action sits on a palette
+item and on a property in the properties panel. All of them open the page in this same panel –
+reading up on an unfamiliar component costs no trip out of the editor.
 
 The data comes from the linter's LSP server, so it needs [LSP mode](#lsp-mode-default) and the
 documentation database built from your distribution (`xbsl` ≥ 0.12.0, see

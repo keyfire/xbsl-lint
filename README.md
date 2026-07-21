@@ -102,7 +102,7 @@ All subcommands with their options –
 **Editors.** The [VS Code extension](https://github.com/keyfire/xbsl/blob/main/editors/vscode/README.md)
 ([Marketplace](https://marketplace.visualstudio.com/items?itemName=keyfire.xbsl),
 [Open VSX](https://open-vsx.org/extension/keyfire/xbsl)): syntax highlighting, live and
-project-wide diagnostics, go-to-definition and completion, a form preview, a metadata tree and
+project-wide diagnostics, go-to-definition and completion, the form designer, a metadata tree and
 a deploy button. Under the hood is `xbsl-lsp` – a Language Server any LSP-capable editor can
 spawn ([details](https://github.com/keyfire/xbsl/blob/main/docs/GUIDE.md#lsp-server)).
 

@@ -40,10 +40,11 @@ Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`),
   button in the editor title of `.xbsl` files) runs `elemctl deploy` in a terminal task:
   build from sources → upload → apply → restart → verification that the apply actually took
   effect. See [Deploy](#deploy).
-- **Form preview** – a wireframe of a form yaml in a side panel: groups, fields, buttons,
-  tables, tabs, cards; follows the active editor and updates as you type. A click selects an
-  element and opens its **properties panel** for editing (dropdowns and toggles write back
-  into the yaml); Ctrl+click reveals the yaml node. See [Form preview](#form-preview).
+- **Form designer** – a panel of three areas: the structure tree on the left, the form's data on
+  the right, the form frame under them. It follows the active editor and updates as you type; the
+  selection is linked across the areas, the yaml cursor and the **properties panel**. The component
+  palette sits next to the metadata tree while the panel is open. See
+  [Form designer](#form-designer).
 - **Metadata explorer** – a dedicated Activity Bar view: a tree of the project objects grouped by
   `ElementKind`, with subtrees (`Attributes`, `Dimensions`, `Forms`, enum `Values` ...), an editable
   properties panel, creation of objects/fields/subsystems and filtering by subsystem. See
@@ -249,23 +250,54 @@ applied via `editor.tokenColorCustomizations` rules addressing only `*.xbsl` sco
 global theme and other languages stay untouched; the extension manages only its own rules
 (prefixed `xbsl-palette`) and preserves any customizations of yours.
 
-## Form preview
+## Form designer
 
-![Form preview: wireframe, themes and live updates](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-preview.gif)
+![The form panel: structure on the left, data on the right, the form frame under them; the component palette is a section under the metadata tree](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-designer.png)
 
-The command **XBSL: form preview** (`xbsl.previewForm`, also a preview button in the editor
-title of form yamls – files whose `ElementKind` is `InterfaceComponent`) renders a wireframe of a
-1C:Element form from its yaml: nested vertical/horizontal groups, labels, input fields with captions
-and `=bindings`, buttons (the primary one filled), checkboxes, tables with their real columns,
-switchable tabs (`Pages`), cards, image and HTML-container placeholders, and the form's
-command bar. Unknown and custom component types render as labeled boxes with their content
-inside, so nothing disappears.
+The command **XBSL: form designer** (`xbsl.previewForm`, also a button in the editor title of form
+yamls – files whose `ElementKind` is `InterfaceComponent`) opens the form panel. A form depends on
+its own properties, so its structure and its data are edited where the form is shown: the structure
+tree on the left, the data on the right, the form frame under them, with draggable splitters
+between (their position is remembered).
 
-The panel follows the active yaml editor and re-renders as you type (debounced). The toolbar
-has a zoom (−/+, 125% by default) and a theme picker: light (the platform web client look,
-the default), dark, or the editor theme – the choice is remembered.
+**A panel per form.** A second form opens its own tab next to the first; each panel keeps its own
+tree, selection and expansion memory. A panel and its yaml travel as a pair: picking a tab on one
+side brings the other forward, and closing the panel closes the form's yaml (an unsaved one is
+left alone). The keyboard works inside the panel: the arrows walk the tree, plus `Alt+Up`/
+`Alt+Down`, `F2`, `Delete`, `Ctrl+C`/`Ctrl+V` and `Ctrl+Z`/`Ctrl+Y`.
 
-![Properties panel: select an element, edit via dropdowns, the yaml follows](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/props-panel.gif)
+**Structure** – the tree of slots and components with an icon per kind and linter badges. The
+context menu and the keys: `Alt+Up`/`Alt+Down` move a component, `F2` renames, `Delete` removes,
+`Ctrl+C`/`Ctrl+V` carry a yaml fragment, plus wrapping into a container, duplicating, focusing on a
+subtree and the named-only filter. A node drags onto another node: a container takes it inside, a
+leaf places it after itself.
+
+**Data** – the component's own `Properties:` and the attributes of the owner object. A double click
+or a drag of a record onto a structure node creates an input component with its binding already in
+place (`Boolean` -> a checkbox, otherwise an input with `Value: =...`).
+
+**The form frame** renders from the yaml: nested vertical/horizontal groups, labels, input fields
+with captions and `=bindings`, buttons (the primary one filled), checkboxes, tables with their real
+columns, switchable tabs (`Pages`), cards, image and HTML-container placeholders, and the form's
+command bar. Unknown and custom component types render as labeled boxes with their content inside,
+so nothing disappears. The area header has a zoom (−/+, the wheel over the control and
+`Ctrl+wheel` over the frame) and a theme picker: light (the platform web client look, the
+default), dark, or the editor theme – the choice is remembered.
+
+**The selection is shared by the three areas.** A click on a frame block and a cursor move in the
+yaml expand whatever collapsed groups stand in the way, land on the node in the structure and fill
+the "Properties" panel; the selected node keeps the full selection color wherever the focus is.
+The way back is the same: a click on a structure node puts the cursor on its yaml, a double click
+moves the focus there too, and `Ctrl+click` on a frame block jumps to its yaml.
+
+![The cursor sits on the Description field in the yaml – the same node is selected in the structure and highlighted in the form frame](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-cursor.png)
+
+**The component palette** sits next to the metadata tree and appears while the form panel is open.
+A double click on a palette component inserts it into the selected structure node. Dragging from
+the palette into the panel is impossible - the platform does not carry a drag from its own tree
+into a webview, which is why insertion is click-driven.
+
+![The properties panel of a button: the "Set" section, the "Events" section with the OnClick handler picked, the jump and reset buttons](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/form-props.png)
 
 **Properties panel.** A click on an element selects it and opens a separate **Properties**
 panel (its own tab – drag it below or aside, wherever suits), like the platform web editor:
@@ -288,12 +320,12 @@ back to a literal.
 It is a layout skeleton, not the platform's rendering: composition, nesting and captions are
 faithful, exact sizes and styles are not (explicit label colors and font sizes are applied).
 
-**Block presets.** In the form structure view, *Save as block preset* on a component stores its
-whole subtree under a name (kept across forms and sessions); the title-bar **+** or *Insert block
-preset* drops a saved preset into the current selection – a named, persistent version of copy/paste
+**Block presets.** In the structure area, *Save as block preset* on a component stores its
+whole subtree under a name (kept across forms and sessions); *Insert block preset* (in the palette
+title bar or a node's menu) drops a saved preset into the current selection – a named, persistent version of copy/paste
 for the layouts you rebuild often. *Manage block presets* prunes the list.
 
-**Mass edit.** Select several components in the structure view and *Edit selected together* sets (or
+**Mass edit.** Select several components in the structure area and *Edit selected together* sets (or
 clears) one property on all of them at once – pick a key from the ones they already use or type a new
 one, then a value; empty clears it. Handy for aligning widths, toggling visibility, or rebinding a
 group of fields in one step.
@@ -324,7 +356,7 @@ combo of primitives, reference types (`<Object>.Reference?`) and the project enu
 accepts a typed-in value); a common module opens its `.xbsl`; a form opens the preview. The context
 menu adds *Properties*, open description / module.
 
-**Properties panel** (on the right, like the form preview). Scalar properties are edited in place:
+**Properties panel** (the same one the form designer uses). Scalar properties are edited in place:
 dropdowns for `VisibilityScope` and `Environment`, a `True` / `False` toggle, text for the rest.
 `Id` and `ElementKind` are read-only; collections (`Attributes` and the like) are edited in the tree.
 Edits are surgical (undo works); save the file (Ctrl+S) to refresh the tree.
@@ -399,8 +431,11 @@ catalogs and the `ProductStatus` enumeration built by the tree are then availabl
 
 ## Documentation
 
-The **1C:Element** container in the Activity Bar hosts, below the metadata explorer, a
-**Documentation** view – the platform reference the way the docs site shows it.
+A container of its own – **Documentation (1C:Element)** in the Activity Bar – shows the platform
+reference the way the docs site does, but built from your own distribution: it matches the platform
+version you use and works offline.
+
+![The documentation panel: the Contents tree on the left with the Std::Collections section expanded, the Array type page on the right with code samples and the Primary source link](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/docs-panel.png)
 
 **The tree.** A curated "Contents" that mirrors the site: the developer and administrator guides,
 the type reference (`Std::Collections` → `Array` → ...) and the query language. It is built from the
@@ -409,14 +444,20 @@ distribution's own sidebar, so the structure matches the site. Clicking a node o
 **Search.** The search button in the view title (command *XBSL: search the documentation*) runs a
 full-text search over the whole reference and guide; pick a hit to open it.
 
-**The page.** Opens in a side panel: the cleaned article with code, tables and images, plus a
-**Primary source** link to the same page on the docs site. Internal links navigate within the panel,
-and opening a page reveals it in the Contents tree.
+**The page.** Opens as an editor tab beside the current one and does not steal the focus: the
+cleaned article with code (samples carry a **Copy** button), tables and images, plus a **Primary
+source** link to the same page on the docs site. A page's sections are nested under its tree node,
+internal links navigate within the same tab, and opening a page reveals it in the Contents tree.
 
 **Documentation for the symbol.** Right-click a type or variable in an `.xbsl` file – *XBSL:
 documentation for the symbol* – to open its page. For a type its reference page opens directly; for a
 method or an ambiguous name a pick-list of candidates is shown, ranked by the receiver before the dot
 (so `Job.Setup` prefers the scheduled-job pages, not a guide topic).
+
+**Where the other entry points lead.** Hovering a name in an `.xbsl` shows the type description and
+a **Documentation** link; in the form designer the *Open documentation* action sits on a palette
+item and on a property in the properties panel. All of them open the page in this same panel –
+reading up on an unfamiliar component costs no trip out of the editor.
 
 The data comes from the linter's LSP server, so it needs [LSP mode](#lsp-mode-default) and the
 documentation database built from your distribution (`xbsl` ≥ 0.12.0, see
@@ -443,7 +484,7 @@ of the [elemctl](https://github.com/keyfire/elemctl) project
   menus: properties, add object / field / subsystem, add object form, filter by subsystem, delete
   object, refresh. See [Metadata explorer](#metadata-explorer).
 - **XBSL: deploy the project (elemctl)** (`xbsl.deploy`) – deploy to the stand (see above).
-- **XBSL: form preview** (`xbsl.previewForm`) – a wireframe of the active form yaml (see above).
+- **XBSL: form designer** (`xbsl.previewForm`) – the panel of the active form yaml (see above).
 - **XBSL: search the documentation** (`xbsl.docs.search`) and **documentation for the symbol**
   (`xbsl.docs.showForSymbol`) – the Documentation view (see above).
 
