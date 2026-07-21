@@ -189,3 +189,95 @@ def test_different_components_have_own_value_sets(tmp_path, ui_root):
 def test_without_ui_schema_silent(tmp_path, no_data):
     d = _run(tmp_path, _form("        Тип: КарточкаАкме\n        ВидОтображения: Плитка\n"))
     assert not _has(d)
+
+
+# --- yaml/no-expression-in-literal (needs no schema at all) --------------------------------
+
+_LITERAL_RULE = "yaml/no-expression-in-literal"
+
+
+def _run_literal(tmp_path, text, name="Ф.yaml"):
+    src = tmp_path / "lit"
+    src.mkdir(exist_ok=True)
+    (src / name).write_text(text, encoding="utf-8")
+    return engine.run(discover([str(src)]), select={_LITERAL_RULE})
+
+
+def _form_with_font(value):
+    return (
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n"
+        "    -\n        Тип: Надпись\n        Имя: Текст\n"
+        "        Шрифт:\n            Тип: АбсолютныйШрифт\n"
+        f"            Размер: {value}\n"
+    )
+
+
+def test_binding_inside_font_flagged(tmp_path):
+    d = _run_literal(tmp_path, _form_with_font("=Мобильный?28:40"))
+    assert len(d) == 1 and d[0].rule_id == _LITERAL_RULE
+    assert d[0].severity.name == "ERROR"
+    assert "Шрифт: =Выражение" in d[0].message
+    assert (d[0].line, d[0].col) == (9, 21)
+
+
+def test_literal_value_inside_font_not_flagged(tmp_path):
+    assert not _run_literal(tmp_path, _form_with_font("13"))
+
+
+def test_any_property_of_a_literal_type_is_judged(tmp_path):
+    # the restriction is about the nesting, not about Размер
+    d = _run_literal(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n"
+        "    -\n        Тип: Надпись\n        Шрифт:\n"
+        "            Тип: АбсолютныйШрифт\n            Полужирный: =Истина\n",
+    )
+    assert len(d) == 1 and "Полужирный" in d[0].message
+
+
+def test_binding_on_the_whole_object_not_flagged(tmp_path):
+    # computing the whole object is the way out, not an error
+    d = _run_literal(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n"
+        "    -\n        Тип: Надпись\n        Шрифт: =ШрифтНадписи()\n",
+    )
+    assert not d
+
+
+def test_binding_inside_colour_flagged(tmp_path):
+    d = _run_literal(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n"
+        "    -\n        Тип: Группа\n        ЦветФона:\n"
+        "            Тип: АбсолютныйЦвет\n            Красный: =10\n            Зеленый: 20\n",
+    )
+    assert len(d) == 1 and "ЦветФона: =Выражение" in d[0].message
+
+
+def test_binding_inside_a_component_node_not_flagged(tmp_path):
+    # bindings inside ordinary components and commands are legal and common
+    d = _run_literal(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n"
+        "    -\n        Тип: ОбычнаяКоманда\n        Видимость: =МожноРедактировать\n",
+    )
+    assert not d
+
+
+def test_type_key_itself_not_judged(tmp_path):
+    d = _run_literal(
+        tmp_path,
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n"
+        "    -\n        Тип: Надпись\n        Шрифт:\n"
+        "            Тип: АбсолютныйШрифт\n            Размер: 13\n",
+    )
+    assert not d
+
+
+def test_structural_file_not_scanned_literal(tmp_path):
+    d = _run_literal(
+        tmp_path, "Имя: Проект\nШрифт:\n    Тип: АбсолютныйШрифт\n    Размер: =40\n",
+        name="Проект.yaml",
+    )
+    assert not d

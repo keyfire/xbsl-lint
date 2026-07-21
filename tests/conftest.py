@@ -53,6 +53,7 @@ _DATA_DEPENDENT = {
     "test_call_arity",  # the rule parses code with the parser
     "test_call_arity_cross",  # the rule needs the stdlib catalog
     "test_unknown_members",  # the rule needs the stdlib catalog
+    "test_rule_resources",  # the rule tokenizes the module
 }
 
 

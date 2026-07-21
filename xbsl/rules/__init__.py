@@ -18,6 +18,7 @@ from . import (  # noqa: F401
     code_syntax,
     locals_usage,
     ref_fields,
+    resources,
     return_mismatch,
     statement_no_effect,
     syntax_parse,

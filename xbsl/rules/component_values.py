@@ -1,4 +1,9 @@
-"""Tier D: enumeration values of component properties against the ui schema.
+"""Values of yaml properties: enumerations of the ui schema and literal-typed nodes.
+
+Two rules live here:
+
+- yaml/unknown-enum-value (tier D) – a value outside the property's enumeration;
+- yaml/no-expression-in-literal (tier A) – a binding inside a node the platform wants literal.
 
 The yaml/unknown-enum-value rule. A component property whose type is an enumeration accepts
 only the elements of that enumeration; anything else is rejected when the build is applied –
@@ -28,6 +33,28 @@ Zero-false-positive guards:
 Corpus survey before the rule was written: 2619 component nodes, 2545 property values judged,
 zero findings – deployed code follows the schema, so the rule guards against regressions and
 against a value invented from a neighbouring axis.
+
+The yaml/no-expression-in-literal rule. A value object nested in a component property –
+`Шрифт: {Тип: АбсолютныйШрифт, ...}`, `ЦветФона: {Тип: АбсолютныйЦвет, ...}` – must be spelled
+out literally: a binding inside it is rejected when the build is applied. Measured on the same
+probe, with two different wordings from the compiler:
+
+    ФормаШрифтПолужирный.yaml [20:37]: Свойство 'Полужирный' не поддерживает вычисляемое выражение
+    ФормаЦветВыражением.yaml  [13:17]: Значение типа АбсолютныйЦвет должно быть описано в виде
+                                       литерала
+
+The restriction is about the nesting, not about a particular property: `Размер` was the known
+case, `Полужирный` behaves the same. The way out is to compute the WHOLE object – the control
+form with `Шрифт: =ШрифтНадписи()` applied cleanly.
+
+Which types are literal cannot be derived from the data – checked in all three sources: the ui
+schema describes components only, `stdlib.json` keeps a flat name list, and the metamodel has no
+such flag (it does hold `AbsoluteFontModel`, but nothing marking it literal). So the set is an
+explicit list of types proven by the compiler, extended as new ones are proven. Judging by "not
+a component" instead would be wrong: `ОбычнаяКоманда`, `ЗаголовокСекции` and project components
+are not in the schema either, and bindings inside them are legal and common (39 in the corpus).
+Inside the two listed types the corpus has 687 nodes and not a single binding – the rule guards
+a convention the code already follows.
 """
 
 from __future__ import annotations
@@ -64,11 +91,27 @@ MESSAGES = {
               "'{component}' – applying the build rejects it as an unknown enumeration "
               "element. Allowed values: {allowed}.",
     },
+    "yaml/no-expression-in-literal.title": {
+        "ru": "Выражение внутри литерального значения",
+        "en": "An expression inside a literal value",
+    },
+    "yaml/no-expression-in-literal.binding": {
+        "ru": "Свойство '{prop}' узла типа '{type}' задано выражением – платформа принимает "
+              "здесь только литерал, применение сборки упадёт ('не поддерживает вычисляемое "
+              "выражение'). Вычислять нужно ВЕСЬ объект: '{owner}: =Выражение'.",
+        "en": "Property '{prop}' of a '{type}' node is given as an expression – the platform "
+              "accepts only a literal here, applying the build will fail ('does not support a "
+              "computed expression'). Compute the WHOLE object instead: '{owner}: =Выражение'.",
+    },
 }
 i18n.register(MESSAGES)
 
 #: Union members that are a VALUE rather than a type with an open set of values.
 _LITERAL_MEMBERS = frozenset({"Авто"})
+
+#: Types whose nested node the compiler demands literally (proven on a probe). Extend only
+#: with types shown to behave the same - see the module docstring on why the data cannot say.
+_LITERAL_TYPES = frozenset({"АбсолютныйШрифт", "АбсолютныйЦвет"})
 
 
 def _allowed_values(prop: dict, enums: dict) -> frozenset[str] | None:
@@ -164,3 +207,58 @@ def unknown_enum_value(source: SourceFile) -> Iterable[Diagnostic]:
                     allowed=", ".join(sorted(allowed)),
                 ),
             )
+
+
+@rule(
+    "yaml/no-expression-in-literal", "yaml/no-expression-in-literal.title", "A",
+    severity=Severity.ERROR,
+)
+def no_expression_in_literal(source: SourceFile) -> Iterable[Diagnostic]:
+    if source.kind != "yaml" or not _HAVE_YAML:
+        return
+    if not any(t in source.text for t in _LITERAL_TYPES):
+        return  # the fast path: no literal-typed node in this file at all
+    data, err = _parsed(source)
+    if err is not None or not _is_object(data):
+        return
+    root = _composed(source)
+    if root is None:  # pragma: no cover - _parsed has already vetted the syntax
+        return
+    for mapping in _mapping_nodes(root):
+        entries = _scalar_entries(mapping)
+        type_entry = entries.get("Тип")
+        if (
+            type_entry is None
+            or not isinstance(type_entry[1], yaml.ScalarNode)
+            or type_entry[1].value.strip() not in _LITERAL_TYPES
+        ):
+            continue
+        owner = _owner_key(root, mapping)
+        for key, (_key_node, value_node) in entries.items():
+            if key == "Тип" or not isinstance(value_node, yaml.ScalarNode):
+                continue
+            if value_node.style in ("|", ">") or not value_node.value.strip().startswith("="):
+                continue
+            yield Diagnostic(
+                source.rel,
+                value_node.start_mark.line + 1, value_node.start_mark.column + 1,
+                "yaml/no-expression-in-literal", Severity.ERROR,
+                i18n.t(
+                    "yaml/no-expression-in-literal.binding",
+                    prop=key, type=type_entry[1].value.strip(), owner=owner,
+                ),
+            )
+
+
+def _owner_key(root, target) -> str:
+    """The key the node hangs on (`Шрифт`, `ЦветФона`), or `Значение` when unknown.
+
+    The message tells the author to compute the whole object, so it needs the name of the
+    property to write the binding on; the graph is walked from the root because a node does
+    not know its parent.
+    """
+    for mapping in _mapping_nodes(root):
+        for key_node, value_node in mapping.value:
+            if value_node is target and isinstance(key_node, yaml.ScalarNode):
+                return key_node.value
+    return "Значение"

@@ -23,6 +23,7 @@ const METHODS = "topics/methods-in-built-in-script-language";
 const EXEC = "topics/module-execution";
 const MODULAR = "topics/modular-development";
 const ENUM = "topics/enumeration-properties";
+const IMAGES = "topics/image-library";
 
 // Mapping rule/group -> documentation page + section anchor (heading id on the page).
 // Specific rules go before group ones. Anchors are heading ids in docs.sqlite
@@ -125,6 +126,9 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   { match: (r) => r === "form/unknown-handler", page: "topics/form-component", anchor: "события" },
   { match: (r) => r === "yaml/enum-needs-nullable", page: ENUM, anchor: "элементы" },
   { match: (r) => r === "yaml/ref-needs-nullable", page: TYPES, anchor: "тип-неопределено" },
+  { match: (r) => r === "code/resource-bare-name", page: IMAGES },
+  { match: (r) => r === "code/unknown-resource", page: IMAGES },
+  { match: (r) => r === "yaml/no-expression-in-literal", page: "topics/label-component" },
   {
     match: (r) => r === "yaml/standard-field-length",
     page: "topics/catalog-properties",
