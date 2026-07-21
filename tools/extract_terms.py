@@ -170,6 +170,42 @@ def _scan_meta_objects(car: zipfile.ZipFile) -> tuple[dict[str, dict[str, str]],
     return {owner: dict(sorted(names.items())) for owner, names in sorted(members.items())}, common
 
 
+#: The query language is a separate grammar (TreeSQL); its keyword pairs live in one class.
+_QUERY_TERMS_CLASS = "com/e1c/g5/treesql/domain/QueryTerms.class"
+_QUERY_JAR_RE = re.compile(r"treesql\.model")
+_QUERY_EN_RE = re.compile(r"^[A-Z][A-Z0-9_ ]*$")
+_QUERY_RU_RE = re.compile(r"^[А-ЯЁ][А-ЯЁ0-9_ ]*$")
+
+
+def _scan_query_terms(car: zipfile.ZipFile) -> dict[str, str]:
+    """{Russian keyword: English keyword} of the query language, empty when not found.
+
+    The XBSL grammar does not describe queries at all - `Запрос{...}` is a nested language
+    with its own parser (TreeSQL), and its vocabulary is nowhere in the documentation either.
+    The one place that pairs the spellings is the QueryTerms class of the parser's model, and
+    there the English name lies right before the Russian one, exactly as in the meta objects.
+    """
+    for entry in car.namelist():
+        if not entry.endswith(".jar") or not _QUERY_JAR_RE.search(entry):
+            continue
+        try:
+            jar = zipfile.ZipFile(io.BytesIO(car.read(entry)))
+            data = jar.read(_QUERY_TERMS_CLASS)
+        except (zipfile.BadZipFile, KeyError):
+            continue
+        # Service entries of the pool (method descriptors, class names) sit between a pair
+        # and would break the adjacency: `FROM`, the descriptor, then `ИЗ`.
+        names = [
+            s for s in _constant_pool(data)
+            if _QUERY_EN_RE.match(s) or _QUERY_RU_RE.match(s)
+        ]
+        return {
+            ru: en for en, ru in zip(names, names[1:])
+            if _QUERY_EN_RE.match(en) and _QUERY_RU_RE.match(ru)
+        }
+    return {}
+
+
 def extract(dist: Path) -> tuple[dict[str, dict[str, str]], dict[str, set[str]]]:
     car = _distro.find_car(dist)
     types: dict[str, str] = {}
@@ -216,6 +252,7 @@ def extract(dist: Path) -> tuple[dict[str, dict[str, str]], dict[str, set[str]]]
 
     with zipfile.ZipFile(car) as z:
         members, common = _scan_meta_objects(z)
+        query = _scan_query_terms(z)
 
     for section, names in conflicts.items():
         target = {"types": types, "facets": facets, "properties": properties, "enums": enums}[section]
@@ -223,7 +260,7 @@ def extract(dist: Path) -> tuple[dict[str, dict[str, str]], dict[str, set[str]]]
             target.pop(name, None)
     return {
         "types": types, "facets": facets, "properties": properties, "enums": enums,
-        "members": members, "common": common,
+        "members": members, "common": common, "query": query,
     }, conflicts
 
 
@@ -250,7 +287,7 @@ def main(argv=None) -> None:
     # правила. Полный словарь (тысячи членов) лежит рядом и грузится по требованию:
     # 1 МБ json в каждом параллельном воркере стоил бы четверти времени прогона.
     small = {"meta": meta, **{name: dict(sorted(sections[name].items()))
-                              for name in ("types", "facets", "properties", "enums")}}
+                              for name in ("types", "facets", "properties", "enums", "query")}}
     full = {"meta": meta, "members": sections["members"], "common": sections["common"]}
 
     version_dir = _distro.version_dir(version)
@@ -266,6 +303,7 @@ def main(argv=None) -> None:
         dropped = sorted(conflicts[name])
         extra = f", исключено по конфликту: {dropped}" if dropped else ""
         print(f"  {name}: {len(sections[name])}{extra}")
+    print(f"  query: {len(sections['query'])} ключевых слов языка запросов")
     print(f"Записано: {out_full}")
     print(f"  members: {len(sections['members'])} типов, common: {len(sections['common'])} имён")
 

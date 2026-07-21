@@ -33,7 +33,8 @@ from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
 from xbsl.lexer import Token, tokens
 from xbsl.rules._syntax import (
-    QUERY_TABLE_INTRO,
+    query_table_intro,
+    query_words,
     WORD_KINDS,
     query_alias_pairs,
     query_block_tokens,
@@ -80,19 +81,19 @@ i18n.register(MESSAGES)
 
 # Words that introduce a table (the next word token starts a table expression) and the word
 # token kinds - shared with the alias parsing in _syntax.
-_TABLE_INTRO = QUERY_TABLE_INTRO
+_TABLE_INTRO = query_table_intro()
 _WORD_KINDS = WORD_KINDS
 # Constructs outside the supported subset - a block with them is skipped as a whole.
-_UNSUPPORTED = frozenset({"ПОМЕСТИТЬ", "INTO", "ОБЪЕДИНИТЬ", "UNION", "ВРЕМЕННАЯ", "TEMPORARY"})
+_UNSUPPORTED = query_words("INTO", "UNION", "TEMPORARY")
 # Virtual tables after the dot - not questioned.
 _VIRTUAL = frozenset({
     "СРЕЗПОСЛЕДНИХ", "СРЕЗПЕРВЫХ", "ОСТАТКИ", "ОБОРОТЫ", "ОСТАТКИИОБОРОТЫ",
     "SLICELAST", "SLICEFIRST", "BALANCE", "TURNOVERS", "BALANCEANDTURNOVERS",
 })
 # Query language words - in both forms, as the lexer sees them (the token value, not the canon).
-_IN = frozenset({"В", "IN"})
-_NOT = frozenset({"НЕ", "NOT"})
-_SELECT = frozenset({"ВЫБРАТЬ", "SELECT"})
+_IN = query_words("IN")
+_NOT = query_words("NOT")
+_SELECT = query_words("SELECT")
 # Yaml sections that provide the fields of a query table.
 _FIELD_SECTIONS = ("Реквизиты", "Измерения", "Ресурсы")
 

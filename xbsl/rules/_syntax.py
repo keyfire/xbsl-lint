@@ -22,6 +22,9 @@ from __future__ import annotations
 import bisect
 from dataclasses import dataclass
 
+from functools import lru_cache
+
+from xbsl import dataset
 from xbsl.engine import SourceFile
 from xbsl.lexer import Token, tokens
 
@@ -33,8 +36,55 @@ SIGNATURE_KEYWORDS = ("METHOD", "CONSTRUCTOR")
 # The query DSL is a nested language: the lexer sees its words as ordinary word tokens, so they
 # are matched by value (in both languages), not by the canonical keyword.
 WORD_KINDS = ("IDENT", "KEYWORD")
-QUERY_TABLE_INTRO = frozenset({"ИЗ", "FROM", "СОЕДИНЕНИЕ", "JOIN"})  # the next word is a table
-QUERY_ALIAS_INTRO = frozenset({"КАК", "AS"})  # `ИЗ Акция КАК А`
+
+#: Spellings kept here so the rules still work without the dataset (a public checkout).
+_QUERY_FALLBACK = {
+    "FROM": ("ИЗ",), "JOIN": ("СОЕДИНЕНИЕ",), "AS": ("КАК",), "IN": ("В",),
+    "NOT": ("НЕ",), "SELECT": ("ВЫБРАТЬ",), "INTO": ("ПОМЕСТИТЬ",),
+    "UNION": ("ОБЪЕДИНИТЬ",), "TEMPORARY": ("ВРЕМЕННАЯ",),
+}
+
+
+@lru_cache(maxsize=1)
+def _query_spellings() -> dict[str, tuple[str, ...]]:
+    """{English keyword: its other spellings} of the query language, empty without data.
+
+    The pairs come from the `query` section of terms.json, extracted from the vocabulary of
+    the query parser itself. The general term dictionary must NOT be used here: a reverse
+    lookup over it pulls in words that are not query keywords at all (FROM would also match
+    the property `ОТ`, JOIN the string method `СОЕДИНИТЬ`), and the rules would start seeing
+    tables where there are none.
+    """
+    try:
+        section = (dataset.load_json("terms.json") or {}).get("query") or {}
+    except (dataset.DatasetError, KeyError, ValueError):
+        return {}
+    reverse: dict[str, list[str]] = {}
+    for russian, english in section.items():
+        reverse.setdefault(english.upper(), []).append(russian.upper())
+    return {key: tuple(value) for key, value in reverse.items()}
+
+
+@lru_cache(maxsize=None)
+def query_words(*english: str) -> frozenset[str]:
+    """Every spelling of the given query keywords, upper-cased."""
+    spellings = _query_spellings()
+    out: set[str] = set()
+    for word in english:
+        key = word.upper()
+        out.add(key)
+        out.update(spellings.get(key) or _QUERY_FALLBACK.get(key, ()))
+    return frozenset(out)
+
+
+def query_table_intro() -> frozenset[str]:
+    """Words after which a table expression begins."""
+    return query_words("FROM", "JOIN")
+
+
+def query_alias_intro() -> frozenset[str]:
+    """Words that introduce a table alias (`ИЗ Акция КАК А`)."""
+    return query_words("AS")
 
 _OPEN_CH = "([{"
 _CLOSE_CH = ")]}"
@@ -95,7 +145,7 @@ def query_alias_pairs(block: list[Token]) -> list[tuple[str, str]]:
     i, n = 0, len(block)
     while i < n:
         t = block[i]
-        if not (t.kind in WORD_KINDS and t.value.upper() in QUERY_TABLE_INTRO):
+        if not (t.kind in WORD_KINDS and t.value.upper() in query_table_intro()):
             i += 1
             continue
         j = i + 1
@@ -111,7 +161,7 @@ def query_alias_pairs(block: list[Token]) -> list[tuple[str, str]]:
         if (
             not dotted
             and j + 1 < n
-            and block[j].kind in WORD_KINDS and block[j].value.upper() in QUERY_ALIAS_INTRO
+            and block[j].kind in WORD_KINDS and block[j].value.upper() in query_alias_intro()
             and block[j + 1].kind in WORD_KINDS
         ):
             out.append((block[j + 1].value, table.value))
@@ -147,7 +197,7 @@ def _query_columns(toks: list[Token], start: int, end: int) -> list[str]:
     block = [t for t in toks if start <= t.start < end and t.kind not in ("COMMENT", "BOM")]
     stop = len(block)
     for i, t in enumerate(block):
-        if t.kind in WORD_KINDS and t.value.upper() in QUERY_TABLE_INTRO:
+        if t.kind in WORD_KINDS and t.value.upper() in query_table_intro():
             stop = i  # the select section ends at ИЗ/СОЕДИНЕНИЕ
             break
 
@@ -167,7 +217,7 @@ def _query_columns(toks: list[Token], start: int, end: int) -> list[str]:
     for item in items:
         name = None
         for k in range(len(item) - 2, -1, -1):  # the item's last КАК/AS
-            if item[k].kind in WORD_KINDS and item[k].value.upper() in QUERY_ALIAS_INTRO:
+            if item[k].kind in WORD_KINDS and item[k].value.upper() in query_alias_intro():
                 name = item[k + 1]
                 break
         if name is None and item and item[-1].kind == "IDENT":
