@@ -1,6 +1,12 @@
-"""Tier C: structure fields of a reference type must not rely on a default value.
+"""Reference types must not rely on a default value – the code side and the yaml side.
 
-The code/ref-field-needs-req rule. A structure field whose type is a project-object
+A reference type has no default value on the platform, so every position that needs one
+must say so explicitly. Two rules of the same family live here:
+
+- code/ref-field-needs-req (tier C) – a structure field in a module;
+- yaml/ref-needs-nullable (tier A) – a `Тип` value in a yaml description.
+
+The code side. A structure field whose type is a project-object
 reference (`Программа.Ссылка`, `Справочник.Товары.Ссылка` – the last segment of the dotted
 chain is `Ссылка`) has no default value on the platform, so the server-side apply fails with
 "cannot be initialized with a default value". The correct forms are:
@@ -24,10 +30,36 @@ Deliberate narrowings (skip rather than guess – no false positives):
 - a bare `Ссылка` (a one-segment chain) is skipped: it is a local type name, not a
   project-object reference;
 - an alternative that is not a plain IDENT(.IDENT)* chain is skipped.
+
+The yaml side (yaml/ref-needs-nullable). The same reference type in a `Тип` value – an
+object attribute, a component property, a structure field or an input field
+`ПолеВвода<Товары.Ссылка>` – is rejected by the compiler for the same reason. Measured on
+a probe applied to a local server, four positions and both flavours of the message:
+
+    СпрРеквизитБезЗнака.yaml  [9:14]  Default value initialization is not supported for
+                                      type СпрЦель.Ссылка
+    ФормаСвойствоБезЗнака.yaml [15:14] (the same, a component property)
+    ФормаПолеБезЗнака.yaml    [13:17] Parameter "ТипДанных" of type
+                                      "ПолеВвода<СпрЦель.Ссылка>" must have a default value
+    СпрСтдСсылка.yaml         [9:14]  ... for type ДвоичныйОбъект.Ссылка
+
+The nullable counterparts of all four applied cleanly, so the marker is what the compiler
+is after. A stdlib reference (`ДвоичныйОбъект.Ссылка`) behaves exactly like a project one –
+hence the rule needs no project knowledge and stays file-scoped (tier A, instant in the
+editor). Positions match the compiler's on the attribute and the property; on the input
+field the compiler points at the component node while the rule points at the argument
+inside the value – the place to actually edit.
+
+Narrowing mirrors the code side – exactly two shapes are flagged, a bare chain and
+`ПолеВвода<chain>` with a single bare argument. Other generics are left alone, and
+`Массив<Товары.Ссылка>` is not merely unproven but legal: the same probe applied it without
+a complaint (a collection has its own default – the empty collection). Unions and qualified
+`Поставщик::Проект::Объект.Ссылка` names are skipped as well.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from xbsl import i18n
@@ -36,6 +68,17 @@ from xbsl.engine import SourceFile, rule
 from xbsl.lexer import Token
 from xbsl.rules._syntax import code_tokens, type_expr
 from xbsl.rules.code_structure import _OPENERS
+from xbsl.rules.yaml_schema import (
+    _composed,
+    _HAVE_YAML,
+    _is_object,
+    _mapping_nodes,
+    _parsed,
+    _scalar_entries,
+)
+
+if _HAVE_YAML:
+    import yaml
 
 MESSAGES = {
     "code/ref-field-needs-req.title": {
@@ -50,8 +93,36 @@ MESSAGES = {
               "or an initializer – applying the build fails with 'cannot be initialized "
               "with a default value'. Correct: 'обз {kw} {name}: {type}'.",
     },
+    "yaml/ref-needs-nullable.title": {
+        "ru": "Ссылочный тип без nullable",
+        "en": "Reference type without nullable",
+    },
+    "yaml/ref-needs-nullable.bare": {
+        "ru": "Тип '{name}' – ссылка без '?': значения по умолчанию у ссылки нет, серверная "
+              "компиляция упадёт с 'Default value initialization is not supported'. "
+              "Укажите '{name}?'.",
+        "en": "Type '{name}' – a reference without '?': a reference has no default value, the "
+              "server-side compilation will fail with 'Default value initialization is not "
+              "supported'. Use '{name}?'.",
+    },
+    "yaml/ref-needs-nullable.input": {
+        "ru": "Тип 'ПолеВвода<{name}>' – аргумент-ссылка без '?': значения по умолчанию нет, "
+              "серверная компиляция упадёт с 'Parameter \"ТипДанных\" ... must have a default "
+              "value'. Укажите 'ПолеВвода<{name}?>'.",
+        "en": "Type 'ПолеВвода<{name}>' – a reference argument without '?': there is no default "
+              "value, the server-side compilation will fail with 'Parameter \"ТипДанных\" ... "
+              "must have a default value'. Use 'ПолеВвода<{name}?>'.",
+    },
 }
 i18n.register(MESSAGES)
+
+#: A plain dotted chain of at least two segments ending in `Ссылка` – the reference shape.
+_YAML_REF_RE = re.compile(
+    r"[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё_0-9]*"
+    r"(?:\.[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё_0-9]*)*\.Ссылка"
+)
+_YAML_BARE_RE = re.compile(rf"^\s*({_YAML_REF_RE.pattern})\s*$")
+_YAML_INPUT_RE = re.compile(rf"^\s*ПолеВвода\s*<\s*({_YAML_REF_RE.pattern})\s*>\s*$")
 
 _FIELD_KEYWORDS = ("VAR", "VAL")
 
@@ -166,3 +237,48 @@ def ref_field_needs_req(source: SourceFile) -> Iterable[Diagnostic]:
                 ),
             ))
     return diags
+
+
+def _yaml_ref_shape(value: str) -> tuple[str, int, str] | None:
+    """(reference type, offset of the name within the value, message key) or None.
+
+    Exactly two shapes qualify: a bare chain and ПолеВвода<chain> with a bare argument.
+    """
+    m = _YAML_BARE_RE.match(value)
+    if m:
+        return m.group(1), m.start(1), "yaml/ref-needs-nullable.bare"
+    m = _YAML_INPUT_RE.match(value)
+    if m:
+        return m.group(1), m.start(1), "yaml/ref-needs-nullable.input"
+    return None
+
+
+@rule("yaml/ref-needs-nullable", "yaml/ref-needs-nullable.title", "A", severity=Severity.ERROR)
+def yaml_ref_needs_nullable(source: SourceFile) -> Iterable[Diagnostic]:
+    if source.kind != "yaml" or not _HAVE_YAML or ".Ссылка" not in source.text:
+        return  # the fast path: composing the graph is a second parse of the file
+    data, err = _parsed(source)
+    if err is not None or not _is_object(data):
+        return  # structural files (Проект/Подсистема/Ресурсы) carry no types
+    root = _composed(source)
+    if root is None:  # pragma: no cover - _parsed has already vetted the syntax
+        return
+    for mapping in _mapping_nodes(root):
+        entry = _scalar_entries(mapping).get("Тип")
+        if entry is None or not isinstance(entry[1], yaml.ScalarNode):
+            continue
+        value_node = entry[1]
+        if value_node.style in ("|", ">"):  # a block scalar is text, not a type
+            continue
+        hit = _yaml_ref_shape(value_node.value)
+        if hit is None:
+            continue
+        name, offset, msg_key = hit
+        quote = 1 if value_node.style in ("'", '"') else 0
+        yield Diagnostic(
+            source.rel,
+            value_node.start_mark.line + 1,
+            value_node.start_mark.column + 1 + offset + quote,
+            "yaml/ref-needs-nullable", Severity.ERROR,
+            i18n.t(msg_key, name=name),
+        )

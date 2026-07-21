@@ -37,6 +37,7 @@ from . import (  # noqa: F401
 from . import (  # noqa: F401
     catch_exceptions,
     choice_list,
+    component_values,
     dynlist_fields,
     enum_nullable,
     enum_values,

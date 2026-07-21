@@ -7,7 +7,7 @@ sidebar:
 ---
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl --list-rules` (or the MCP `list_rules`). Currently there are 91 rules.
+runtime is `xbsl --list-rules` (or the MCP `list_rules`). Currently there are 93 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -64,6 +64,7 @@ The file exists, parses, the object has a unique UUID, the name matches the file
 | `yaml/name-matches-file` | warning | on | file | Name does not match the file name | – |
 | `yaml/id-unique` | error | on | project | Duplicate Id in the project | – |
 | `yaml/standard-field-length` | error | on | file | A standard field longer than the platform limit (`Наименование` > 400, `Код` > 50) - apply rejects the field and it drops out of the object | [docs](https://1cmycloud.com/docs/help/topics/catalog-properties/) |
+| `yaml/ref-needs-nullable` | error | on | file | A reference type in a `Тип` position without `?` (`Товары.Ссылка`, `ПолеВвода<Товары.Ссылка>`) - a reference has no default value, the compilation fails with `Default value initialization is not supported` | [docs](https://1cmycloud.com/docs/help/topics/type-description-and-initialization/) |
 | `project/identifier` | warning | on | file | Project name or vendor is not an identifier | [docs](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |
 | `project/presentation` | warning | on | file | Project presentation is empty | [docs](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |
 | `project/version` | warning | on | file | Project version is not A.B.C | [docs](https://1cmycloud.com/docs/help/topics/project-properties-standard/) |
@@ -147,6 +148,7 @@ the execution model (client/server), form handlers, properties and queries.
 | `yaml/dynlist-missing-field` | warning | on | project | Missing dynamic-list field | [docs](https://1cmycloud.com/docs/help/topics/dynamic-list/) |
 | `code/unknown-enum-value` | warning | on | project | Unknown enumeration value | [docs](https://1cmycloud.com/docs/help/topics/enumeration-properties/) |
 | `yaml/enum-needs-nullable` | warning | on | project | Enumeration without nullable | [docs](https://1cmycloud.com/docs/help/topics/enumeration-properties/) |
+| `yaml/unknown-enum-value` | error | on | file | A component property value outside the enumeration of the ui schema (`ВыравниваниеСодержимогоПоВертикали: Конец` - the vertical axis has no `Конец`) | – |
 | `form/unknown-handler` | warning | on | project | Form handler not found in the module | [docs](https://1cmycloud.com/docs/help/topics/form-component/) |
 | `code/server-call-from-handler` | warning | on | project | Server method is unavailable to a client handler | [docs](https://1cmycloud.com/docs/help/topics/module-execution/) |
 | `code/client-annotation-in-server-module` | warning | on | project | Client annotation in a server common module | [docs](https://1cmycloud.com/docs/help/topics/module-execution/) |

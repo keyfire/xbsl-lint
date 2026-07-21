@@ -34,12 +34,19 @@ equal values in different nodes are told apart; PyYAML counts CRLF line breaks c
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 
 from xbsl import i18n
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
-from xbsl.rules.yaml_schema import _HAVE_YAML, _is_object, _parsed
+from xbsl.rules.yaml_schema import (
+    _composed,
+    _HAVE_YAML,
+    _is_object,
+    _mapping_nodes,
+    _parsed,
+    _scalar_entries,
+)
 
 if _HAVE_YAML:
     import yaml
@@ -71,22 +78,6 @@ _AXES = (
 )
 
 
-def _mappings(root) -> Iterator["yaml.MappingNode"]:
-    """Every mapping of the composed node graph, in document order."""
-    stack = [root]
-    seen: set[int] = set()
-    while stack:
-        node = stack.pop()
-        if id(node) in seen:  # an anchor may alias the same node twice
-            continue
-        seen.add(id(node))
-        if isinstance(node, yaml.MappingNode):
-            yield node
-            stack.extend(v for _k, v in reversed(node.value))
-        elif isinstance(node, yaml.SequenceNode):
-            stack.extend(reversed(node.value))
-
-
 def _fixed_size(node) -> bool:
     """Whether the scalar is a fixed positive number (not Авто, not a binding, not zero)."""
     if not isinstance(node, yaml.ScalarNode):
@@ -107,16 +98,11 @@ def size_needs_no_stretch(source: SourceFile) -> Iterable[Diagnostic]:
     data, err = _parsed(source)
     if err is not None or not _is_object(data):
         return
-    try:
-        root = yaml.compose(source.text, Loader=yaml.SafeLoader)
-    except yaml.YAMLError:  # pragma: no cover - _parsed has already vetted the syntax
+    root = _composed(source)
+    if root is None:  # pragma: no cover - _parsed has already vetted the syntax
         return
-    for mapping in _mappings(root):
-        keys = {
-            k.value: (k, v)
-            for k, v in mapping.value
-            if isinstance(k, yaml.ScalarNode)
-        }
+    for mapping in _mapping_nodes(root):
+        keys = _scalar_entries(mapping)
         type_entry = keys.get("Тип")
         if (
             type_entry is None

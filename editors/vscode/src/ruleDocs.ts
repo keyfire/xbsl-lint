@@ -124,6 +124,7 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   { match: (r) => r === "query/unknown-table", page: "topics/select-from", anchor: "синтаксис" },
   { match: (r) => r === "form/unknown-handler", page: "topics/form-component", anchor: "события" },
   { match: (r) => r === "yaml/enum-needs-nullable", page: ENUM, anchor: "элементы" },
+  { match: (r) => r === "yaml/ref-needs-nullable", page: TYPES, anchor: "тип-неопределено" },
   {
     match: (r) => r === "yaml/standard-field-length",
     page: "topics/catalog-properties",

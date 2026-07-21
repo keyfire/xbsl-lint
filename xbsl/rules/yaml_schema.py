@@ -4,7 +4,8 @@
 - yaml/id-uuid          – every Ид (including the nested attributes) is a valid UUID;
 - yaml/id-unique        – Ид values are unique within the project (a cross-file rule);
 - yaml/id-required      – an object (has ВидЭлемента) carries a top-level Ид;
-- yaml/name-matches-file – the object Имя matches the file name.
+- yaml/name-matches-file – the object Имя matches the file name;
+- yaml/standard-field-length – Наименование/Код stay within the platform limits.
 
 Structural files (Проект/Подсистема/Ресурсы) are recognised by the absence of ВидЭлемента and
 are exempt from the Имя/required-Ид rules; the Ид checks (format/uniqueness) apply to every Ид
@@ -159,6 +160,50 @@ def _id_lines(source: SourceFile) -> list[tuple[str, int, int]]:
 def _is_object(data) -> bool:
     """Whether the file describes a metadata object (has ВидЭлемента)."""
     return isinstance(data, dict) and data.get("ВидЭлемента") is not None
+
+
+def _composed(source: SourceFile):
+    """The composed node graph of the file (line/column marks kept), or None.
+
+    `yaml.compose` needs the pure-python loader - the marks are what the callers are
+    after. Cached per source: several rules walk the same graph.
+    """
+    key = "yaml_composed"
+    if key not in source.cache:
+        try:
+            source.cache[key] = yaml.compose(source.text, Loader=yaml.SafeLoader)
+        except yaml.YAMLError:
+            source.cache[key] = None
+    return source.cache[key]
+
+
+def _mapping_nodes(root):
+    """Every mapping of a composed node graph, in document order.
+
+    Positions taken from these nodes tell apart equal values in different nodes, which a
+    text search for the value cannot do (PyYAML counts CRLF line breaks correctly).
+    """
+    stack = [root]
+    seen: set[int] = set()
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:  # an anchor may alias the same node twice
+            continue
+        seen.add(id(node))
+        if isinstance(node, yaml.MappingNode):
+            yield node
+            stack.extend(v for _k, v in reversed(node.value))
+        elif isinstance(node, yaml.SequenceNode):
+            stack.extend(reversed(node.value))
+
+
+def _scalar_entries(mapping) -> dict:
+    """{key: (key node, value node)} of a mapping, scalar keys only."""
+    return {
+        k.value: (k, v)
+        for k, v in mapping.value
+        if isinstance(k, yaml.ScalarNode)
+    }
 
 
 @rule("yaml/valid", "yaml/valid.title", "A", severity=Severity.ERROR)
