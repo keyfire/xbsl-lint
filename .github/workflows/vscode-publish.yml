@@ -10,6 +10,12 @@ on:
     tags: ["vscode-v*"]
   workflow_dispatch:
 
+# Один тег - одна публикация: GitHub изредка порождает по событию тега два прогона, и
+# второй падает на "уже опубликовано" (ovsx --skip-duplicate этот случай не покрывает).
+concurrency:
+  group: vscode-publish-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
