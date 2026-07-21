@@ -8,6 +8,22 @@
 > are in the [Russian changelog](https://github.com/keyfire/xbsl/blob/main/editors/vscode/CHANGELOG.ru.md).
 > See also the [note on names](README.md#navigation-and-completion).
 
+## 0.26.0
+
+- **Four new engine rules in the "Problems" panel.** `code/resource-bare-name` and
+  `code/unknown-resource` - a resource is addressed by its bare file name, and the name must
+  exist either in the project or in the platform's image library of 152 pictures (the rule reads
+  that library from the documentation, so using a platform picture is never reported).
+  `yaml/no-expression-in-literal` - a binding inside a node the platform wants spelled out
+  literally (a font, a colour): compute the whole object instead. `yaml/bare-object-value` - a
+  bare word where a quoted literal or an `=` binding is expected.
+- **The metadata scaffolding takes an element kind in either language.** `Catalog` works exactly
+  like its Russian spelling; the kinds are resolved through the term dictionary extracted from
+  your own distribution.
+- **The term dictionary got four times bigger** and now covers members of every stdlib type, so
+  the tooling knows the English name of a metadata entity wherever the platform has one. The
+  query language keywords come from the query parser's own vocabulary as well.
+
 ## 0.25.0
 
 - **Three new engine rules in the "Problems" panel.** `yaml/ref-needs-nullable` – a reference type
