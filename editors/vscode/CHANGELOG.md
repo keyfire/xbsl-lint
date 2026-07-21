@@ -8,6 +8,19 @@
 > are in the [Russian changelog](https://github.com/keyfire/xbsl/blob/main/editors/vscode/CHANGELOG.ru.md).
 > See also the [note on names](README.md#navigation-and-completion).
 
+## 0.27.0
+
+- **The properties panel now also shows what a metadata object does NOT set.** It used to list
+  only the keys already written in the yaml, so there was no way to see that a catalog can have
+  `Presentation`, `Hierarchical`, `InputByString` or `AccessControl`. It now has the same two
+  sections as form components: set on top, every applicable one below.
+- **Editors are typed from the platform metamodel:** a tri-state for a flag, a value list for an
+  enumeration, a combobox for a data type; the platform default and the version a property
+  appeared in are shown. Collections and nested blocks (`Attributes`, `TabularParts`) are listed
+  for reference - the metadata tree edits those. Names follow the project's development language.
+- The metamodel data was rebuilt: properties gained types, defaults and enumerations, and the
+  parse no longer loses members over a string literal holding a comment marker.
+
 ## 0.26.1
 
 - **Completion follows the language your project is written in.** The platform keeps both
