@@ -11,6 +11,8 @@ import { lspRequest } from "./lspClient";
 interface HoverDoc {
   pageId: string | null;
   symbol: string | null;
+  //: The first sentence of the page - what the type IS, shown above the link.
+  summary?: string | null;
 }
 
 // The command link target: xbsl.docs.open(id) opens the page in the docs panel. Arguments ride
@@ -29,8 +31,12 @@ export function registerHoverDocs(context: vscode.ExtensionContext): void {
       if (!res || !res.pageId) {
         return undefined;
       }
+      // The description first, the link under it: a hover that only offers to read elsewhere
+      // makes the reader travel for something a sentence could have answered.
+      const summary = (res.summary ?? "").trim();
+      const link = `[$(book) ${vscode.l10n.t("Documentation")}](${docsCommandUri(res.pageId).toString()})`;
       const md = new vscode.MarkdownString(
-        `[$(book) ${vscode.l10n.t("Documentation")}](${docsCommandUri(res.pageId).toString()})`,
+        summary ? `${summary}\n\n${link}` : link,
         true // supportThemeIcons
       );
       md.isTrusted = { enabledCommands: ["xbsl.docs.open"] };

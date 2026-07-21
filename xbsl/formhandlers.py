@@ -52,6 +52,9 @@ from xbsl.scaffold import FileChange, ScaffoldResult, TextEdit, _cursor_at
 _VISIBILITY = ("Локально", "ВПодсистеме", "ВПроекте", "Глобально")
 
 _WORD = r"[\wА-Яа-яЁё]"
+#: A bare method name in an event property (anything else - an expression, a binding - is
+#: unbound without touching the module).
+_NAME_RE = re.compile(rf"[A-Za-zА-Яа-яЁё_]{_WORD}*")
 _METHOD_KW_RE = "(?:метод|method)"
 
 
@@ -400,6 +403,117 @@ def add_handler(
         module_edits=module_edits, new_module_text=new_module_text,
         cursor_offset=insert_offset + name_rel, notes=notes,
     )
+
+
+@dataclass
+class RemovalPlan:
+    """The computed changes of remove_handler; offsets are relative to the input texts."""
+
+    method: str | None  # the method the key was bound to (None - the key held no name)
+    yaml_edits: list[TextEdit]
+    new_yaml_text: str
+    module_edits: list[TextEdit]  # empty when the method is kept or the module has none
+    new_module_text: str | None
+    method_removed: bool
+    notes: list[str] = field(default_factory=list)
+
+
+def remove_handler(
+    yaml_text: str,
+    module_text: str | None,
+    node_id: str,
+    key: str,
+    drop_method: bool = False,
+) -> RemovalPlan:
+    """Unbind an event property, optionally deleting its method from the module.
+
+    The mirror of add_handler: the yaml half is formedits.reset_property (the key leaves
+    the node), the module half deletes the whole method - its annotations included, the
+    span module_methods reports - together with the blank line that separated it, so the
+    file is left as if the method had never been written. drop_method=False touches the
+    module not at all.
+
+    A key bound to an expression rather than a plain name, and a method the module does
+    not have, unbind just as well: there is simply nothing to delete, and a note says so.
+    """
+    form = parse_form(yaml_text)
+    node = get_component(form, node_id)
+    formedits._check_property_key(key)
+    notes: list[str] = []
+
+    pair = node.pairs.get(key)
+    method: str | None = None
+    if pair is not None and pair.scalar_span is not None:
+        candidate = yaml_text[pair.scalar_span.start: pair.scalar_span.end].strip()
+        if candidate and _NAME_RE.fullmatch(candidate):
+            method = candidate
+
+    res = formedits.reset_property(yaml_text, node_id, key)
+    yaml_edits, new_yaml_text = res.edits, res.new_text
+
+    if not drop_method or method is None or module_text is None:
+        if drop_method and method is None:
+            notes.append(f"Свойство {key} не ссылается на метод модуля – удалять нечего")
+        return RemovalPlan(
+            method=method, yaml_edits=yaml_edits, new_yaml_text=new_yaml_text,
+            module_edits=[], new_module_text=module_text, method_removed=False, notes=notes,
+        )
+
+    methods, _errors = module_methods(module_text)
+    target = next((m for m in methods if m["name"] == method), None)
+    if target is None:
+        notes.append(f"Метода {method} в модуле нет – удалена только привязка в yaml")
+        return RemovalPlan(
+            method=method, yaml_edits=yaml_edits, new_yaml_text=new_yaml_text,
+            module_edits=[], new_module_text=module_text, method_removed=False, notes=notes,
+        )
+
+    start, end = _method_cut(module_text, target["span"]["start"], target["span"]["end"])
+    module_edits = [TextEdit(start, end, "")]
+    new_module_text = module_text[:start] + module_text[end:]
+    return RemovalPlan(
+        method=method, yaml_edits=yaml_edits, new_yaml_text=new_yaml_text,
+        module_edits=module_edits, new_module_text=new_module_text,
+        method_removed=True, notes=notes,
+    )
+
+
+def _method_cut(text: str, start: int, end: int) -> tuple[int, int]:
+    """The range to delete for a method: its span grown to whole lines and one separator.
+
+    A method is written as a block between blank lines, so cutting the span alone would
+    leave either two blank lines in a row or a stray indent. The cut starts at the
+    beginning of the method's own line and swallows the blank lines AFTER it; when the
+    method is the last thing in the file, the blank lines BEFORE it go instead.
+    """
+    line_start = text.rfind("\n", 0, start) + 1
+    if not text[line_start:start].strip():
+        start = line_start
+    after = end
+    while after < len(text) and text[after] in " \t":
+        after += 1
+    while after < len(text) and text[after] in "\r\n":
+        after += 1
+        # a following blank line belongs to the method's own separation
+        probe = after
+        while probe < len(text) and text[probe] in " \t":
+            probe += 1
+        if probe >= len(text) or text[probe] not in "\r\n":
+            break
+        after = probe
+    if after >= len(text):
+        # Nothing follows the method: the blank lines BEFORE it go instead, leaving exactly
+        # one line break after whatever the previous content was.
+        probe = start
+        while probe > 0 and text[probe - 1] in " \t\r\n":
+            probe -= 1
+        if probe == 0:
+            start = 0
+        else:
+            nl = text.find("\n", probe)
+            if 0 <= nl < start:
+                start = nl + 1
+    return start, after
 
 
 @dataclass

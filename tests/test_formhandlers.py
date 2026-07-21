@@ -356,3 +356,58 @@ def test_demo_pair_module_methods(request):
             assert m["name"] and m["span"]["start"] < m["span"]["end"] <= len(text)
             if m["nameSpan"]:
                 assert text[m["nameSpan"]["start"] : m["nameSpan"]["end"]] == m["name"]
+
+
+# --- remove_handler: the mirror operation ----------------------------------------------------
+
+
+def _bound(value: str) -> str:
+    """The fixture yaml with the button's ПриНажатии bound to `value`."""
+    anchor = "                Имя: КнопкаОк\n"
+    assert anchor in YAML
+    return YAML.replace(anchor, anchor + "                ПриНажатии: " + value + "\n")
+
+
+@pytest.mark.needs_data
+def test_remove_handler_drops_the_method_and_its_annotations():
+    plan = formhandlers.remove_handler(_bound("Обновить"), MODULE, BUTTON, "ПриНажатии", drop_method=True)
+    assert plan.method == "Обновить"
+    assert plan.method_removed is True
+    assert "ПриНажатии" not in plan.new_yaml_text
+    # the method leaves with its annotation line, and the neighbours keep one blank line
+    assert "Обновить" not in plan.new_module_text
+    assert "@НаКлиенте" not in plan.new_module_text
+    assert "\n\n\n" not in plan.new_module_text
+    assert "метод Загрузить" in plan.new_module_text and "метод Хелпер" in plan.new_module_text
+
+
+@pytest.mark.needs_data
+def test_remove_handler_can_keep_the_method():
+    plan = formhandlers.remove_handler(_bound("Обновить"), MODULE, BUTTON, "ПриНажатии", drop_method=False)
+    assert plan.method == "Обновить"
+    assert plan.method_removed is False
+    assert plan.module_edits == []
+    assert plan.new_module_text == MODULE
+    assert "ПриНажатии" not in plan.new_yaml_text
+
+
+@pytest.mark.needs_data
+def test_remove_handler_the_last_method_leaves_no_trailing_blank_lines():
+    plan = formhandlers.remove_handler(_bound("Хелпер"), MODULE, BUTTON, "ПриНажатии", drop_method=True)
+    assert plan.method_removed is True
+    assert "Хелпер" not in plan.new_module_text
+    assert plan.new_module_text.endswith(";\n")
+    assert not plan.new_module_text.endswith("\n\n")
+
+
+@pytest.mark.needs_data
+def test_remove_handler_reports_what_it_could_not_delete():
+    # a key bound to an expression names no method - the binding goes, the module stays
+    plan = formhandlers.remove_handler(_bound("=Что.То()"), MODULE, BUTTON, "ПриНажатии", drop_method=True)
+    assert plan.method is None and plan.method_removed is False
+    assert plan.notes and "удалять нечего" in plan.notes[0]
+
+    # a name the module does not carry
+    plan = formhandlers.remove_handler(_bound("Отсутствует"), MODULE, BUTTON, "ПриНажатии", drop_method=True)
+    assert plan.method == "Отсутствует" and plan.method_removed is False
+    assert plan.notes and "в модуле нет" in plan.notes[0]

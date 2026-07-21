@@ -755,11 +755,20 @@ def _make_server() -> "LanguageServer":
 
     @server.feature("xbsl/hoverDoc")
     def _hover_doc(params: object) -> dict:
-        # The documentation page id to link to from the hover of a symbol whose type is known:
-        # a type/member name directly under the cursor, or the ROOT of a local variable's
-        # inferred type (`Ответ: ОтветHttp` -> ОтветHttp). {"pageId": null} when no page exists.
-        # The client turns pageId into a trusted command link (a server MarkupContent link is
-        # untrusted and would not be clickable).
+        # The documentation page to show in the hover of a symbol whose type is known: a
+        # type/member name directly under the cursor, or the ROOT of a local variable's inferred
+        # type (`Ответ: ОтветHttp` -> ОтветHttp). Answers {pageId, symbol, summary} - the one
+        # sentence that opens the page, so the hover says WHAT the type is before offering to
+        # read about it. {"pageId": null} when no page exists. The client turns pageId into a
+        # trusted command link (a server MarkupContent link is untrusted and would not be
+        # clickable).
+        def answer(pid: str, name: str) -> dict:
+            try:
+                text = docs.summary(pid)
+            except Exception:  # noqa: BLE001 - a missing summary must not lose the link
+                text = ""
+            return {"pageId": pid, "symbol": name, "summary": text}
+
         try:
             uri = _param(params, "uri")
             pos = _param(params, "position")
@@ -770,12 +779,12 @@ def _make_server() -> "LanguageServer":
                 if name:
                     pid = docs.for_symbol(name)
                     if pid:
-                        return {"pageId": pid, "symbol": name}
+                        return answer(pid, name)
             root = _hover_type_root(params)
             if root:
                 pid = docs.for_symbol(root)
                 if pid:
-                    return {"pageId": pid, "symbol": root}
+                    return answer(pid, root)
         except Exception:  # noqa: BLE001 - the hover must never fail
             return {"pageId": None, "symbol": None}
         return {"pageId": None, "symbol": None}
@@ -1260,6 +1269,46 @@ def _make_server() -> "LanguageServer":
         }
         if plan.created:
             out["moduleText"] = plan.new_module_text
+        if plan.notes:
+            out["notes"] = list(plan.notes)
+        return out
+
+    @server.feature("xbsl/removeHandler")
+    def _remove_handler(params: object) -> dict:
+        """Flat params {uri, node, key, dropMethod?} -> the two-file plan.
+
+        The mirror of xbsl/addHandler: yamlEdits always unbind the event key, and with
+        dropMethod the module loses the handler method itself (its annotations and the
+        blank line that separated it). method - the name the key was bound to;
+        methodRemoved - whether the module was touched; notes - why it was not (the key
+        held an expression, the module has no such method). Offsets are relative to the
+        buffers the plan was computed from; the client applies both as one WorkspaceEdit.
+        """
+        try:
+            yaml_path = _form_path(params)
+            module_path = formhandlers.module_path_for(yaml_path)
+            yaml_text = _form_reader(yaml_path)
+            module_text = _form_reader(module_path) if module_path.is_file() else None
+            plan = formhandlers.remove_handler(
+                yaml_text, module_text,
+                str(_param(params, "node", "") or ""),
+                str(_param(params, "key", "") or ""),
+                drop_method=bool(_param(params, "dropMethod", False)),
+            )
+        except scaffold.ScaffoldError as exc:
+            return {"error": str(exc)}
+        except OSError as exc:
+            return {"error": str(exc)}
+        edits = lambda items: [
+            {"start": e.start, "end": e.end, "newText": e.new_text} for e in items
+        ]
+        out = {
+            "method": plan.method,
+            "methodRemoved": plan.method_removed,
+            "yamlEdits": edits(plan.yaml_edits),
+            "moduleUri": path_to_uri(module_path),
+            "moduleEdits": edits(plan.module_edits),
+        }
         if plan.notes:
             out["notes"] = list(plan.notes)
         return out
