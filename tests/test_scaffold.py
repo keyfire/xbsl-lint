@@ -138,6 +138,7 @@ def _module(tmp_path):
     return p
 
 
+@pytest.mark.needs_data
 def test_add_method_keeps_annotation_bonds(tmp_path):
     # The whole point of the operation: an insertion must never split an annotation block
     # from its method. Checked for every placement, by parsing the result.
@@ -150,6 +151,7 @@ def test_add_method_keeps_annotation_bonds(tmp_path):
         assert anns["Новый"] == ["НаСервере"]
 
 
+@pytest.mark.needs_data
 def test_text_anchor_insertion_is_what_this_replaces(tmp_path):
     # The trap, reproduced: inserting before the "метод Второй" line hands the neighbour's
     # annotations to the new method and leaves Второй with none.
@@ -161,6 +163,7 @@ def test_text_anchor_insertion_is_what_this_replaces(tmp_path):
     assert anns["Новый"] == ["ВПроекте", "НаСервере", "НаСервере"]
 
 
+@pytest.mark.needs_data
 def test_add_method_placement_and_signature(tmp_path):
     p = _module(tmp_path)
     text = scaffold.op_add_method(
@@ -173,6 +176,7 @@ def test_add_method_placement_and_signature(tmp_path):
     assert text.index("метод Считать") < text.index("метод Второй")
 
 
+@pytest.mark.needs_data
 def test_add_method_rejects_duplicates_and_unknown_anchors(tmp_path):
     p = _module(tmp_path)
     with pytest.raises(scaffold.ScaffoldError):
@@ -187,6 +191,7 @@ def test_add_method_rejects_duplicates_and_unknown_anchors(tmp_path):
         scaffold.op_add_method(p.with_suffix(".yaml"), "Новый")
 
 
+@pytest.mark.needs_data
 def test_add_method_refuses_a_broken_module(tmp_path):
     # A module the parser cannot read gives no reliable borders - better to refuse.
     p = tmp_path / "Модуль.xbsl"

@@ -50,6 +50,7 @@ def _архив(path, элементы):
 }
 
 
+@pytest.mark.needs_data
 def test_declared_libraries_ru_and_en():
     assert libs.declared_libraries(ПРОЕКТ) == [("acme", "ТаймерЛиб", "9.0.2")]
     assert libs.declared_libraries(PROJECT_EN) == [("acme", "QueueLib", "1.0.0")]
