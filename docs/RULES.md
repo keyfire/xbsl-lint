@@ -7,7 +7,7 @@ sidebar:
 ---
 
 The full list of linter checks. This file is extended as rules are added; the live list at
-runtime is `xbsl --list-rules` (or the MCP `list_rules`). Currently there are 96 rules.
+runtime is `xbsl --list-rules` (or the MCP `list_rules`). Currently there are 97 rules.
 
 ## Boundary: the linter complements the compiler, it does not replace it
 
@@ -151,6 +151,7 @@ the execution model (client/server), form handlers, properties and queries.
 | `code/unknown-enum-value` | warning | on | project | Unknown enumeration value | [docs](https://1cmycloud.com/docs/help/topics/enumeration-properties/) |
 | `yaml/enum-needs-nullable` | warning | on | project | Enumeration without nullable | [docs](https://1cmycloud.com/docs/help/topics/enumeration-properties/) |
 | `yaml/unknown-enum-value` | error | on | file | A component property value outside the enumeration of the ui schema (`ВыравниваниеСодержимогоПоВертикали: Конец` - the vertical axis has no `Конец`) | – |
+| `yaml/bare-object-value` | error | on | file | A bare word on a property that accepts `Объект` (`Значение: Титул`) - the platform expects a quoted literal or an `=` binding | [docs](https://1cmycloud.com/docs/help/topics/label-component/) |
 | `code/unknown-resource` | error | on | project | The name in `Ресурс{...}` is neither in the project's `Ресурсы` folders nor in the platform's image library | [docs](https://1cmycloud.com/docs/help/topics/image-library/) |
 | `form/unknown-handler` | warning | on | project | Form handler not found in the module | [docs](https://1cmycloud.com/docs/help/topics/form-component/) |
 | `code/server-call-from-handler` | warning | on | project | Server method is unavailable to a client handler | [docs](https://1cmycloud.com/docs/help/topics/module-execution/) |

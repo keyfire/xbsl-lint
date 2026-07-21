@@ -129,6 +129,7 @@ const RULE_DOCS: ReadonlyArray<{ match: (rule: string) => boolean; page: string;
   { match: (r) => r === "code/resource-bare-name", page: IMAGES },
   { match: (r) => r === "code/unknown-resource", page: IMAGES },
   { match: (r) => r === "yaml/no-expression-in-literal", page: "topics/label-component" },
+  { match: (r) => r === "yaml/bare-object-value", page: "topics/label-component" },
   {
     match: (r) => r === "yaml/standard-field-length",
     page: "topics/catalog-properties",

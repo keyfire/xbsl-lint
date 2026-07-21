@@ -27,6 +27,7 @@ _SCHEMA = {
                     "types": ["Авто", "ВидВиджета", "Строка"], "enum": ["Карточка", "Баннер"],
                 },
                 "ПриНажатии": {"event": "(КарточкаАкме, СобытиеПриНажатии)->ничто"},
+                "Значение": {"types": ["Объект"]},
             },
         },
         "ГруппаАкме": {
@@ -59,9 +60,11 @@ def ui_root(tmp_path):
     )
     dataset.set_data_root(root)
     component_values._enumerated_props.cache_clear()
+    component_values._object_props.cache_clear()
     yield root
     dataset.set_data_root(None)
     component_values._enumerated_props.cache_clear()
+    component_values._object_props.cache_clear()
 
 
 @pytest.fixture
@@ -71,9 +74,11 @@ def no_data(tmp_path):
     root.mkdir()
     dataset.set_data_root(root)
     component_values._enumerated_props.cache_clear()
+    component_values._object_props.cache_clear()
     yield
     dataset.set_data_root(None)
     component_values._enumerated_props.cache_clear()
+    component_values._object_props.cache_clear()
 
 
 def _run(tmp_path, text, name="Ф.yaml"):
@@ -281,3 +286,62 @@ def test_structural_file_not_scanned_literal(tmp_path):
         name="Проект.yaml",
     )
     assert not d
+
+
+# --- yaml/bare-object-value ---------------------------------------------------------------
+
+_BARE_RULE = "yaml/bare-object-value"
+
+
+def _run_bare(tmp_path, body, name="Ф.yaml"):
+    src = tmp_path / "bare"
+    src.mkdir(exist_ok=True)
+    (src / name).write_text(
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Ф\nСодержимое:\n"
+        "    -\n        Тип: КарточкаАкме\n" + body,
+        encoding="utf-8",
+    )
+    return engine.run(discover([str(src)]), select={_BARE_RULE})
+
+
+def test_bare_word_flagged(tmp_path, ui_root):
+    d = _run_bare(tmp_path, "        Значение: Титул\n")
+    assert len(d) == 1 and d[0].rule_id == _BARE_RULE
+    assert d[0].severity.name == "ERROR"
+    assert '"Титул"' in d[0].message and "=Титул" in d[0].message
+    assert (d[0].line, d[0].col) == (6, 19)
+
+
+def test_quoted_value_not_flagged(tmp_path, ui_root):
+    assert not _run_bare(tmp_path, '        Значение: "Титул"\n')
+
+
+def test_binding_not_flagged_bare(tmp_path, ui_root):
+    assert not _run_bare(tmp_path, "        Значение: =Титул\n")
+
+
+def test_number_not_flagged(tmp_path, ui_root):
+    # yaml reads it as a number, not a word
+    assert not _run_bare(tmp_path, "        Значение: 42\n")
+
+
+def test_boolean_not_flagged(tmp_path, ui_root):
+    assert not _run_bare(tmp_path, "        Значение: true\n")
+
+
+def test_non_object_property_not_judged(tmp_path, ui_root):
+    # ВидОтображения is an enumeration, not Объект - another rule's business
+    assert not _run_bare(tmp_path, "        ВидОтображения: Баннер\n")
+
+
+def test_nested_object_value_not_flagged(tmp_path, ui_root):
+    # a mapping under the property is a literal with its type spelled out
+    d = _run_bare(
+        tmp_path,
+        "        Значение:\n            Тип: Строка\n            Значение: \"Текст\"\n",
+    )
+    assert not d
+
+
+def test_without_ui_schema_silent_bare(tmp_path, no_data):
+    assert not _run_bare(tmp_path, "        Значение: Титул\n")
