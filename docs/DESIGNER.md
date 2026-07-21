@@ -95,6 +95,14 @@ The **Properties** panel edits the selected component (and, from the metadata tr
   and bindings already used in the form.
 - **Events.** An event property offers a dropdown of the module's compatible handlers;
   "create handler" writes a stub with the right signature into the `.xbsl` and jumps to it.
+- **Metadata objects, the same way.** For a selected object (`Catalog`, `Document`, `HttpService`,
+  ...) the applicable properties come from the platform metamodel, so the **All properties**
+  section also shows what the file does not set yet: `Presentation`, `Hierarchical`,
+  `InputByString`, `AccessControl`. The editors are typed - a tri-state for a flag, a value list
+  for an enumeration, a combobox for a data type; collections and nested blocks (`Attributes`,
+  `TabularParts`) are listed for reference and edited in the metadata tree. For a field of an
+  object, for a kind outside the metamodel and without generated data the panel stays the flat
+  list of set properties it has always been.
 - **Slot indicator.** A property that is a child slot is marked with a bar and a badge.
 - **Serial editing.** The selected property row survives switching to another component of the
   same type, so you can walk a set of similar components changing one field.

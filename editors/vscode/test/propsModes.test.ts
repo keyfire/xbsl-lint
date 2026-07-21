@@ -9,6 +9,8 @@ import {
   buildMetaPanelModel,
   classifyEditor,
   describeMetaSelection,
+  isRootNode,
+  metaKindOf,
   metaNodeOffsetAt,
   metaPropertyEdits,
   pairedYamlPath,
@@ -211,6 +213,106 @@ test("buildMetaPanelModel: a synthetic standard attribute renders every row as n
   assert.strictEqual(model.type, "Код");
   assert.strictEqual(model.name, "");
   assert.ok(model.sections[0].rows.every((r) => !r.set));
+});
+
+// --- the metadata schema of a kind (xbsl/metadataSchema) -----------------------------------
+
+// What the engine answers for Справочник, trimmed to what the panel needs.
+const CATALOG_SCHEMA = {
+  kind: "Справочник",
+  props: {
+    Представление: { kind: "string", type: "AttributeName", priority: 9900 },
+    Иерархический: { kind: "boolean", type: "boolean", default: "false", since: "8.0" },
+    РежимУдаления: { kind: "enum", enum: "DeletionMode", default: "ПометкаУдаления" },
+    СозданиеНаОсновании: { kind: "type", item: "Type" },
+    Реквизиты: { kind: "list", item: "ICatalogAttributeDescriptor" },
+    КонтрольДоступа: { kind: "block", type: "CatalogAccessControl" },
+    Разработчик: { kind: "string", deprecated: true },
+    ОбластьВидимости: { kind: "enum", enum: "VisibilityScopeEnum" },
+  },
+  enums: {
+    DeletionMode: ["Немедленно", "ПометкаУдаления"],
+    VisibilityScopeEnum: ["ВПодсистеме", "ВПроекте", "Глобально"],
+  },
+};
+
+test("buildMetaPanelModel: the schema adds the applicable properties below the set ones", () => {
+  const internals = parseInternals(CATALOG)!;
+  const model = buildMetaPanelModel(
+    describeMetaSelection(CATALOG, { offset: internals.rootOffset })!,
+    ["Товары.Ссылка"],
+    CATALOG_SCHEMA
+  );
+  assert.strictEqual(model.schemaAvailable, true);
+  assert.deepStrictEqual(model.sections.map((s) => s.id), ["set", "all"]);
+  const all = Object.fromEntries(model.sections[1].rows.map((r) => [r.key, r]));
+  // Not written in the file - and now visible, which is the whole point.
+  assert.strictEqual(all["Иерархический"].set, false);
+  assert.strictEqual(all["Иерархический"].editor.control, "tristate");
+  assert.strictEqual(all["Иерархический"].defaultValue, "false");
+  assert.strictEqual(all["Иерархический"].since, "8.0");
+  assert.strictEqual(all["Представление"].editor.control, "text");
+  assert.strictEqual(all["РежимУдаления"].editor.control, "enum");
+  assert.deepStrictEqual(
+    (all["РежимУдаления"].editor as { options: string[] }).options,
+    ["Немедленно", "ПометкаУдаления"]
+  );
+  // A data type takes the project's candidates, the same open combobox as Тип.
+  assert.strictEqual(all["СозданиеНаОсновании"].editor.control, "combo");
+  assert.deepStrictEqual(
+    (all["СозданиеНаОсновании"].editor as { options: string[] }).options,
+    ["Товары.Ссылка"]
+  );
+  // Structures are shown (so they are discoverable) but not edited here - the tree owns them.
+  assert.strictEqual(all["Реквизиты"].editor.control, "readonly");
+  assert.strictEqual(all["КонтрольДоступа"].editor.control, "readonly");
+  // A property already written in the file is marked as set in this section too.
+  assert.strictEqual(all["ОбластьВидимости"].set, true);
+  assert.strictEqual(all["ОбластьВидимости"].value, "ВПроекте");
+  // An old spelling kept for compatibility is not offered.
+  assert.ok(!("Разработчик" in all));
+});
+
+test("buildMetaPanelModel: the schema types the editors of the set rows", () => {
+  const internals = parseInternals(CATALOG)!;
+  const model = buildMetaPanelModel(
+    describeMetaSelection(CATALOG, { offset: internals.rootOffset })!,
+    undefined,
+    CATALOG_SCHEMA
+  );
+  const set = Object.fromEntries(model.sections[0].rows.map((r) => [r.key, r]));
+  // The metamodel knows the enumeration - the row offers its values, not a free-text field.
+  assert.strictEqual(set["ОбластьВидимости"].editor.control, "enum");
+  assert.deepStrictEqual(
+    (set["ОбластьВидимости"].editor as { options: string[] }).options,
+    ["ВПодсистеме", "ВПроекте", "Глобально"]
+  );
+  assert.strictEqual(set["Ид"].editor.control, "readonly"); // read-only keys stay read-only
+});
+
+test("buildMetaPanelModel: without a schema the panel keeps the single flat list", () => {
+  const internals = parseInternals(CATALOG)!;
+  const model = buildMetaPanelModel(describeMetaSelection(CATALOG, { offset: internals.rootOffset })!);
+  assert.strictEqual(model.schemaAvailable, false);
+  assert.strictEqual(model.sections.length, 1);
+});
+
+test("metaKindOf/isRootNode: the schema applies to the object, not to a field", () => {
+  const internals = parseInternals(CATALOG)!;
+  assert.strictEqual(metaKindOf(CATALOG), "Справочник");
+  assert.strictEqual(metaKindOf("Имя: Товары\n"), undefined);
+  assert.ok(isRootNode(CATALOG, internals.rootOffset));
+  assert.ok(!isRootNode(CATALOG, internals.attributes[0].offset!));
+});
+
+test("metaPropertyEdits: writing an unset schema property inserts the key", () => {
+  const internals = parseInternals(CATALOG)!;
+  const out = applyAll(
+    CATALOG,
+    metaPropertyEdits(CATALOG, { offset: internals.rootOffset }, "Иерархический", "Истина")
+  );
+  assert.ok(parses(out));
+  assert.ok(/^Иерархический: Истина$/m.test(out));
 });
 
 // --- metaPropertyEdits --------------------------------------------------------------------

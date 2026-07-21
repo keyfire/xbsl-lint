@@ -21,6 +21,7 @@ import {
 import { encodePaletteDrag, PALETTE_MIME } from "./formStructureCore";
 import { FormStructureController } from "./formStructure";
 import { cachedContainerTypes, resetUiSchemaCache, uiCatalog, warmContainers } from "./uiSchemaClient";
+import { resetMetaSchemaCache } from "./metaSchemaClient";
 
 const FAVORITES_KEY = "xbsl.formPalette.favorites";
 const USAGE_KEY = "xbsl.formPalette.usage";
@@ -127,6 +128,7 @@ class FormPaletteProvider
 
   refresh(): void {
     resetUiSchemaCache();
+    resetMetaSchemaCache(); // the same generated data feeds the metadata schema of the panel
     this.sections = undefined;
     void this.ensureLoaded();
   }

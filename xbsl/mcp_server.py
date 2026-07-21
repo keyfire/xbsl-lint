@@ -21,7 +21,9 @@ import re
 from html import unescape
 from pathlib import Path
 
-from xbsl import dataset, docs, formedits, formhandlers, formmodel, report, scaffold, uischema
+from xbsl import (
+    dataset, docs, formedits, formhandlers, formmodel, metamodel, report, scaffold, uischema,
+)
 from xbsl.cli import discover
 from xbsl.engine import RULES, load, load_text, run, run_sources
 
@@ -179,6 +181,38 @@ def ui_schema(component: str | None = None) -> dict:
     if component:
         return uischema.component(component)
     return uischema.catalog()
+
+
+@mcp.tool()
+def metadata_schema(kind: str | None = None) -> dict:
+    """The properties a configuration element of a kind (ВидЭлемента) may declare.
+
+    Without arguments - the kinds the metamodel covers. With `kind` - its properties, each
+    with a value kind (boolean | number | string | enum | type | block | list), the declared
+    type, the platform default, the version it appeared in and the alternate spellings the
+    compiler still accepts, plus "enums" - the values of the enumerations they reference.
+    `block` and `list` are the nested structures (КонтрольДоступа, Реквизиты), written as
+    yaml blocks rather than a scalar. Use it before writing an element yaml by hand:
+    it answers "what else may a Справочник declare" without guessing.
+    {"available": false} when the metamodel dataset is not generated
+    (tools/extract_metamodel.py).
+    """
+    if not metamodel.available():
+        return {"available": False}
+    if not kind:
+        return {"available": True, "kinds": list(metamodel.kinds())}
+    props = metamodel.properties(kind)
+    enums = {
+        name: list(metamodel.enum_values(name))
+        for name in {p.get("enum") for p in props.values() if p.get("enum")}
+    }
+    return {
+        "available": True,
+        "kind": kind,
+        "class": metamodel.class_for_kind(kind),
+        "props": props,
+        "enums": enums,
+    }
 
 
 # --- scaffolding (metadata) ------------------------------------------------------------

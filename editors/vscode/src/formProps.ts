@@ -48,9 +48,12 @@ import {
   buildMetaPanelModel,
   classifyEditor,
   describeMetaSelection,
+  isRootNode,
+  metaKindOf,
   metaPropertyEdits,
   pairedYamlPath,
 } from "./propsModes";
+import { metaSchema } from "./metaSchemaClient";
 import { findAttrOffset } from "./metadataCore";
 import { ObjectInfoResponse } from "./formDataCore";
 import { lspActive, lspRequest } from "./lspClient";
@@ -891,9 +894,10 @@ ${cspMeta(nonce)}
     toYaml.addEventListener("click", () => post({ type: "reveal" }));
     titleBox.appendChild(head);
     titleBox.appendChild(toYaml);
-    if (model.meta) {
-      // The metadata mode: one flat row list - the sections, the events and the legend are
-      // component-mode concepts; the search works over the same rows.
+    if (model.meta && !model.schemaAvailable) {
+      // A metadata node without a schema of its own (a field, an unknown kind, no generated
+      // data): one flat row list, the way this mode always looked. With a schema the model
+      // carries the "set" and "all" sections and renders through the shared path below.
       for (const section of model.sections) {
         for (const row of section.rows) {
           pane.appendChild(buildRow(row));
@@ -1227,8 +1231,10 @@ function idleHint(): string {
 }
 
 // The metadata fill: the rows come from the pure core (describeMetaSelection over the open
-// buffer), the Тип combobox candidates from the metadata tree provider. No LSP involved -
-// the mode works in the CLI mode too, exactly like the historical metadata panel.
+// buffer), the Тип combobox candidates from the metadata tree provider. The rows themselves need
+// no LSP - the mode keeps working in the CLI mode, exactly like the historical metadata panel;
+// the server only ADDS the kind's schema, which turns the flat list into "set" plus "all
+// applicable" and types the editors.
 async function refreshMetadata(uri: vscode.Uri, sel: MetaSelector): Promise<void> {
   const my = ++seq;
   let doc: vscode.TextDocument;
@@ -1246,14 +1252,24 @@ async function refreshMetadata(uri: vscode.Uri, sel: MetaSelector): Promise<void
     showHint(idleHint());
     return;
   }
+  // The kind's schema applies to the object itself; a field or a section item is resolved by
+  // discriminators (a separate stage), so there the panel keeps showing the set rows alone.
+  const kind = !sel.std && isRootNode(text, desc.offset) ? metaKindOf(text) : undefined;
+  const schema = kind && lspActive() ? await metaSchema(kind) : undefined;
+  if (seq !== my || !view) {
+    return;
+  }
   let candidates: string[] | undefined;
-  if (typeCandidatesFn && desc.rows.some((r) => r.control === "combo")) {
+  const wantsTypes =
+    desc.rows.some((r) => r.control === "combo") ||
+    Object.values(schema?.props ?? {}).some((p) => p.kind === "type");
+  if (typeCandidatesFn && wantsTypes) {
     candidates = await typeCandidatesFn();
     if (seq !== my || !view) {
       return;
     }
   }
-  lastModel = buildMetaPanelModel(desc, candidates);
+  lastModel = buildMetaPanelModel(desc, candidates, schema);
   lastModel.readonly = await isReadonlyDoc(uri); // hook 11
   if (seq !== my || !view) {
     return;

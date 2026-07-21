@@ -39,7 +39,7 @@ except ImportError:  # pragma: no cover - the extra is not installed
 
 from xbsl import (
     __version__, baseline, bindingcomplete, dataset, docs, engine, formedits, formhandlers,
-    formmodel, formsearch, i18n, indexer, scaffold, templates, uischema,
+    formmodel, formsearch, i18n, indexer, metamodel, scaffold, templates, terms, uischema,
 )
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.templates import Template, TemplateError
@@ -916,6 +916,38 @@ def _make_server() -> "LanguageServer":
         if name:
             return uischema.component(name)
         return uischema.catalog()
+
+    @server.feature("xbsl/metadataSchema")
+    def _metadata_schema(params: object = None) -> dict:
+        # The uiSchema counterpart for configuration elements: without parameters - the kinds
+        # covered; with {"kind": "Справочник"} - the properties applicable to that kind, so the
+        # panel can offer the ones a file does not set yet. Degrades to {"available": False}
+        # without generated data. Names follow the project's development language, the way
+        # completion does - the panel matches them against the keys written in the yaml.
+        if not metamodel.available():
+            return {"available": False}
+        lang = _project_language(str(STATE.root) if STATE.root else None)
+        kind = _opt_str(params, "kind")
+        if not kind:
+            return {"available": True, "kinds": list(metamodel.kinds())}
+        props = metamodel.localized(metamodel.properties(kind), lang)
+        if not props:
+            return {"available": True, "kind": kind, "props": {}}
+        enums = {}
+        for record in props.values():
+            name = record.get("enum")
+            if name and name not in enums:
+                values = metamodel.enum_values(name)
+                enums[name] = [
+                    (terms.english(v, "enums") or v) if lang == "en" else v for v in values
+                ]
+        return {
+            "available": True,
+            "kind": kind,
+            "class": metamodel.class_for_kind(kind),
+            "props": props,
+            "enums": enums,
+        }
 
     # --- metadata scaffolding (the extension's tree is a thin client of these methods) ----
     #
