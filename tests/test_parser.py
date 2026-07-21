@@ -452,6 +452,42 @@ def test_undefined_name_reads_component_yaml():
     assert diags == [], [d.message for d in diags]
 
 
+def test_undefined_name_catches_unescaped_dollar_in_a_string():
+    # The OData trap: "?$format=json" reads as a substitution of the name `format`, and the
+    # compiler rejects the module. The message must offer the escape, not a declaration.
+    diags = _undef(
+        "метод Адрес(База: Строка): Строка\n"
+        "    возврат База + \"/odata/standard.odata/Users?$format=json\"\n"
+        ";\n"
+    )
+    assert len(diags) == 1, [d.message for d in diags]
+    assert diags[0].line == 2 and "format" in diags[0].message
+    assert "\\$format" in diags[0].message
+
+
+def test_undefined_name_accepts_an_escaped_sign_and_the_full_form():
+    diags = _undef(
+        "метод Адрес(База: Строка, Имя: Строка): Строка\n"
+        "    знч Экранировано = База + \"?\\$format=json&\\%top=1\"\n"
+        "    знч Полная = \"привет, %{Имя.ВВерхнийРегистр()} - ${Имя|ЧЧ:мм}\"\n"
+        "    знч НеИмя = \"скидка 100% и $<число> и $ сам по себе\"\n"
+        "    возврат Экранировано + Полная + НеИмя\n"
+        ";\n"
+    )
+    assert diags == [], [d.message for d in diags]
+
+
+def test_undefined_name_resolves_names_used_in_a_short_interpolation():
+    # A declared name inside an interpolation is legitimate; a misspelled one is not.
+    diags = _undef(
+        "метод Приветствие(Имя: Строка): Строка\n"
+        "    возврат \"Привет, %Имя и %Имяя!\"\n"
+        ";\n"
+    )
+    assert len(diags) == 1, [d.message for d in diags]
+    assert "Имяя" in diags[0].message
+
+
 def test_parser_catalog_ru_texts_are_texts():
     # A localization pitfall: a global literal replacement once swapped the catalog ru texts
     # for i18n.t calls, and simple messages came out as raw keys (the en texts were intact,

@@ -1,4 +1,4 @@
-"""Tier D: undefined names in expressions - the first pass of the symbol table over the AST.
+r"""Tier D: undefined names in expressions - the first pass of the symbol table over the AST.
 
 Catches the classic typo the compiler rejects but no token heuristic can see:
 
@@ -18,6 +18,15 @@ type inference (stage 3). Qualified roots (`Подсистема::Имя`) and m
 skipped. Roots the file's module kind provides implicitly (`Компоненты` of a form module,
 `Это`/`До` of an object module etc.) are collected in _IMPLICIT - verified on the corpus.
 
+String literals are walked too, because a name can be spelled inside one: per the platform
+docs (Стд::Строка, "Интерполяция") `%Имя` and `$Имя` are SHORT interpolations of a name, and
+only a sign followed by something that cannot start an identifier is an ordinary character.
+That is what turns a forgotten escape into a compile error - `"...?$format=json"` reads as a
+substitution of the name `format`, and the fix is `\$format`, not a declaration. The full
+form (`%{Выражение}` / `${Выражение}`) is skipped whole: its contents are an expression that
+would need parsing, no such breakage has been seen, and a rule that stays silent there costs
+nothing.
+
 The rule needs the stdlib catalog (tier D): without the data it is silent - a name unknown
 to an incomplete world is not evidence.
 """
@@ -25,12 +34,13 @@ to an incomplete world is not evidence.
 from __future__ import annotations
 
 import difflib
+import re
 from collections.abc import Iterable
 
 from xbsl import dataset, i18n, parser as P
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
-from xbsl.lexer import linemap
+from xbsl.lexer import _IDENT_RE, _skip_interpolation, linemap
 from xbsl.rules.semantics import _object_name_fast, _parsed, _stdlib_names
 
 MESSAGES = {
@@ -45,6 +55,13 @@ MESSAGES = {
     "code/undefined-name.found-hint": {
         "ru": "Имя '{name}' нигде не объявлено – возможно, имелось в виду '{hint}'.",
         "en": "Name '{name}' is not declared anywhere - did you mean '{hint}'?",
+    },
+    "code/undefined-name.found-interp": {
+        "ru": "'{sign}{name}' в строке – интерполяция имени '{name}', а оно нигде не "
+              "объявлено. Если знак должен остаться символом, экранируйте: '\\{sign}{name}'.",
+        "en": "'{sign}{name}' inside the string is an interpolation of the name '{name}', "
+              "which is not declared anywhere. To keep the sign a plain character, escape "
+              "it: '\\{sign}{name}'.",
     },
 }
 i18n.register(MESSAGES)
@@ -202,8 +219,8 @@ def _undef_mapper(source: SourceFile) -> dict | None:
         return None
     lm = linemap(source)
     cands = [
-        (*lm.linecol(offset), name, hint)
-        for offset, name, hint in findings
+        (*lm.linecol(offset), name, hint, sign)
+        for offset, name, hint, sign in findings
     ]
     return {
         "k": "x",
@@ -216,8 +233,11 @@ def _undef_mapper(source: SourceFile) -> dict | None:
 
 def _module_candidates(
     module: P.Module, known_global: set[str],
-) -> list[tuple[int, str, str | None]]:
+) -> list[tuple[int, str, str | None, str]]:
     """Names unknown to the module and to `known_global`, with a local-scope hint.
+
+    The last element is the interpolation sign ("%"/"$") for a name found inside a string
+    literal, and "" for an ordinary one - the reduce picks the message by it.
 
     The walk collects everything unknown to the LOCAL scopes; the big static set filters
     afterwards, and the hints are computed only for the survivors against the pool of the
@@ -255,11 +275,11 @@ def _module_candidates(
     if not findings:
         return []
     _collect_declared(module, hint_pool)
-    out: list[tuple[int, str, str | None]] = []
-    for offset, name in findings:
+    out: list[tuple[int, str, str | None, str]] = []
+    for offset, name, sign in findings:
         if name in known_global:
             continue
-        out.append((offset, name, _closest(name, hint_pool)))
+        out.append((offset, name, _closest(name, hint_pool), sign))
     return out
 
 
@@ -361,15 +381,20 @@ def undefined_name(facts: dict[str, dict]) -> Iterable[Diagnostic]:
                 extras = set(pair["sections"])
                 extras |= set(object_members.get(kind, ()))
                 extras |= set(manager_members.get(kind, ()))
-        for line, col, name, hint in fact["cands"]:
+        for line, col, name, hint, sign in fact["cands"]:
             if name in project_names or name in extras:
                 continue
-            if hint is None:
-                hint = _closest(name, project_names | extras)
-            message = (
-                i18n.t("code/undefined-name.found-hint", name=name, hint=hint)
-                if hint else i18n.t("code/undefined-name.found", name=name)
-            )
+            if sign:
+                # Inside a string the fix is usually the escape, not a declaration - the
+                # spelling hint would send the reader the wrong way.
+                message = i18n.t("code/undefined-name.found-interp", name=name, sign=sign)
+            else:
+                if hint is None:
+                    hint = _closest(name, project_names | extras)
+                message = (
+                    i18n.t("code/undefined-name.found-hint", name=name, hint=hint)
+                    if hint else i18n.t("code/undefined-name.found", name=name)
+                )
             yield Diagnostic(rel, line, col, "code/undefined-name", Severity.ERROR, message)
 
 
@@ -435,8 +460,53 @@ def _walk_body(stmts: list[P.Stmt], scope: set[str], findings: list) -> None:
                 _walk_expr(st.value, scope, findings)
 
 
+_SIGN_RE = re.compile(r"[%$]")
+
+
+def _interpolations(raw: str) -> list[tuple[int, str, str]]:
+    """Short interpolations of a string literal: (offset inside the literal, sign, name).
+
+    The full form (`%{...}` / `${...}`) is skipped whole with the lexer's balancing - nested
+    strings and collection literals live inside it. A sign after a backslash is an escaped
+    character (`\\$`), and so is a sign followed by anything that cannot start an identifier
+    (`100% готово`, `$<число>` of a regex replacement) - both per the platform docs.
+    """
+    if "%" not in raw and "$" not in raw:
+        return []  # the common case: character-by-character scanning of long HTML literals costs
+    out: list[tuple[int, str, str]] = []
+    pos = 0
+    while True:
+        found = _SIGN_RE.search(raw, pos)
+        if found is None:
+            return out
+        i = found.start()
+        backslashes = i
+        while backslashes > 0 and raw[backslashes - 1] == "\\":
+            backslashes -= 1
+        if (i - backslashes) % 2:  # an odd run of backslashes escapes the sign
+            pos = i + 1
+            continue
+        if raw[i + 1: i + 2] == "{":
+            pos = _skip_interpolation(raw, i + 2)
+            continue
+        ident = _IDENT_RE.match(raw, i + 1)
+        if ident is None:
+            pos = i + 1
+            continue
+        out.append((i, found.group(0), ident.group(0)))
+        pos = ident.end()
+
+
 def _walk_expr(expr: P.Expr | None, scope: set[str], findings: list) -> None:
     if expr is None:
+        return
+    if isinstance(expr, P.Literal):
+        # A name can be spelled inside a string: only the short interpolation form is read,
+        # and the sign travels with the finding so the message can offer the escape.
+        if expr.kind == "STRING":
+            for offset, sign, name in _interpolations(expr.text):
+                if name not in scope:
+                    findings.append((expr.start + offset, name, sign))
         return
     if isinstance(expr, P.Name):
         # Qualified roots (Подсистема::Имя) are not checked: the contents of foreign
@@ -444,7 +514,7 @@ def _walk_expr(expr: P.Expr | None, scope: set[str], findings: list) -> None:
         # names that later turn out known (project objects), and difflib per candidate
         # would dominate the run - hints are computed after the static filter.
         if "::" not in expr.name and expr.name and expr.name not in scope:
-            findings.append((expr.start, expr.name))
+            findings.append((expr.start, expr.name, ""))
         return
     if isinstance(expr, P.Member):
         _walk_expr(expr.obj, scope, findings)  # the member name is a type-inference stage
