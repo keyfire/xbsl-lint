@@ -1,5 +1,5 @@
 ---
-title: "xbsl user guide"
+title: "XBSL user guide"
 description: "The complete guide to the toolkit – installation, CLI flags, CI setup, the baseline mechanism, and metadata scaffolding."
 sidebar:
   label: Guide

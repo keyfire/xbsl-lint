@@ -1,14 +1,13 @@
-// Синхронизация страницы расширения на сайте документации с README маркетплейса.
+// Keeps the extension page of the documentation site in sync with the marketplace README.
 //
-// Источник истины — editors/vscode/README.md (+ .ru.md), тот же файл, что публикуется
-// в VS Code Marketplace. Здесь он превращается в docs/vscode.md (+ .ru.md): снимаем
-// ведущий заголовок H1 и строку ручного переключателя языка (и то, и другое на сайте
-// даёт сам Blume), добавляем frontmatter (title/description/sidebar). Тело — как есть:
-// картинки и ссылки в README абсолютные, так что переносить нечего.
+// The source of truth is editors/vscode/README.md (+ .ru.md) - the very file published to
+// the VS Code Marketplace. Here it becomes docs/vscode.md (+ .ru.md): the leading H1 and the
+// hand-written language switcher line are dropped (Blume provides both), and frontmatter
+// (title/description/sidebar) is added.
 //
-// Запуск: `npm run sync:docs` (также выполняется автоматически перед `npm run build`
-// и `npm run dev`, а в CI — отдельным шагом перед `npx blume build`). После правки
-// editors/vscode/README*.md перегенерируйте страницу этим скриптом и закоммитьте.
+// Run: `npm run sync:docs` (also runs automatically before `npm run build` and `npm run dev`,
+// and in CI as its own step before `npx blume build`). After editing editors/vscode/README*.md
+// regenerate the page with this script and commit it.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -42,15 +41,15 @@ const pages = [
   },
 ];
 
-// Строка ручного переключателя вида "**English** · [Русский](…)" или
-// "[English](…) · **Русский**" — на сайте её заменяет встроенный переключатель Blume.
+// The hand-written switcher line, "**English** · [Русский](...)" or
+// "[English](...) · **Русский**" - on the site Blume's own switcher replaces it.
 const isSwitcherLine = (line) =>
   /Русский/.test(line) && /(\*\*English\*\*|\[English\]\()/.test(line);
 
-// Относительные пути в README заданы относительно editors/vscode/. На сайте страница
-// живёт в docs/, поэтому переписываем их на абсолютные URL репозитория: картинки — на
-// raw (для рендера), обычные ссылки — на blob (для просмотра на GitHub). Абсолютные
-// (http/https), якоря (#…) и корневые (/…) не трогаем.
+// Relative paths in the README are relative to editors/vscode/. On the site the page lives
+// in docs/, so they are rewritten to absolute repository URLs: images to raw (so they render),
+// ordinary links to blob (so they open on GitHub). Absolute (http/https), anchors (#...) and
+// root-relative (/...) paths are left alone.
 const RAW = "https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/";
 const BLOB = "https://github.com/keyfire/xbsl/blob/main/editors/vscode/";
 const absolutizeLinks = (md) =>
@@ -63,8 +62,8 @@ for (const page of pages) {
   const lines = raw.split("\n");
 
   let i = 0;
-  if (lines[i]?.startsWith("# ")) i++; // ведущий H1 → уходит в frontmatter title
-  // Снять пустые строки и строку переключателя языка сразу под заголовком.
+  if (lines[i]?.startsWith("# ")) i++; // the leading H1 becomes the frontmatter title
+  // Drop blank lines and the language-switcher line right under the heading.
   while (i < lines.length && (lines[i].trim() === "" || isSwitcherLine(lines[i]))) i++;
   const body = absolutizeLinks(lines.slice(i).join("\n").replace(/^\n+/, "").trimEnd());
 

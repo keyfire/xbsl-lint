@@ -1,9 +1,9 @@
 ---
-title: "xbsl linter rules"
+title: "XBSL linter rules"
 description: "The full list of linter checks, with severities and scope."
 sidebar:
   label: Rules
-  order: 3
+  order: 4
 ---
 
 The full list of linter checks. This file is extended as rules are added; the live list at

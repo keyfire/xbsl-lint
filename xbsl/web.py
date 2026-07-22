@@ -143,9 +143,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="xbsl-web", description="Веб-интерфейс линтера XBSL")
-    ap.add_argument("--host", default="127.0.0.1", help="адрес (по умолчанию 127.0.0.1)")
-    ap.add_argument("--port", type=int, default=8771, help="порт (по умолчанию 8771)")
+    ap = i18n.ArgumentParser(prog="xbsl-web", description=i18n.t("cli.help.web.description"))
+    ap.add_argument("--host", default="127.0.0.1", help=i18n.t("cli.help.web.host"))
+    ap.add_argument("--port", type=int, default=8771, help=i18n.t("cli.help.web.port"))
     args = ap.parse_args(argv)
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)

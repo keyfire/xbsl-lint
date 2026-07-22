@@ -1,6 +1,8 @@
-# xbsl
+# XBSL
 
 [English](https://github.com/keyfire/xbsl/blob/main/README.md) · **Русский**
+
+**Документация: [docs.keyfire.ru/xbsl](https://docs.keyfire.ru/xbsl/ru/)**
 
 ![CI](https://github.com/keyfire/xbsl/actions/workflows/ci.yml/badge.svg)
 

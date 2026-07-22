@@ -21,14 +21,17 @@ XBSLLINT_LANG) > system locale > ru.
 An unknown key is returned as is, so a plugin written against 0.3 – which passed literal
 strings rather than keys – keeps working.
 
-The check-mode --help text is translated too (the `cli.help.*` keys). Its parser is built after
-the language is resolved: cli.main reads --lang out of argv with lang_from_argv() before
-build_parser(), because argparse learns --lang only when it parses. The scaffolding and
-`templates` sub-parsers keep Russian help for now (they take no --lang and emit JSON).
+The --help text is translated too (the `cli.help.*` keys), including argparse's own
+`-h/--help` - see ArgumentParser at the bottom of this module. The check-mode parser is
+built after the language is resolved: cli.main reads --lang out of argv with
+lang_from_argv() before build_parser(), because argparse learns --lang only when it parses.
+The scaffolding and `templates` sub-parsers take no --lang, so their language comes from the
+env variable or the locale.
 """
 
 from __future__ import annotations
 
+import argparse as _argparse
 import locale as _locale
 import os
 
@@ -89,7 +92,6 @@ _CORE_MESSAGES = {
         "en": "--fix is incompatible with --baseline / --write-baseline.",
     },
     # -- help: check-mode argparse help (cli.py build_parser / _commands_help) --
-    # The scaffolding and templates sub-parsers keep Russian help (no --lang, JSON output).
     "cli.help.usage": {
         "ru": "%(prog)s [пути] [опции]        (без команды: проверка исходников)\n"
               "       %(prog)s <команда> [опции]",
@@ -222,6 +224,23 @@ _CORE_MESSAGES = {
         "ru": "веб-панель",
         "en": "web panel",
     },
+    # argparse always prints its own -h/--help in English (see i18n.ArgumentParser).
+    "cli.help.group.positional": {
+        "ru": "аргументы",
+        "en": "positional arguments",
+    },
+    "cli.help.group.options": {
+        "ru": "параметры",
+        "en": "options",
+    },
+    "cli.help.help": {
+        "ru": "показать эту справку и выйти",
+        "en": "show this help message and exit",
+    },
+    "cli.help.version": {
+        "ru": "показать версию и выйти",
+        "en": "show the version and exit",
+    },
     "cli.help.commands.header": {
         "ru": "команды:",
         "en": "commands:",
@@ -250,12 +269,84 @@ _CORE_MESSAGES = {
         "ru": "Опции команды: xbsl <команда> --help. Опции выше относятся к режиму проверки.",
         "en": "Command options: xbsl <command> --help. The options above apply to the check mode.",
     },
+    # -- help: the lsp and web servers (their own entry points, xbsl-lsp / xbsl-web) --
+    "cli.help.lsp.description": {
+        "ru": "LSP-сервер xbsl (stdio)",
+        "en": "The xbsl LSP server (stdio)",
+    },
+    "cli.help.lsp.project-root": {
+        "ru": "корень исходников (абсолютный или относительно папки воркспейса)",
+        "en": "the source root (absolute or relative to the workspace folder)",
+    },
+    "cli.help.lsp.select": {
+        "ru": "только эти правила (через запятую)",
+        "en": "these rules only (comma-separated)",
+    },
+    "cli.help.lsp.ignore": {
+        "ru": "исключить правила (через запятую)",
+        "en": "exclude these rules (comma-separated)",
+    },
+    "cli.help.lsp.enable": {
+        "ru": "включить правила поверх набора по умолчанию",
+        "en": "enable rules on top of the default set",
+    },
+    "cli.help.lsp.baseline": {
+        "ru": "файл базлайна (абсолютный или относительно папки воркспейса) – исключённые "
+              "находки гасятся; отсутствующий файл не ошибка, он появится с первым исключением",
+        "en": "the baseline file (absolute or relative to the workspace folder) – the findings "
+              "frozen there are suppressed; a missing file is not an error, it appears with the "
+              "first exclusion",
+    },
+    "cli.help.lsp.templates": {
+        "ru": "файл шаблонов кода (абсолютный или относительно папки воркспейса) – "
+              "дополняет встроенный набор, одноимённые шаблоны замещает",
+        "en": "the code templates file (absolute or relative to the workspace folder) – it "
+              "extends the builtin set and replaces templates of the same name",
+    },
+    "cli.help.lsp.data-dir": {
+        "ru": "корень данных Элемента (папка с index.json)",
+        "en": "the Element data root (the folder with index.json)",
+    },
+    "cli.help.lsp.lang": {
+        "ru": "язык текста замечаний",
+        "en": "the language of the diagnostics text",
+    },
+    "cli.help.web.description": {
+        "ru": "Веб-интерфейс линтера XBSL",
+        "en": "The XBSL linter web interface",
+    },
+    "cli.help.web.host": {
+        "ru": "адрес (по умолчанию 127.0.0.1)",
+        "en": "the address (default 127.0.0.1)",
+    },
+    "cli.help.web.port": {
+        "ru": "порт (по умолчанию 8771)",
+        "en": "the port (default 8771)",
+    },
+    "cli.help.mcp.description": {
+        "ru": "MCP-сервер xbsl (stdio): линт, документация Элемента и скаффолдинг метаданных "
+              "как инструменты агента.",
+        "en": "The xbsl MCP server (stdio): linting, the Element documentation and metadata "
+              "scaffolding as agent tools.",
+    },
+    "cli.help.mcp.epilog": {
+        "ru": "Флагов нет: сервер запускается без параметров и общается по stdio.\n"
+              "Язык замечаний – переменная XBSL_LANG (иначе локаль системы, иначе ru).\n"
+              "Регистрация в Claude Code: claude mcp add xbsl -- xbsl-mcp",
+        "en": "No flags: the server starts without parameters and talks over stdio.\n"
+              "The diagnostics language follows XBSL_LANG (then the system locale, then ru).\n"
+              "Registration in Claude Code: claude mcp add xbsl -- xbsl-mcp",
+    },
     # -- help: self-update, templates and scaffolding sub-parsers (cli.py) --
     # These take no --lang; the language comes from XBSL_LANG / locale via current_lang().
     # XBSL identifiers stay Russian (they are the actual spellings); literal braces are doubled.
     "cli.help.selfupdate-version": {
         "ru": "целевая версия (по умолчанию – последняя с PyPI)",
         "en": "target version (default: the latest from PyPI)",
+    },
+    "cli.help.tpl.list-format": {
+        "ru": "формат вывода: text (по умолчанию) или json",
+        "en": "output format: text (default) or json",
     },
     "cli.help.tpl.description": {
         "ru": "шаблоны кода: встроенный набор и файл пользователя (формат выгрузки EDT)",
@@ -302,6 +393,143 @@ _CORE_MESSAGES = {
     "cli.help.scaf.new-project": {
         "ru": "создать проект: Проект.yaml + Проект.xbsl + подсистема",
         "en": "create a project: Проект.yaml + Проект.xbsl + a subsystem",
+    },
+    # -- scaffolding positionals and flags --
+    "cli.help.scaf.arg.project-root": {
+        "ru": "корень проекта – каталог с Проект.yaml (обычно .)",
+        "en": "the project root – the folder with Проект.yaml (usually .)",
+    },
+    "cli.help.scaf.arg.form-yaml": {
+        "ru": "yaml формы",
+        "en": "the form yaml",
+    },
+    "cli.help.scaf.arg.object-name": {
+        "ru": "имя объекта в проекте",
+        "en": "the object name in the project",
+    },
+    "cli.help.scaf.np-root": {
+        "ru": "каталог, в котором появится пара поставщик/имя (обычно .)",
+        "en": "the directory where the vendor/name pair will appear (usually .)",
+    },
+    "cli.help.scaf.np-vendor": {
+        "ru": "поставщик – первая часть пространства имён проекта",
+        "en": "the vendor – the first part of the project namespace",
+    },
+    "cli.help.scaf.np-name": {
+        "ru": "имя проекта; так же называется его каталог",
+        "en": "the project name; its folder takes the same name",
+    },
+    "cli.help.scaf.np-representation": {
+        "ru": "представление проекта в интерфейсе (по умолчанию – имя)",
+        "en": "the project presentation in the interface (defaults to the name)",
+    },
+    "cli.help.scaf.np-version": {
+        "ru": "версия проекта, три числа (по умолчанию 1.0.0)",
+        "en": "the project version, three numbers (default 1.0.0)",
+    },
+    "cli.help.scaf.np-compatibility": {
+        "ru": "версия платформы, с которой совместим проект (по умолчанию 9.0)",
+        "en": "the platform version the project is compatible with (default 9.0)",
+    },
+    "cli.help.scaf.np-subsystem": {
+        "ru": "имя первой подсистемы (по умолчанию Основное)",
+        "en": "the name of the first subsystem (default Основное)",
+    },
+    "cli.help.scaf.np-library": {
+        "ru": "создать библиотеку (ВидПроекта: Библиотека), а не приложение",
+        "en": "create a library (ВидПроекта: Библиотека) rather than an application",
+    },
+    "cli.help.scaf.no-directory": {
+        "ru": "каталог подсистемы, в котором создать объект",
+        "en": "the subsystem folder to create the object in",
+    },
+    "cli.help.scaf.no-kind": {
+        "ru": "вид объекта на языке проекта: Справочник, Документ, ВиртуальнаяТаблица, ...; "
+              "неизвестный вид перечислит доступные",
+        "en": "the object kind in the project language: Справочник, Документ, "
+              "ВиртуальнаяТаблица, ...; an unknown kind lists what is available",
+    },
+    "cli.help.scaf.no-name": {
+        "ru": "имя объекта",
+        "en": "the object name",
+    },
+    "cli.help.scaf.no-scope": {
+        "ru": "область видимости; по умолчанию платформенная ВПодсистеме",
+        "en": "the visibility scope; the platform default is ВПодсистеме",
+    },
+    "cli.help.scaf.no-environment": {
+        "ru": "окружение – для ОбщийМодуль и Структура",
+        "en": "the environment – for ОбщийМодуль and Структура",
+    },
+    "cli.help.scaf.no-access": {
+        "ru": "способ доступа: у HttpСервис пишется в Разрешения.Вызов, у объектов данных – "
+              "в Разрешения.ПоУмолчанию (отдельные права ставит set-access)",
+        "en": "the access method: for HttpСервис it goes to Разрешения.Вызов, for data "
+              "objects to Разрешения.ПоУмолчанию (individual rights are set by set-access)",
+    },
+    "cli.help.scaf.af-yaml": {
+        "ru": "yaml объекта, в который добавить поле",
+        "en": "the yaml of the object to add the field to",
+    },
+    "cli.help.scaf.af-name": {
+        "ru": "имя поля",
+        "en": "the field name",
+    },
+    "cli.help.scaf.af-type": {
+        "ru": "тип поля (по умолчанию Строка)",
+        "en": "the field type (default Строка)",
+    },
+    "cli.help.scaf.ar-yaml": {
+        "ru": "yaml HttpСервис, в который добавить маршруты",
+        "en": "the yaml of the HttpСервис to add the routes to",
+    },
+    "cli.help.scaf.ar-routes": {
+        "ru": 'маршруты через запятую: "DELETE /{{id}}, GET /health"',
+        "en": 'the routes, comma-separated: "DELETE /{{id}}, GET /health"',
+    },
+    "cli.help.scaf.am-module": {
+        "ru": "модуль .xbsl, в который добавить метод",
+        "en": "the .xbsl module to add the method to",
+    },
+    "cli.help.scaf.am-name": {
+        "ru": "имя метода",
+        "en": "the method name",
+    },
+    "cli.help.scaf.af2-name": {
+        "ru": "имя объекта, для которого создать формы",
+        "en": "the object to create the forms for",
+    },
+    "cli.help.scaf.af2-overwrite": {
+        "ru": "перезаписать формы, если они уже созданы",
+        "en": "overwrite the forms if they already exist",
+    },
+    "cli.help.scaf.as-parent": {
+        "ru": "каталог, внутри которого создать подсистему",
+        "en": "the folder to create the subsystem inside",
+    },
+    "cli.help.scaf.as-name": {
+        "ru": "имя подсистемы",
+        "en": "the subsystem name",
+    },
+    "cli.help.scaf.as-representation": {
+        "ru": "представление подсистемы в интерфейсе",
+        "en": "the subsystem presentation in the interface",
+    },
+    "cli.help.scaf.as-no-auto-interface": {
+        "ru": "не включать подсистему в автоинтерфейс",
+        "en": "keep the subsystem out of the auto-interface",
+    },
+    "cli.help.scaf.ro-old": {
+        "ru": "текущее имя объекта",
+        "en": "the object's current name",
+    },
+    "cli.help.scaf.ro-new": {
+        "ru": "новое имя – переименуются и файлы, и ссылки по проекту",
+        "en": "the new name – both the files and the project-wide references are renamed",
+    },
+    "cli.help.scaf.meta.form-op": {
+        "ru": "операция",
+        "en": "operation",
     },
     "cli.help.scaf.new-object": {
         "ru": "создать объект конфигурации (yaml + модуль по виду)",
@@ -663,6 +891,24 @@ def t(key: str, /, **fields) -> str:
         return key
     template = entry.get(current_lang()) or entry[DEFAULT_LANG]
     return template.format(**fields)
+
+
+class ArgumentParser(_argparse.ArgumentParser):
+    """An ArgumentParser whose own `-h/--help` and group titles are translated.
+
+    argparse takes those strings from its gettext catalog, i.e. always in English: in a
+    Russian help screen the `-h, --help` line and the "options" / "positional arguments"
+    headings stayed in the wrong language. Nested parsers inherit the parent's class
+    (`add_subparsers` passes `parser_class=type(self)`), so building the root one with
+    this class is enough.
+    """
+
+    def __init__(self, *args, add_help: bool = True, **kwargs) -> None:
+        super().__init__(*args, add_help=False, **kwargs)
+        self._positionals.title = t("cli.help.group.positional")
+        self._optionals.title = t("cli.help.group.options")
+        if add_help:
+            self.add_argument("-h", "--help", action="help", help=t("cli.help.help"))
 
 
 _register_core()

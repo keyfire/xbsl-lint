@@ -16,13 +16,14 @@ Registration in Claude Code:
 
 from __future__ import annotations
 
+import argparse
 import difflib
 import re
 from html import unescape
 from pathlib import Path
 
 from xbsl import (
-    dataset, docs, formedits, formhandlers, formmodel, metamodel, report, scaffold, uischema,
+    dataset, docs, formedits, formhandlers, formmodel, i18n, metamodel, report, scaffold, uischema,
 )
 from xbsl.cli import discover
 from xbsl.engine import RULES, load, load_text, run, run_sources
@@ -803,6 +804,14 @@ def meta_add_handler(
 
 
 def main() -> None:
+    # The server takes no flags, but --help must still answer as a command: without a parser
+    # `xbsl mcp --help` started the server and waited on stdin - a hang, not a help screen.
+    i18n.ArgumentParser(
+        prog="xbsl-mcp",
+        description=i18n.t("cli.help.mcp.description"),
+        epilog=i18n.t("cli.help.mcp.epilog"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    ).parse_args()
     mcp.run()
 
 

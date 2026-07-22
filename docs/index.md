@@ -42,6 +42,18 @@ ships as a Python engine and a VS Code extension built on top of it.
 - **[Contributing](https://github.com/keyfire/xbsl/blob/main/CONTRIBUTING.md)** – how to add a
   rule or update the language data.
 
+## Nearby
+
+The 1C:Element toolkit is two halves of one loop, and a third tool does the same job on the
+neighbouring platform.
+
+- **[Elemctl](https://docs.keyfire.ru/elemctl/)** – delivery of what the linter has checked: build from
+  sources, upload, apply, and an honest verification that the stand actually came up on the
+  new build. The *XBSL: deploy* command of the VS Code extension calls exactly this.
+- **[EDT-Bridge](https://docs.keyfire.ru/edt-bridge/)** – the same idea on the 1C:Enterprise platform: an MCP
+  bridge into 1C:EDT through which an agent reads the configuration, edits modules and forms,
+  builds extensions and debugs.
+
 Language data (keywords, the stdlib type catalog, the configuration metamodel) is generated
 from your own 1C:Element distribution and is not bundled with the project – see
 [Language data](/GUIDE#language-data) in the guide.

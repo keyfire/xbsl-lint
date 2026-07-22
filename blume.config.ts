@@ -1,7 +1,7 @@
-// Конфигурация сайта документации (Blume, движок на Astro + Vite). Публикация на
-// GitHub Pages из .github/workflows/docs.yml. Контент лежит в docs/ парами
-// Имя.md + Имя.ru.md (суффиксный режим i18n parser: "dot" — та же раскладка файлов,
-// что была при mkdocs). Локальная проверка сборки: npx blume build.
+// Configuration of the documentation site (Blume, an Astro + Vite engine). Published to
+// GitHub Pages from .github/workflows/docs.yml. The content lives in docs/ as Name.md +
+// Name.ru.md pairs (the suffix i18n mode, parser: "dot" - the same file layout mkdocs used).
+// Check a build locally with: npx blume build.
 import { defineConfig } from "blume";
 
 export default defineConfig({
@@ -11,33 +11,38 @@ export default defineConfig({
     "scaffolding for 1C:Element (XBSL) sources, plus a VS Code extension built on " +
     "the same engine.",
 
-  // Весь контент сайта — в docs/. Страница расширения (docs/vscode.md + .ru.md) —
-  // зеркало editors/vscode/README.md (README маркетплейса); синхронизируется скриптом
+  // All site content is in docs/. The extension page (docs/vscode.md + .ru.md) mirrors
+  // editors/vscode/README.md (the marketplace README); it is synced by
   // scripts/sync-vscode-doc.mjs (npm run sync:docs).
   content: {
     root: "docs",
+    // BACKLOG is in .gitignore and lives only on the maintainer's disk - CI never has it,
+    // so it could not reach the site anyway. Excluded explicitly all the same: an accidental
+    // commit of that file would otherwise publish a working note full of local paths.
+    exclude: ["**/_*", "**/.*", "BACKLOG*.md"],
   },
 
-  // GitHub Pages проекта отдаётся с подпути /xbsl/: base переносит туда весь сайт и
-  // переписывает внутренние ссылки и ассеты; site — origin для sitemap/canonical/OG.
+  // The site is served from the /xbsl/ subpath of the shared documentation domain: `base`
+  // moves the whole site there and rewrites internal links and assets; `site` is the origin
+  // for sitemap/canonical/OG. The domain itself is held by the keyfire.github.io repository.
   deployment: {
     base: "/xbsl",
-    site: "https://keyfire.github.io",
+    site: "https://docs.keyfire.ru",
   },
 
-  // Репозиторий: ссылки «Edit on GitHub» под каждой страницей и иконка репозитория в шапке.
+  // The repository: an "Edit on GitHub" link under every page and a repo icon in the header.
   github: {
     owner: "keyfire",
     repo: "xbsl",
   },
 
-  // Дата «последнее изменение» из истории git (в CI нужен fetch-depth: 0).
+  // The "last modified" date comes from the git history (CI needs fetch-depth: 0).
   lastModified: true,
 
-  // Двуязычие: английский по умолчанию (файлы Имя.md в корне docs/), русский — суффикс
-  // .ru (файлы Имя.ru.md). parser: "dot" сохраняет исходную раскладку пар без переноса
-  // файлов. Русский UI-пакет (поиск, «На этой странице», «Изменить на GitHub» и прочее)
-  // встроен в Blume — переводим только контент.
+  // Bilingual: English by default (Name.md at the root of docs/), Russian by the .ru suffix
+  // (Name.ru.md). parser: "dot" keeps the original pair layout without moving files. The
+  // Russian UI pack (search, "On this page", "Edit on GitHub" and the rest) ships with Blume -
+  // only the content is ours to translate.
   i18n: {
     defaultLocale: "en",
     locales: [
@@ -47,11 +52,23 @@ export default defineConfig({
     parser: "dot",
   },
 
-  // Гайд для контрибьюторов живёт на GitHub (не страница сайта) — закрепляем над
-  // сайдбаром. Расширение VS Code теперь отдельная страница сайта (docs/vscode.md),
-  // поэтому его в featured не дублируем — оно появляется в сайдбаре само.
+  // The contributor guide lives on GitHub (it is not a site page), so it is pinned above the
+  // sidebar. The VS Code extension is a site page of its own now (docs/vscode.md) and needs no
+  // featured entry - it shows up in the sidebar by itself.
   navigation: {
     featured: [
+    // The neighbouring tools: reachable from every page, not just the front one. They
+    // point at the Russian versions - the receiving site carries a language switcher.
+      {
+        label: "Elemctl",
+        href: "https://docs.keyfire.ru/elemctl/ru/",
+        icon: "upload-cloud",
+      },
+      {
+        label: "EDT-Bridge",
+        href: "https://docs.keyfire.ru/edt-bridge/ru/",
+        icon: "plug",
+      },
       {
         label: "Contributing",
         href: "https://github.com/keyfire/xbsl/blob/main/CONTRIBUTING.md",
@@ -60,7 +77,7 @@ export default defineConfig({
     ],
   },
 
-  // Индиго — как в теме Material у прежнего сайта.
+  // Indigo - the accent the previous Material-themed site used.
   theme: {
     accent: "indigo",
   },

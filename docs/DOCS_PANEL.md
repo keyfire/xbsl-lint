@@ -3,7 +3,7 @@ title: "Documentation panel"
 description: "The 1C:Element help inside the editor: the contents tree, full-text search, the page for the symbol under the cursor and the jumps from the designer - all built from your own platform distribution."
 sidebar:
   label: Documentation panel
-  order: 6
+  order: 7
 ---
 
 The extension shows the platform help **inside the editor** - as its own

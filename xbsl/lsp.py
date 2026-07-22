@@ -1363,23 +1363,15 @@ def main() -> None:
         raise SystemExit(
             "xbsl-lsp: нужен extra [lsp] – установите пакет как `pip install \"xbsl[lsp]\"` (pygls)."
         )
-    parser = argparse.ArgumentParser(prog="xbsl-lsp", description="LSP-сервер xbsl (stdio)")
-    parser.add_argument("--project-root", help="корень исходников (абсолютный или относительно папки воркспейса)")
-    parser.add_argument("--select", help="только эти правила (через запятую)")
-    parser.add_argument("--ignore", help="исключить правила (через запятую)")
-    parser.add_argument("--enable", help="включить правила поверх набора по умолчанию")
-    parser.add_argument(
-        "--baseline",
-        help="файл базлайна (абсолютный или относительно папки воркспейса) – исключённые "
-             "находки гасятся; отсутствующий файл не ошибка, он появится с первым исключением",
-    )
-    parser.add_argument(
-        "--templates",
-        help="файл шаблонов кода (абсолютный или относительно папки воркспейса) – "
-             "дополняет встроенный набор, одноимённые шаблоны замещает",
-    )
-    parser.add_argument("--data-dir", help="корень данных Элемента (папка с index.json)")
-    parser.add_argument("--lang", choices=i18n.LANGS, help="язык текста замечаний")
+    parser = i18n.ArgumentParser(prog="xbsl-lsp", description=i18n.t("cli.help.lsp.description"))
+    parser.add_argument("--project-root", help=i18n.t("cli.help.lsp.project-root"))
+    parser.add_argument("--select", help=i18n.t("cli.help.lsp.select"))
+    parser.add_argument("--ignore", help=i18n.t("cli.help.lsp.ignore"))
+    parser.add_argument("--enable", help=i18n.t("cli.help.lsp.enable"))
+    parser.add_argument("--baseline", help=i18n.t("cli.help.lsp.baseline"))
+    parser.add_argument("--templates", help=i18n.t("cli.help.lsp.templates"))
+    parser.add_argument("--data-dir", help=i18n.t("cli.help.lsp.data-dir"))
+    parser.add_argument("--lang", choices=i18n.LANGS, help=i18n.t("cli.help.lsp.lang"))
     args = parser.parse_args()
     if args.data_dir:
         dataset.set_data_root(args.data_dir)

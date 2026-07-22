@@ -61,7 +61,7 @@ def _commands_help() -> str:
 def build_parser() -> argparse.ArgumentParser:
     rule_selector = i18n.t("cli.help.meta.rule-selector")  # shared metavar --select/--ignore/--enable
     baseline_file = i18n.t("cli.help.meta.file")  # shared metavar --baseline/--write-baseline
-    parser = argparse.ArgumentParser(
+    parser = i18n.ArgumentParser(
         prog="xbsl",
         usage=i18n.t("cli.help.usage"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -161,7 +161,8 @@ def build_parser() -> argparse.ArgumentParser:
         )
     except dataset.DatasetError:
         pass
-    parser.add_argument("--version", action="version", version=f"xbsl {__version__}{data_note}")
+    parser.add_argument("--version", action="version", help=i18n.t("cli.help.version"),
+                        version=f"xbsl {__version__}{data_note}")
     return parser
 
 
@@ -212,14 +213,15 @@ _META_COMMANDS = (
 _SERVER_COMMANDS = ("lsp", "mcp", "web")
 
 def _templates_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = i18n.ArgumentParser(
         prog="xbsl templates",
         description=i18n.t("cli.help.tpl.description"),
     )
     sub = parser.add_subparsers(dest="action", required=True)
 
     p = sub.add_parser("list", help=i18n.t("cli.help.tpl.list"))
-    p.add_argument("--format", choices=("text", "json"), default="text")
+    p.add_argument("--format", choices=("text", "json"), default="text",
+                   help=i18n.t("cli.help.tpl.list-format"))
 
     p = sub.add_parser("export", help=i18n.t("cli.help.tpl.export"))
     p.add_argument("--output", required=True, help=i18n.t("cli.help.tpl.export-output"))
@@ -322,47 +324,47 @@ def _templates_main(argv: list[str]) -> int:
 
 
 def _scaffold_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = i18n.ArgumentParser(
         prog="xbsl", description=i18n.t("cli.help.scaf.description")
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("new-project", help=i18n.t("cli.help.scaf.new-project"))
-    p.add_argument("root")
-    p.add_argument("vendor")
-    p.add_argument("name")
-    p.add_argument("--representation")
-    p.add_argument("--version", default="1.0.0")
-    p.add_argument("--compatibility", default="9.0")
-    p.add_argument("--subsystem", default="Основное")
-    p.add_argument("--library", action="store_true")
+    p.add_argument("root", help=i18n.t("cli.help.scaf.np-root"))
+    p.add_argument("vendor", help=i18n.t("cli.help.scaf.np-vendor"))
+    p.add_argument("name", help=i18n.t("cli.help.scaf.np-name"))
+    p.add_argument("--representation", help=i18n.t("cli.help.scaf.np-representation"))
+    p.add_argument("--version", default="1.0.0", help=i18n.t("cli.help.scaf.np-version"))
+    p.add_argument("--compatibility", default="9.0", help=i18n.t("cli.help.scaf.np-compatibility"))
+    p.add_argument("--subsystem", default="Основное", help=i18n.t("cli.help.scaf.np-subsystem"))
+    p.add_argument("--library", action="store_true", help=i18n.t("cli.help.scaf.np-library"))
 
     p = sub.add_parser("new-object", help=i18n.t("cli.help.scaf.new-object"))
-    p.add_argument("directory")
-    p.add_argument("kind")
-    p.add_argument("name")
-    p.add_argument("--scope")
-    p.add_argument("--environment")
-    p.add_argument("--access")
+    p.add_argument("directory", help=i18n.t("cli.help.scaf.no-directory"))
+    p.add_argument("kind", help=i18n.t("cli.help.scaf.no-kind"))
+    p.add_argument("name", help=i18n.t("cli.help.scaf.no-name"))
+    p.add_argument("--scope", help=i18n.t("cli.help.scaf.no-scope"))
+    p.add_argument("--environment", help=i18n.t("cli.help.scaf.no-environment"))
+    p.add_argument("--access", help=i18n.t("cli.help.scaf.no-access"))
     p.add_argument("--routes", help=i18n.t("cli.help.scaf.new-object-routes"))
     p.add_argument("--report", help=i18n.t("cli.help.scaf.new-object-report"))
 
     p = sub.add_parser("add-field", help=i18n.t("cli.help.scaf.add-field"))
-    p.add_argument("yaml_path")
+    p.add_argument("yaml_path", help=i18n.t("cli.help.scaf.af-yaml"))
     # field_kind help lists the literal accepted kind names - Russian XBSL values, not prose.
     p.add_argument("field_kind", help=", ".join(("реквизит", "измерение", "ресурс", "значение",
                                                  "параметр", "поле", "табличная-часть")))
-    p.add_argument("name")
-    p.add_argument("--type", default="Строка")
+    p.add_argument("name", help=i18n.t("cli.help.scaf.af-name"))
+    p.add_argument("--type", default="Строка", help=i18n.t("cli.help.scaf.af-type"))
     p.add_argument("--tabular", help=i18n.t("cli.help.scaf.add-field-tabular"))
 
     p = sub.add_parser("add-route", help=i18n.t("cli.help.scaf.add-route"))
-    p.add_argument("yaml_path")
-    p.add_argument("routes")
+    p.add_argument("yaml_path", help=i18n.t("cli.help.scaf.ar-yaml"))
+    p.add_argument("routes", help=i18n.t("cli.help.scaf.ar-routes"))
 
     p = sub.add_parser("add-method", help=i18n.t("cli.help.scaf.add-method"))
-    p.add_argument("module_path")
-    p.add_argument("name")
+    p.add_argument("module_path", help=i18n.t("cli.help.scaf.am-module"))
+    p.add_argument("name", help=i18n.t("cli.help.scaf.am-name"))
     p.add_argument("--params", default="", help=i18n.t("cli.help.scaf.add-method-params"))
     p.add_argument("--returns", help=i18n.t("cli.help.scaf.add-method-returns"))
     p.add_argument("--annotations", help=i18n.t("cli.help.scaf.add-method-annotations"))
@@ -371,39 +373,39 @@ def _scaffold_parser() -> argparse.ArgumentParser:
     p.add_argument("--body", help=i18n.t("cli.help.scaf.add-method-body"))
 
     p = sub.add_parser("add-form", help=i18n.t("cli.help.scaf.add-form"))
-    p.add_argument("root")
-    p.add_argument("--name")
+    p.add_argument("root", help=i18n.t("cli.help.scaf.arg.project-root"))
+    p.add_argument("--name", help=i18n.t("cli.help.scaf.af2-name"))
     p.add_argument("--path", help=i18n.t("cli.help.scaf.yaml-vs-name"))
     p.add_argument("--forms", help=i18n.t("cli.help.scaf.add-form-forms"))
     p.add_argument("--card-min-width", type=int, help=i18n.t("cli.help.scaf.add-form-card-min-width"))
     p.add_argument("--card-placeholder", help=i18n.t("cli.help.scaf.add-form-card-placeholder"))
-    p.add_argument("--overwrite", action="store_true")
+    p.add_argument("--overwrite", action="store_true", help=i18n.t("cli.help.scaf.af2-overwrite"))
 
     p = sub.add_parser("add-subsystem", help=i18n.t("cli.help.scaf.add-subsystem"))
-    p.add_argument("parent_dir")
-    p.add_argument("name")
-    p.add_argument("--representation")
-    p.add_argument("--no-auto-interface", action="store_true")
+    p.add_argument("parent_dir", help=i18n.t("cli.help.scaf.as-parent"))
+    p.add_argument("name", help=i18n.t("cli.help.scaf.as-name"))
+    p.add_argument("--representation", help=i18n.t("cli.help.scaf.as-representation"))
+    p.add_argument("--no-auto-interface", action="store_true", help=i18n.t("cli.help.scaf.as-no-auto-interface"))
     p.add_argument("--uses", help=i18n.t("cli.help.scaf.add-subsystem-uses"))
 
     p = sub.add_parser("add-dependency", help=i18n.t("cli.help.scaf.add-dependency"))
-    p.add_argument("root")
+    p.add_argument("root", help=i18n.t("cli.help.scaf.arg.project-root"))
     p.add_argument("vendor", help=i18n.t("cli.help.scaf.add-dependency-vendor"))
     p.add_argument("name", help=i18n.t("cli.help.scaf.add-dependency-name"))
     p.add_argument("version", help=i18n.t("cli.help.scaf.add-dependency-version"))
     p.add_argument("--path", help=i18n.t("cli.help.scaf.add-dependency-path"))
 
     p = sub.add_parser("rename-object", help=i18n.t("cli.help.scaf.rename-object"))
-    p.add_argument("root")
-    p.add_argument("old_name")
-    p.add_argument("new_name")
+    p.add_argument("root", help=i18n.t("cli.help.scaf.arg.project-root"))
+    p.add_argument("old_name", help=i18n.t("cli.help.scaf.ro-old"))
+    p.add_argument("new_name", help=i18n.t("cli.help.scaf.ro-new"))
     p.add_argument("--new-presentation", help=i18n.t("cli.help.scaf.rename-new-presentation"))
     p.add_argument("--old-presentation", help=i18n.t("cli.help.scaf.rename-old-presentation"))
     p.add_argument("--path", help=i18n.t("cli.help.scaf.rename-path"))
 
     p = sub.add_parser("set-access", help=i18n.t("cli.help.scaf.set-access"))
-    p.add_argument("root")
-    p.add_argument("--name")
+    p.add_argument("root", help=i18n.t("cli.help.scaf.arg.project-root"))
+    p.add_argument("--name", help=i18n.t("cli.help.scaf.arg.object-name"))
     p.add_argument("--path", help=i18n.t("cli.help.scaf.yaml-vs-name"))
     p.add_argument("--default", help=i18n.t("cli.help.scaf.set-access-default"))
     p.add_argument("--permission", action="append", metavar=i18n.t("cli.help.scaf.meta.right-method"),
@@ -411,26 +413,30 @@ def _scaffold_parser() -> argparse.ArgumentParser:
     p.add_argument("--calc-by", help=i18n.t("cli.help.scaf.set-access-calc-by"))
 
     p = sub.add_parser("object-info", help=i18n.t("cli.help.scaf.object-info"))
-    p.add_argument("root")
-    p.add_argument("--name")
-    p.add_argument("--path")
+    p.add_argument("root", help=i18n.t("cli.help.scaf.arg.project-root"))
+    p.add_argument("--name", help=i18n.t("cli.help.scaf.arg.object-name"))
+    p.add_argument("--path", help=i18n.t("cli.help.scaf.yaml-vs-name"))
 
     p = sub.add_parser("project-info", help=i18n.t("cli.help.scaf.project-info"))
-    p.add_argument("root")
+    p.add_argument("root", help=i18n.t("cli.help.scaf.arg.project-root"))
 
     p = sub.add_parser("form-tree", help=i18n.t("cli.help.scaf.form-tree"))
-    p.add_argument("yaml_path")
+    p.add_argument("yaml_path", help=i18n.t("cli.help.scaf.arg.form-yaml"))
     p.add_argument("--at", type=int, metavar=i18n.t("cli.help.scaf.meta.offset"),
                    help=i18n.t("cli.help.scaf.form-tree-at"))
 
     p = sub.add_parser("form-edit", help=i18n.t("cli.help.scaf.form-edit"))
-    p.add_argument("yaml_path")
-    p.add_argument("op", choices=("insert", "insert-fragment", "move", "move-nodes",
-                                  "remove", "remove-nodes", "wrap",
-                                  "unwrap", "duplicate", "rename",
-                                  "set-property", "reset-property",
-                                  "property-add", "property-retype", "property-remove",
-                                  "property-rename"))
+    p.add_argument("yaml_path", help=i18n.t("cli.help.scaf.arg.form-yaml"))
+    # A metavar instead of the choice list: sixteen values drown the usage line, so the
+    # list goes into the description - the same shape as field_kind above.
+    form_ops = ("insert", "insert-fragment", "move", "move-nodes",
+                "remove", "remove-nodes", "wrap",
+                "unwrap", "duplicate", "rename",
+                "set-property", "reset-property",
+                "property-add", "property-retype", "property-remove",
+                "property-rename")
+    p.add_argument("op", choices=form_ops, metavar=i18n.t("cli.help.scaf.meta.form-op"),
+                   help=", ".join(form_ops))
     p.add_argument("--parent", help=i18n.t("cli.help.scaf.fe-parent"))
     p.add_argument("--slot", help=i18n.t("cli.help.scaf.fe-slot"))
     p.add_argument("--type", help=i18n.t("cli.help.scaf.fe-type"))
@@ -452,7 +458,7 @@ def _scaffold_parser() -> argparse.ArgumentParser:
     p.add_argument("--new-type", help=i18n.t("cli.help.scaf.fe-new-type"))
 
     p = sub.add_parser("form-handlers", help=i18n.t("cli.help.scaf.form-handlers"))
-    p.add_argument("yaml_path")
+    p.add_argument("yaml_path", help=i18n.t("cli.help.scaf.arg.form-yaml"))
     p.add_argument("--node", help=i18n.t("cli.help.scaf.fh-node"))
     p.add_argument("--key", help=i18n.t("cli.help.scaf.fh-key"))
     p.add_argument("--method", help=i18n.t("cli.help.scaf.fh-method"))
@@ -701,7 +707,7 @@ def main(argv: list[str] | None = None) -> int:
         # Updating by unpacking the wheel - safe while the exe files are held by LSP/MCP processes.
         from xbsl import selfupdate
 
-        sp = argparse.ArgumentParser(prog="xbsl self-update",
+        sp = i18n.ArgumentParser(prog="xbsl self-update",
                                      description=i18n.t("cli.help.commands.self-update"))
         sp.add_argument("--version", help=i18n.t("cli.help.selfupdate-version"))
         sp_args = sp.parse_args(argv[1:])

@@ -12,7 +12,7 @@ sidebar:
 Syntax highlighting and on-the-fly linting for **1C:Element** sources (`.xbsl`), powered by the
 [xbsl](https://github.com/keyfire/xbsl) linter.
 
-![XBSL: live diagnostics, Quick Fix and per-rule configuration](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/lint-quickfix.gif)
+![XBSL at work: the metadata tree and the component palette on the left, the form designer in the middle – structure, data and frame, the properties and documentation panels on the right, the yaml source below](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/overview.png)
 
 > Want to try everything on a toy project? Open the [`demo/`](https://github.com/keyfire/xbsl/tree/main/demo)
 > folder of the repository – a tiny 1C:Element app with a form and a handful of deliberate findings.
@@ -69,6 +69,31 @@ The extension is a thin client over the `xbsl` CLI – it does not bundle a chec
 By default the extension calls `xbsl` from `PATH`. Point it elsewhere with
 `xbsl.linter.command` (an executable) or `xbsl.linter.pythonPath` (an interpreter – the linter is
 then invoked as `<python> -m xbsl`).
+
+## New project
+
+The **XBSL: new 1C:Element project** command (`xbsl.project.new`) creates a project from
+scratch. The wizard asks four things – the project name, the vendor, the project kind
+(application or library) and the folder – then scaffolds it through the same engine that
+serves the other metadata operations and opens the generated `Проект.yaml`.
+
+The vendor is remembered between runs: for one developer it is usually the same. If the
+project lands outside the open folder, the extension offers to open it – a fresh project is
+rarely part of the current window.
+
+## Structural search across forms
+
+The **XBSL: structural form search** command (`xbsl.forms.search`) searches by structure, not
+by text: you give a component type and, optionally, `key=value` predicates on its properties.
+The extension collects the project's forms (unsaved buffers included), sends them to the
+engine and lists the matches – picking one moves the cursor to the component's line in its
+yaml.
+
+This is what you want when the question sounds like "where do we have input fields with such
+a property": plain text search does not find that, because in yaml the property and the
+component type sit on different lines.
+
+> Needs the LSP mode: the matching is done by the engine, which is not running in CLI mode.
 
 ## Navigation and completion
 
@@ -146,6 +171,8 @@ nothing rather than guessing.
 
 Findings the linter can repair mechanically carry a fix; the extension turns it into a Quick Fix:
 
+![Live diagnostics in the editor and the Problems panel; the lightbulb applies the linter's own edit](https://raw.githubusercontent.com/keyfire/xbsl/main/editors/vscode/images/lint-quickfix.gif)
+
 - A **lightbulb on the diagnostic** (`Ctrl+.`) – *Fix: `<rule>`* – applies the exact edit:
   trailing whitespace removed, em dash → en dash, `…` → `...`, curly quotes → straight.
 - A **fix-all source action** – *Fix all (xbsl)* – repairs every fixable finding in the
@@ -178,14 +205,15 @@ newlines) are left to `xbsl --fix` on the command line.
 | `xbsl.workspaceLint` | `true` | Full workspace run on every save of a `.xbsl`/`.yaml` file. |
 | `xbsl.workspaceLintTimeout` | `60000` | Kill a workspace run after this many ms (`0` – no limit). |
 | `xbsl.navigation.enabled` | `true` | Index-based go-to-definition and completion. |
-| `xbsl.groups.*` | `default` | A dropdown per rule group (code, yaml, project, naming, style, typography, whitespace, encoding, structure, form, query): the rules' own levels, one level for the whole group, or `off`. The **naming** group covers the names of project elements per the platform standard (needs `xbsl` >= 0.11.0). See [Rules](#rules-levels-and-disabling). |
+| `xbsl.groups.*` | `default` | A dropdown per rule group (code, yaml, project, naming, style, typography, whitespace, encoding, structure, form, query, security): the rules' own levels, one level for the whole group, or `off`. The **naming** group covers the names of project elements per the platform standard (needs `xbsl` >= 0.11.0). See [Rules](#rules-levels-and-disabling). |
 | `xbsl.deploy.*` | – | The deploy command settings – documented in the [XBSL Debug README](https://github.com/keyfire/elemctl/tree/main/editors/vscode#deploy-from-vs-code) of the elemctl project. |
 
 ## Rules: levels and disabling
 
 **By group – in the Settings UI.** The **Rule groups** section (search for `xbsl.groups` in
 the Settings editor, or browse Extensions → XBSL) has a dropdown per finding type – code,
-yaml descriptions, style, typography, whitespace, encoding, structure, forms: keep the
+yaml descriptions, style, typography, whitespace, encoding, structure, forms, queries,
+naming, project, security: keep the
 group's own rule levels, report all its findings at one level (error / warning / info /
 hint), or turn the group off entirely – `off` does not just hide the findings, it excludes
 the rules from the run.
@@ -240,6 +268,31 @@ Without the server the extension quietly keeps working in the former CLI mode (d
 the *XBSL* output channel, and the status bar shows the mode actually in use). To switch the
 server off entirely, set `"xbsl.lsp.enabled": false`; changing the setting needs a window
 reload.
+
+## Code templates
+
+The **XBSL: code templates** command (`xbsl.templates.manage`) opens the management panel –
+an analog of the *Options – Templates* dialog in 1C:EDT: the list on the left, the editor on
+the right, buttons to add, edit, delete, import and export.
+
+A set has two parts. Built-in templates ship with the tool; your own live in
+`.xbsl-templates.json` at the workspace root – the `xbsl.templates.file` setting moves that
+file elsewhere. Your set extends the built-in one, and a template with the same name replaces
+the built-in one: that is how you adjust the default behaviour without breaking anything.
+
+The file format is the one 1C:EDT exports, so a set travels between the IDE and the editor
+both ways:
+
+- **XBSL: import code templates** (`xbsl.templates.import`) – merge an EDT export into your file;
+- **XBSL: export code templates** (`xbsl.templates.export`) – write the set out in that same
+  format.
+
+The panel writes nothing on its own: both reading and writing go through `xbsl templates`, the
+same machinery the console command uses. So the set is identical in both extension modes, and
+from a shell you can work with it by the same means (`xbsl templates list / export / import`).
+
+> Template completion while typing works in LSP mode. In CLI mode the panel and the file
+> exchange are available, but there is no completion from templates.
 
 ## Code palette
 
@@ -484,9 +537,14 @@ of the [elemctl](https://github.com/keyfire/elemctl) project
 
 ## Commands
 
+- **XBSL: new 1C:Element project** (`xbsl.project.new`) – the project wizard (see above).
 - **XBSL: check the whole project** (`xbsl.lintProject`) – lint the whole workspace.
+- **XBSL: structural form search** (`xbsl.forms.search`) – find components by type and
+  properties (see above).
 - **XBSL: restart the linter** (`xbsl.restartLinter`) – clear and re-lint open files.
 - **XBSL: code palette** (`xbsl.choosePalette`) – pick a syntax palette for XBSL (see above).
+- **XBSL: code templates** (`xbsl.templates.manage`), **import** (`xbsl.templates.import`) and
+  **export** (`xbsl.templates.export`) – the template set and exchange with an EDT export (see above).
 - **Metadata explorer** commands (`xbsl.metadata.*`) are invoked from the tree and its context
   menus: properties, add object / field / subsystem, add object form, filter by subsystem, delete
   object, refresh. See [Metadata explorer](#metadata-explorer).

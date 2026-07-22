@@ -3,7 +3,7 @@ title: "Visual form designer"
 description: "The in-editor visual designer for 1C:Element interface components - a form panel with structure, data and the form frame, plus the palette and properties panels over the .yaml source."
 sidebar:
   label: Visual designer
-  order: 4
+  order: 5
 ---
 
 The extension includes a visual designer for 1C:Element interface components
