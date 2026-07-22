@@ -8,6 +8,15 @@
 > are in the [Russian changelog](https://github.com/keyfire/xbsl/blob/main/editors/vscode/CHANGELOG.ru.md).
 > See also the [note on names](README.md#navigation-and-completion).
 
+## 0.29.0
+
+- **The "All properties" section now covers collection items.** For an enum value, an attribute,
+  a dimension, a resource, a structure field or a tabular-section attribute the properties panel
+  used to show only what was already set: the schema was resolved for the object root only. The
+  item's class is now determined through the platform metamodel – the collection's dispatch key,
+  its default implementation, and the built-in items with classes of their own (a catalog's Code,
+  Description, Owner) – so nested nodes get the full schema with defaults and documentation too.
+
 ## 0.28.0
 
 - **The form designer is one panel now.** A form depends on its own properties, so its structure
