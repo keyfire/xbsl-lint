@@ -9,8 +9,6 @@ Judged over the data, never over CLI output.
 
 from __future__ import annotations
 
-import re
-
 import pytest
 
 from xbsl import dataset
@@ -47,7 +45,8 @@ KNOWN_UNRESOLVED_HEADS = {
 
 
 def _head(type_name: str) -> str:
-    return re.split(r"[<?]", type_name, maxsplit=1)[0].strip()
+    # The one canonical cut - the same the engine's lookups use on this very data.
+    return dataset.member_type_head(type_name)
 
 
 @pytest.fixture(scope="module")

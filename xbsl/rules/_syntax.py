@@ -674,14 +674,17 @@ def chain_type(
     else:
         return None
     # the member links: .Имя(...) or .Имя - the catalog (`returns`) maps both a method
-    # to its return-type root and a property to its type root
+    # and a property to its result type. The catalog may keep the FULL docs spelling
+    # (М<Т>, Тип?); the chain works in nominal heads - both as the lookup key and as the
+    # inferred type - so data of any vintage answers the same.
     while i < n and toks[i].kind == "OP" and toks[i].value == ".":
         if stop_offset is not None and toks[i].start >= stop_offset:
             break
         j = _skip_comments(toks, i + 1)
         if j >= n or toks[j].kind != "IDENT":
             break
-        current = (returns or {}).get(current, {}).get(toks[j].value)
+        raw = (returns or {}).get(current, {}).get(toks[j].value)
+        current = dataset.member_type_head(raw) if raw else None
         if current is None:
             return None
         k = _skip_comments(toks, j + 1)

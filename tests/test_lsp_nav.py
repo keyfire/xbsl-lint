@@ -587,6 +587,38 @@ def test_chain_type_at_dot_after_property():
     assert any(e["label"] == "Фильтровать" for e in entries)
 
 
+def test_member_type_head_cuts_the_stored_spelling():
+    # The catalog may keep the full docs spelling of a member's result type - every lookup
+    # into the type tables goes through the head cut, and bare roots pass unchanged.
+    assert dataset.member_type_head("ЧитаемоеМножество<НастройкиСервиса>") == "ЧитаемоеМножество"
+    assert dataset.member_type_head("Строка?") == "Строка"
+    assert dataset.member_type_head("Массив<Строка>?") == "Массив"
+    assert dataset.member_type_head("Пользователи.Объект") == "Пользователи.Объект"
+    assert dataset.member_type_head("ЧитаемоеМножество") == "ЧитаемоеМножество"
+
+
+@pytest.mark.needs_data
+def test_chain_type_walks_through_a_full_type_spelling():
+    # A catalog that keeps the generic parameter must not break the chain: the full value
+    # resolves the next link by its nominal head, and the inferred type is the head too.
+    code = (
+        "метод А()\n"
+        "    знч Х = Клиент.Сервисы().Первый().\n"
+        ";\n"
+    )
+    src = engine.load_text("Модуль.xbsl", code)
+    returns = {
+        "КлиентНастроек": {"Сервисы": "ЧитаемоеМножество<НастройкиСервиса>"},
+        "ЧитаемоеМножество": {"Первый": "НастройкиСервиса?"},
+    }
+    offset = code.index("Первый().\n") + len("Первый().")
+    t = chain_type_at(
+        src, offset, var_types={"Клиент": "КлиентНастроек"},
+        returns=returns, static_roots=returns.keys(),
+    )
+    assert t == "НастройкиСервиса"
+
+
 @pytest.mark.needs_data
 def test_local_var_type_through_property_and_use():
     # `исп` is typed like a regular variable; a property link (Ответ.Тело) goes through

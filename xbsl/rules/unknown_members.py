@@ -385,9 +385,12 @@ class _StaticScope:
             base_type, root = info
         else:
             base_type, root = base, base  # a bare name that is not declared: a type name
-        member_type = _member_types().get(base_type, {}).get(target.name)
+        raw = _member_types().get(base_type, {}).get(target.name)
+        # The catalog may keep the full docs spelling (М<Т>, Тип?) - the rule judges the
+        # members of the nominal head, which is the same set for every parameter.
+        member_type = dataset.member_type_head(raw) if raw else None
         if member_type is None or not _NOMINAL_RE.fullmatch(member_type):
-            return None  # generic or compound - inference territory, not this rule's
+            return None  # a compound head - inference territory, not this rule's
         return (member_type, root)
 
 

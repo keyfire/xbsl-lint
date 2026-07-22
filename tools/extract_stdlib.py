@@ -42,6 +42,7 @@ The version is detected from the distribution automatically (or set with --eleme
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -213,20 +214,32 @@ _SIG_CODE_RE = re.compile(r"<pre class=\"highlight\"><code>(.*?)</code></pre>", 
 # The return type root: the head before a generic bracket/alternative/nullable; allows
 # a dotted facet name (Пользователи.Объект).
 _RETURN_HEAD_RE = re.compile(r"^\s*([A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*(?:\.[A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*)?)")
+# The full spelling of a result type: the head plus a generic parameter (one or two nesting
+# levels) and the nullable marker - what the docs signature actually prints. An alternative
+# (А|Б) or deeper nesting is not captured beyond the head - the catalog then stores the head,
+# exactly what it stored before full spellings were kept.
+_RETURN_FULL_RE = re.compile(
+    r"^\s*([A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*(?:\.[A-Za-zА-Яа-яЁё_][\wА-Яа-яЁё]*)?"
+    r"(?:<[^<>]*(?:<[^<>]*>[^<>]*)*>)?\??)"
+)
 
 
 def page_member_types(raw: str) -> dict[str, str]:
-    """Page member -> the root of its result type (to infer the type of access chains).
+    """Page member -> its result type (to infer the type of access chains).
 
     Signatures sit in code blocks after the H3 headings of the "Методы" (`Имя(...): Тип` -
-    the return type) and "Свойства" (`Имя: Тип` - the property type) sections; a member
-    whose overloads differ in return is dropped (no common type can be inferred). Inherited
-    members carry no signatures on the page and are not collected.
+    the return type) and "Свойства" (`Имя: Тип` - the property type) sections. The FULL
+    docs spelling is stored (the generic parameter included - `ЧитаемоеМножество<Настройки>`
+    keeps what `.Первый()` would answer); the consumers cut the nominal head at lookup
+    (dataset.member_type_head). Overloads that agree on the head alone degrade to the head,
+    overloads with differing heads drop the member (no common type can be inferred).
+    Inherited members carry no signatures on the page and are not collected.
     """
     ma = _ARTICLE_RE.search(raw)
     if not ma:
         return {}
     out: dict[str, str] = {}
+    heads: dict[str, str] = {}
     dropped: set[str] = set()
     for section in _H2_OPEN_RE.split(ma.group(1)):
         head = _plain_text(section[:200])
@@ -252,17 +265,28 @@ def page_member_types(raw: str) -> dict[str, str]:
                     if colon < 0 or sig[:colon].strip() != name:
                         continue
                     tail = sig[colon + 1:]
+                # The signature encodes the generic brackets as entities (&lt;/&gt;), with
+                # every type name wrapped in a link the tag-stripping already removed -
+                # unescape, or the full spelling silently degrades to the head.
+                tail = html.unescape(tail)
                 ret = _RETURN_HEAD_RE.match(tail)
                 if not ret:
                     continue
                 root = ret.group(1)
+                mf = _RETURN_FULL_RE.match(tail)
+                full = (mf.group(1) if mf else root).strip()
                 if name in dropped:
                     continue
-                if name in out and out[name] != root:
-                    del out[name]
-                    dropped.add(name)  # overloads with differing returns
-                elif name not in dropped:
-                    out[name] = root
+                if name in out:
+                    if heads[name] != root:
+                        del out[name]
+                        del heads[name]
+                        dropped.add(name)  # overloads with differing returns
+                    elif out[name] != full:
+                        out[name] = root  # the head is shared, the parameters differ
+                else:
+                    out[name] = full
+                    heads[name] = root
     return out
 
 

@@ -113,6 +113,41 @@ def test_component_base_page_included_by_path():
     assert got[0] == "Компонент" and got[1] == {"Заголовок"}
 
 
+_СТРАНИЦА_ДЖЕНЕРИКОВ = (
+    "<html><head><title>СпискиНастроек | 1С:Предприятие.Элемент</title></head><body>"
+    "<article><h1>СпискиНастроек</h1>"
+    "<h2>Иерархия типа​</h2><p>Базовые типы: <a href='/Object_ru/'>Объект</a></p>"
+    "<h2>Методы​</h2>"
+    "<h3>ПолучитьМножество​</h3>"
+    # The real page markup: type names wrapped in links, generic brackets as entities.
+    '<pre class="highlight"><code>ПолучитьМножество(): '
+    '<a href="/ReadableSet_ru/">ЧитаемоеМножество</a>&lt;'
+    '<a href="/Settings_ru/">НастройкиСервиса</a>&gt;</code></pre>'
+    "<h3>Значение​</h3>"
+    '<pre class="highlight"><code>Значение(): <a href="/String_ru/">Строка</a>?</code></pre>'
+    "<h3>Общий​</h3>"
+    '<pre class="highlight"><code>Общий(Имя: <a href="/String_ru/">Строка</a>): '
+    '<a href="/Array_ru/">Массив</a>&lt;<a href="/String_ru/">Строка</a>&gt;</code></pre>'
+    '<pre class="highlight"><code>Общий(): '
+    '<a href="/Array_ru/">Массив</a>&lt;<a href="/Number_ru/">Число</a>&gt;</code></pre>'
+    "<h3>Разный​</h3>"
+    '<pre class="highlight"><code>Разный(): <a href="/String_ru/">Строка</a></code></pre>'
+    '<pre class="highlight"><code>Разный(): <a href="/Number_ru/">Число</a></code></pre>'
+    "</article></body></html>"
+)
+
+
+def test_page_member_types_keeps_the_generic_parameter():
+    got = _МОДУЛЬ.page_member_types(_СТРАНИЦА_ДЖЕНЕРИКОВ)
+    # The full docs spelling survives (entities unescaped, link tags stripped)...
+    assert got["ПолучитьМножество"] == "ЧитаемоеМножество<НастройкиСервиса>"
+    assert got["Значение"] == "Строка?"
+    # ...overloads that agree on the head alone degrade to the head...
+    assert got["Общий"] == "Массив"
+    # ...and overloads with differing heads are dropped, as before.
+    assert "Разный" not in got
+
+
 def test_extract_merges_topic_only_types(tmp_path):
     """A surface documented only in a guide topic still lands in the name catalog.
 
