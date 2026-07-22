@@ -137,6 +137,10 @@ export interface MetaNodeDescription {
   title: string;
   offset: number;
   rows: MetaPropRow[];
+  // Collection keys present in yaml (Реквизиты, Элементы ...) with their item count: the
+  // rows edit scalars only, but the schema section must not call a non-empty collection
+  // "(not set)" just because it has no scalar row.
+  collections?: Record<string, number>;
 }
 
 function scalarStr(node: unknown): string | undefined {
@@ -208,6 +212,7 @@ export function describeMetaNode(text: string, offset: number): MetaNodeDescript
   const fieldType = prop(map, "Тип");
   const isStringField = fieldType === undefined || fieldType === "Строка" || fieldType === "Строка?";
   const rows: MetaPropRow[] = [];
+  const collections: Record<string, number> = {};
   for (const item of map.items) {
     const key = isScalar(item.key) ? String(item.key.value) : "";
     if (!key) {
@@ -216,8 +221,12 @@ export function describeMetaNode(text: string, offset: number): MetaNodeDescript
     if (STRING_ONLY_KEYS.has(key) && !isStringField) {
       continue; // e.g. Многострочная is not shown for a non-string type
     }
-    // Scalar properties only; collections (Реквизиты, Интерфейс ...) are edited via the tree.
+    // Scalar properties only; collections (Реквизиты, Интерфейс ...) are edited via the tree -
+    // but their presence and size are recorded, or the schema section reads them as unset.
     if (!(isScalar(item.value) || item.value === null || item.value === undefined)) {
+      if (isSeq(item.value) || isMap(item.value)) {
+        collections[key] = (item.value as { items: unknown[] }).items.length;
+      }
       continue;
     }
     const value = scalarStr(item.value) ?? "";
@@ -240,7 +249,12 @@ export function describeMetaNode(text: string, offset: number): MetaNodeDescript
       readonly: readonly || undefined,
     });
   }
-  return { title, offset: map.range ? map.range[0] : offset, rows };
+  return {
+    title,
+    offset: map.range ? map.range[0] : offset,
+    rows,
+    collections: Object.keys(collections).length > 0 ? collections : undefined,
+  };
 }
 
 // -- standard attributes --------------------------------------------------------------------

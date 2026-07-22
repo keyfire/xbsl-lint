@@ -343,7 +343,23 @@ export function buildMetaPanelModel(
   if (schema && !synthetic) {
     const all = Object.entries(schema.props)
       .filter(([, prop]) => !prop.deprecated)
-      .map(([key, prop]) => schemaRow(key, prop, schema, byKey.get(key), typeCandidates));
+      .map(([key, prop]) => {
+        // A collection present in yaml (Элементы, Реквизиты ...) has no scalar row, but it
+        // is set - show its size instead of "(not set)". Editing stays with the tree.
+        const count = desc.collections?.[key];
+        if (count !== undefined && !byKey.has(key)) {
+          return {
+            key,
+            set: true,
+            value: String(count),
+            editor: { control: "readonly" } as RowEditor,
+            defaultValue: prop.default,
+            since: prop.since,
+            hay: `${key} ${count}`.toLowerCase(),
+          };
+        }
+        return schemaRow(key, prop, schema, byKey.get(key), typeCandidates);
+      });
     sections.push({ id: "all" as const, rows: all });
   }
   return {

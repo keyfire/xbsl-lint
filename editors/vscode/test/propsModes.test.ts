@@ -317,6 +317,23 @@ test("buildMetaPanelModel: the schema adds the applicable properties below the s
   assert.ok(!("Разработчик" in all));
 });
 
+test("buildMetaPanelModel: a collection present in yaml is set, its size is the value", () => {
+  const internals = parseInternals(CATALOG)!;
+  const model = buildMetaPanelModel(
+    describeMetaSelection(CATALOG, { offset: internals.rootOffset })!,
+    undefined,
+    CATALOG_SCHEMA
+  );
+  const all = Object.fromEntries(model.sections[1].rows.map((r) => [r.key, r]));
+  // The catalog writes two attributes: the row must not read "(not set)" only because
+  // collections carry no scalar row. The size stands for the value; editing stays with the tree.
+  assert.strictEqual(all["Реквизиты"].set, true);
+  assert.strictEqual(all["Реквизиты"].value, "2");
+  assert.strictEqual(all["Реквизиты"].editor.control, "readonly");
+  // A block absent from yaml stays honestly unset.
+  assert.strictEqual(all["КонтрольДоступа"].set, false);
+});
+
 test("buildMetaPanelModel: the schema types the editors of the set rows", () => {
   const internals = parseInternals(CATALOG)!;
   const model = buildMetaPanelModel(
