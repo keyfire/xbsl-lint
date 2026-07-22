@@ -212,6 +212,13 @@ _META_COMMANDS = (
 )
 _SERVER_COMMANDS = ("lsp", "mcp", "web")
 
+
+def _selfupdate_parser() -> argparse.ArgumentParser:
+    parser = i18n.ArgumentParser(prog="xbsl self-update",
+                                 description=i18n.t("cli.help.commands.self-update"))
+    parser.add_argument("--version", help=i18n.t("cli.help.selfupdate-version"))
+    return parser
+
 def _templates_parser() -> argparse.ArgumentParser:
     parser = i18n.ArgumentParser(
         prog="xbsl templates",
@@ -707,10 +714,7 @@ def main(argv: list[str] | None = None) -> int:
         # Updating by unpacking the wheel - safe while the exe files are held by LSP/MCP processes.
         from xbsl import selfupdate
 
-        sp = i18n.ArgumentParser(prog="xbsl self-update",
-                                     description=i18n.t("cli.help.commands.self-update"))
-        sp.add_argument("--version", help=i18n.t("cli.help.selfupdate-version"))
-        sp_args = sp.parse_args(argv[1:])
+        sp_args = _selfupdate_parser().parse_args(argv[1:])
         try:
             old, new = selfupdate.self_update(version=sp_args.version,
                                               log=lambda msg: print(msg, file=sys.stderr))

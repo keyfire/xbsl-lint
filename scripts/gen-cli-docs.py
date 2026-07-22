@@ -91,7 +91,10 @@ FLAG_RE = re.compile(r"(?<![\w`-])(--?[a-zA-Z][\w-]*)")
 
 
 def run(args: list[str], lang: str) -> str:
-    env = dict(os.environ, XBSLLINT_LANG=lang, COLUMNS="100")
+    # Both variable names: XBSL_LANG wins over the legacy XBSLLINT_LANG, so setting only
+    # the legacy one loses to a caller's environment (a global XBSL_LANG=ru would quietly
+    # make both language versions Russian).
+    env = dict(os.environ, XBSL_LANG=lang, XBSLLINT_LANG=lang, COLUMNS="100")
     # The timeout is mandatory: a command that does not parse --help starts the server
     # instead of printing help and waits on stdin - without a limit the generation hangs.
     try:
@@ -281,7 +284,16 @@ def page(lang: str) -> str:
     return out.getvalue()
 
 
-for lang, fname in (("en", "CLI.md"), ("ru", "CLI.ru.md")):
-    text = page(lang)
-    (ROOT / "docs" / fname).write_text(text, encoding="utf-8", newline="")
-    print(f"{fname}: {len(text.splitlines())} строк")
+def generate() -> dict[str, str]:
+    """File name -> page text; assembly without writing to disk (tests need this)."""
+    return {fname: page(lang) for lang, fname in (("en", "CLI.md"), ("ru", "CLI.ru.md"))}
+
+
+def main() -> None:
+    for fname, text in generate().items():
+        (ROOT / "docs" / fname).write_text(text, encoding="utf-8", newline="")
+        print(f"{fname}: {len(text.splitlines())} строк")
+
+
+if __name__ == "__main__":
+    main()
