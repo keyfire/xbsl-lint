@@ -53,6 +53,21 @@ import _distro  # noqa: E402
 
 STD_BASE = "data/docs/help/ru/stdlib/element/xbsl/Std/"
 TEMPLATE_BASE = "data/docs/help/ru/stdlib/element/xbsl/DeveloperName/ProjectName/SubsystemName/"
+
+# Platform surfaces the documentation describes only in guide topics, with no stdlib type
+# page of their own - the page walk in extract() cannot see them, and yaml/unknown-type
+# would flag legitimate code. Curated, not scraped: every entry cites its evidence, and
+# both name forms are listed (the pair is the compiler's own, taken from its metaobject
+# terms, never a translation guess).
+#
+# ФормаОбсужденийСистемыВзаимодействия - the Collaboration System conversations form:
+# "специальный компонент" of the guide topic create-and-obtain-conversations (used both
+# as a component Тип and as a navigation ТипФормы); the compiler carries the dedicated
+# CollaborationSystemConversationsForm* packages in its metaobject terms.
+TOPIC_ONLY_TYPES = frozenset({
+    "ФормаОбсужденийСистемыВзаимодействия",
+    "CollaborationSystemConversationsForm",
+})
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.S)
 _CYRILLIC_NAME_RE = re.compile(r"^[А-ЯЁ][А-Яа-яЁё0-9]*$")
 
@@ -395,6 +410,7 @@ def extract(
             if len(segs) < 2 or not _CYRILLIC_NAME_RE.match(segs[1]):
                 continue  # a placeholder member or a Latin template
             members.setdefault(kind, set()).add(segs[1])
+    names |= TOPIC_ONLY_TYPES
     return names, members, components, types, globals_, managers, facets, returns, bases
 
 
@@ -474,7 +490,8 @@ def main(argv=None) -> int:
                     " + встроенные свойства компонентов интерфейса (страницы наследников"
                     " Стд::Интерфейс::Компонент)"
                     " + СОБСТВЕННЫЕ члены типов (унаследованные разворачиваются по bases"
-                    " при загрузке), под обеими формами имени",
+                    " при загрузке), под обеими формами имени"
+                    " + типы, описанные только в topics-страницах (TOPIC_ONLY_TYPES)",
         },
         "names": sorted(names),
         "object_members": {k: sorted(v) for k, v in sorted(members.items())},

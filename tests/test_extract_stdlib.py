@@ -111,3 +111,20 @@ def test_component_base_page_included_by_path():
     got = _МОДУЛЬ.component_props(_МОДУЛЬ.COMPONENT_PAGE, raw)
     assert got is not None
     assert got[0] == "Компонент" and got[1] == {"Заголовок"}
+
+
+def test_extract_merges_topic_only_types(tmp_path):
+    """A surface documented only in a guide topic still lands in the name catalog.
+
+    The end-to-end path matters: the supplement must survive the page walk of extract(),
+    not just exist as a constant - a refactor that rebuilds `names` from the pages alone
+    would silently drop it, and yaml/unknown-type would flag legitimate code again.
+    """
+    import zipfile
+
+    car = tmp_path / "1c-enterprise-element-server-with-ide-9.9.9+1-test.car"
+    with zipfile.ZipFile(car, "w") as z:
+        z.writestr(_МОДУЛЬ.STD_BASE + "AccessContext_ru/index.html", _СТРАНИЦА_ТИПА)
+    names = _МОДУЛЬ.extract(tmp_path)[0]
+    assert _МОДУЛЬ.TOPIC_ONLY_TYPES <= names
+    assert "КонтекстДоступа" in names  # the ordinary page walk is intact
