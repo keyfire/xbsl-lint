@@ -116,6 +116,7 @@ function labels(): Record<string, string> {
     secSet: vscode.l10n.t("Set"),
     secEvents: vscode.l10n.t("Events"),
     secAll: vscode.l10n.t("All properties"),
+    secReadonly: vscode.l10n.t("Read-only"),
     search: vscode.l10n.t("Filter by name or value"),
     auto: vscode.l10n.t("Auto"),
     autoOption: vscode.l10n.t("(auto)"),
@@ -932,7 +933,7 @@ ${cspMeta(nonce)}
     if (!model.schemaAvailable) {
       pane.appendChild(el("div", "note", L.noSchema));
     }
-    const titles = { set: L.secSet, events: L.secEvents, all: L.secAll };
+    const titles = { set: L.secSet, events: L.secEvents, all: L.secAll, readonly: L.secReadonly };
     for (const section of model.sections) {
       let rows = section.rows;
       if (pinnedKey) {
@@ -954,7 +955,9 @@ ${cspMeta(nonce)}
       if (!rows.length) { continue; }
       const details = el("details", "sec");
       details.dataset.sec = section.id;
-      details.open = state.open[section.id] !== undefined ? state.open[section.id] : section.id !== "all";
+      details.open = state.open[section.id] !== undefined
+        ? state.open[section.id]
+        : section.id !== "all" && section.id !== "readonly";
       details.addEventListener("toggle", () => { state.open[section.id] = details.open; vsapi.setState(state); });
       details.appendChild(el("summary", null, titles[section.id] || section.id));
       for (const row of rows) {

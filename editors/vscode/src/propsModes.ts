@@ -307,13 +307,19 @@ function schemaRow(
   };
 }
 
+// The panel header already names the kind and the object ("Перечисление · Товары") - a
+// ВидЭлемента row would repeat it, in whichever spelling the file uses.
+const KIND_KEYS = new Set(["ВидЭлемента", "ElementKind"]);
+
 // The metadata node description rendered through the shared panel model. With a schema of the
-// element kind the layout matches the component mode - the properties written in the file first,
-// every applicable one below - so an unset Представление or Иерархический is discoverable
-// instead of invisible; without one (a nested node, an unknown kind, no generated data) the
-// panel degrades to the set rows alone, as it always worked. A synthetic standard attribute
-// (offset -1, no record in yaml) renders every row as "not set" - editing materializes the
-// record (metaPropertyEdits below).
+// element kind the layout matches the component mode - the EDITABLE properties written in the
+// file first, every applicable one below - so an unset Представление or Иерархический is
+// discoverable instead of invisible. Everything the panel cannot edit (Ид, the tree-owned
+// structures - collections with their size, blocks) sits once in its own "readonly" section
+// instead of being interleaved with the editable rows and repeated per section. Without a
+// schema (a nested node, an unknown kind, no generated data) the panel degrades to the set
+// rows, split the same way. A synthetic standard attribute (offset -1, no record in yaml)
+// renders every row as "not set" - editing materializes the record (metaPropertyEdits below).
 export function buildMetaPanelModel(
   desc: MetaNodeDescription,
   typeCandidates?: string[],
@@ -322,8 +328,9 @@ export function buildMetaPanelModel(
   const synthetic = desc.offset < 0;
   const nameRow = desc.rows.find((r) => r.key === "Имя");
   const name = nameRow && nameRow.value !== desc.title ? nameRow.value : "";
-  const byKey = new Map(desc.rows.map((r) => [r.key, r]));
-  const rows: PanelRow[] = desc.rows.map((r) => {
+  const visible = desc.rows.filter((r) => !KIND_KEYS.has(r.key));
+  const byKey = new Map(visible.map((r) => [r.key, r]));
+  const toRow = (r: MetaPropRow): PanelRow => {
     const prop = schema?.props[r.key];
     return {
       key: r.key,
@@ -338,29 +345,46 @@ export function buildMetaPanelModel(
       since: prop?.since,
       hay: `${r.key} ${r.value}`.toLowerCase(),
     };
-  });
+  };
+  const rows: PanelRow[] = visible.filter((r) => !r.readonly).map(toRow);
+  const readonlyRows: PanelRow[] = visible.filter((r) => r.readonly).map(toRow);
   const sections: PanelSection[] = [{ id: "set", rows }];
   if (schema && !synthetic) {
-    const all = Object.entries(schema.props)
-      .filter(([, prop]) => !prop.deprecated)
-      .map(([key, prop]) => {
-        // A collection present in yaml (Элементы, Реквизиты ...) has no scalar row, but it
-        // is set - show its size instead of "(not set)". Editing stays with the tree.
-        const count = desc.collections?.[key];
-        if (count !== undefined && !byKey.has(key)) {
-          return {
-            key,
-            set: true,
-            value: String(count),
-            editor: { control: "readonly" } as RowEditor,
-            defaultValue: prop.default,
-            since: prop.since,
-            hay: `${key} ${count}`.toLowerCase(),
-          };
-        }
-        return schemaRow(key, prop, schema, byKey.get(key), typeCandidates);
-      });
+    const all: PanelRow[] = [];
+    for (const [key, prop] of Object.entries(schema.props)) {
+      if (prop.deprecated || KIND_KEYS.has(key)) {
+        continue;
+      }
+      const set = byKey.get(key);
+      if (set?.readonly) {
+        continue; // already in the readonly section - never twice
+      }
+      // A collection present in yaml (Элементы, Реквизиты ...) has no scalar row, but it
+      // is set - show its size instead of "(not set)". Editing stays with the tree.
+      const count = desc.collections?.[key];
+      if (count !== undefined && !byKey.has(key)) {
+        readonlyRows.push({
+          key,
+          set: true,
+          value: String(count),
+          editor: { control: "readonly" } as RowEditor,
+          defaultValue: prop.default,
+          since: prop.since,
+          hay: `${key} ${count}`.toLowerCase(),
+        });
+        continue;
+      }
+      const row = schemaRow(key, prop, schema, set, typeCandidates);
+      if ((row.editor as { control: string }).control === "readonly") {
+        readonlyRows.push(row); // a tree-owned structure (block/list) - visible, not editable
+        continue;
+      }
+      all.push(row);
+    }
     sections.push({ id: "all" as const, rows: all });
+  }
+  if (readonlyRows.length > 0) {
+    sections.push({ id: "readonly" as const, rows: readonlyRows });
   }
   return {
     meta: true,

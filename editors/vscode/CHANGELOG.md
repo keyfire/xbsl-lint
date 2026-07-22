@@ -8,6 +8,19 @@
 > are in the [Russian changelog](https://github.com/keyfire/xbsl/blob/main/editors/vscode/CHANGELOG.ru.md).
 > See also the [note on names](README.md#navigation-and-completion).
 
+## 0.30.0
+
+- **Read-only properties moved into a section of their own.** They used to be interleaved with
+  the editable rows and shown twice - both under "Set" and under "All properties". Now the id,
+  the tree-owned structures (Attributes, Items, AccessControl...) and everything else the panel
+  cannot edit sits once in a collapsed "Read-only" section, while "Set" and "All properties"
+  carry only what can be changed.
+- **A filled collection no longer reads "(not set)".** For an enumeration with five values the
+  Items row said "(not set)" - a collection written in yaml now shows its size (editing stays
+  with the metadata tree).
+- **The ElementKind row is gone from the panel.** The kind and the name already head the panel
+  ("Enumeration · RegistrationPreviewKind") - a separate row only repeated them.
+
 ## 0.29.0
 
 - **The "All properties" section now covers collection items.** For an enum value, an attribute,

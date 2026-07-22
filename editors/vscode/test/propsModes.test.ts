@@ -220,7 +220,13 @@ test("buildMetaPanelModel: the object header carries ВидЭлемента and 
   assert.strictEqual(model.meta, true);
   assert.strictEqual(model.type, "Справочник");
   assert.strictEqual(model.name, "Товары");
-  assert.strictEqual(model.sections.length, 1);
+  // The kind and the read-only keys never sit among the editable rows: the kind is already
+  // in the header (no row repeats it), Ид lives in the "readonly" section.
+  assert.deepStrictEqual(model.sections.map((s) => s.id), ["set", "readonly"]);
+  const keys = model.sections.flatMap((s) => s.rows.map((r) => r.key));
+  assert.ok(!keys.includes("ВидЭлемента"));
+  assert.ok(model.sections[0].rows.every((r) => r.editor.control !== "readonly"));
+  assert.deepStrictEqual(model.sections[1].rows.map((r) => r.key), ["Ид"]);
 });
 
 test("buildMetaPanelModel: row editors map onto the shared controls", () => {
@@ -229,13 +235,13 @@ test("buildMetaPanelModel: row editors map onto the shared controls", () => {
     describeMetaSelection(CATALOG, { offset: internals.attributes[0].offset })!,
     ["Строка", "Число"]
   );
-  const byKey = Object.fromEntries(model.sections[0].rows.map((r) => [r.key, r]));
+  const byKey = Object.fromEntries(model.sections.flatMap((s) => s.rows).map((r) => [r.key, r]));
   assert.strictEqual(byKey["Ид"].editor.control, "readonly");
   assert.strictEqual(byKey["Имя"].editor.control, "text");
   assert.strictEqual(byKey["Многострочная"].editor.control, "tristate");
   assert.strictEqual(byKey["Тип"].editor.control, "combo");
   assert.deepStrictEqual((byKey["Тип"].editor as { options: string[] }).options, ["Строка", "Число"]);
-  assert.ok(model.sections[0].rows.every((r) => r.set));
+  assert.ok(model.sections.every((s) => s.rows.every((r) => r.set)));
   assert.strictEqual(byKey["Имя"].hay, "имя описание");
   // The field header does not repeat the name: title IS the name.
   assert.strictEqual(model.type, "Описание");
@@ -288,8 +294,9 @@ test("buildMetaPanelModel: the schema adds the applicable properties below the s
     CATALOG_SCHEMA
   );
   assert.strictEqual(model.schemaAvailable, true);
-  assert.deepStrictEqual(model.sections.map((s) => s.id), ["set", "all"]);
+  assert.deepStrictEqual(model.sections.map((s) => s.id), ["set", "all", "readonly"]);
   const all = Object.fromEntries(model.sections[1].rows.map((r) => [r.key, r]));
+  const ro = Object.fromEntries(model.sections[2].rows.map((r) => [r.key, r]));
   // Not written in the file - and now visible, which is the whole point.
   assert.strictEqual(all["Иерархический"].set, false);
   assert.strictEqual(all["Иерархический"].editor.control, "tristate");
@@ -307,14 +314,22 @@ test("buildMetaPanelModel: the schema adds the applicable properties below the s
     (all["СозданиеНаОсновании"].editor as { options: string[] }).options,
     ["Товары.Ссылка"]
   );
-  // Structures are shown (so they are discoverable) but not edited here - the tree owns them.
-  assert.strictEqual(all["Реквизиты"].editor.control, "readonly");
-  assert.strictEqual(all["КонтрольДоступа"].editor.control, "readonly");
+  // Structures are shown (so they are discoverable) but not edited here - the tree owns
+  // them, and the panel keeps them apart from the editable rows, in the readonly section.
+  assert.ok(!("Реквизиты" in all));
+  assert.ok(!("КонтрольДоступа" in all));
+  assert.strictEqual(ro["Реквизиты"].editor.control, "readonly");
+  assert.strictEqual(ro["КонтрольДоступа"].editor.control, "readonly");
   // A property already written in the file is marked as set in this section too.
   assert.strictEqual(all["ОбластьВидимости"].set, true);
   assert.strictEqual(all["ОбластьВидимости"].value, "ВПроекте");
   // An old spelling kept for compatibility is not offered.
   assert.ok(!("Разработчик" in all));
+  // The kind row never renders - the header names the kind already.
+  assert.ok(!("ВидЭлемента" in all) && !("ВидЭлемента" in ro));
+  // No key is shown twice across the sections that are visible together.
+  const seen = model.sections.filter((s) => s.id !== "all").flatMap((s) => s.rows.map((r) => r.key));
+  assert.strictEqual(new Set(seen).size, seen.length);
 });
 
 test("buildMetaPanelModel: a collection present in yaml is set, its size is the value", () => {
@@ -324,14 +339,14 @@ test("buildMetaPanelModel: a collection present in yaml is set, its size is the 
     undefined,
     CATALOG_SCHEMA
   );
-  const all = Object.fromEntries(model.sections[1].rows.map((r) => [r.key, r]));
+  const ro = Object.fromEntries(model.sections[2].rows.map((r) => [r.key, r]));
   // The catalog writes two attributes: the row must not read "(not set)" only because
   // collections carry no scalar row. The size stands for the value; editing stays with the tree.
-  assert.strictEqual(all["Реквизиты"].set, true);
-  assert.strictEqual(all["Реквизиты"].value, "2");
-  assert.strictEqual(all["Реквизиты"].editor.control, "readonly");
+  assert.strictEqual(ro["Реквизиты"].set, true);
+  assert.strictEqual(ro["Реквизиты"].value, "2");
+  assert.strictEqual(ro["Реквизиты"].editor.control, "readonly");
   // A block absent from yaml stays honestly unset.
-  assert.strictEqual(all["КонтрольДоступа"].set, false);
+  assert.strictEqual(ro["КонтрольДоступа"].set, false);
 });
 
 test("buildMetaPanelModel: the schema types the editors of the set rows", () => {
@@ -348,14 +363,58 @@ test("buildMetaPanelModel: the schema types the editors of the set rows", () => 
     (set["ОбластьВидимости"].editor as { options: string[] }).options,
     ["ВПодсистеме", "ВПроекте", "Глобально"]
   );
-  assert.strictEqual(set["Ид"].editor.control, "readonly"); // read-only keys stay read-only
+  // Read-only keys stay read-only - and sit in their own section, not among the editable rows.
+  assert.ok(!("Ид" in set));
+  const ro = Object.fromEntries(model.sections.find((s) => s.id === "readonly")!.rows.map((r) => [r.key, r]));
+  assert.strictEqual(ro["Ид"].editor.control, "readonly");
 });
 
-test("buildMetaPanelModel: without a schema the panel keeps the single flat list", () => {
+test("buildMetaPanelModel: without a schema the panel keeps the set rows, readonly apart", () => {
   const internals = parseInternals(CATALOG)!;
   const model = buildMetaPanelModel(describeMetaSelection(CATALOG, { offset: internals.rootOffset })!);
   assert.strictEqual(model.schemaAvailable, false);
-  assert.strictEqual(model.sections.length, 1);
+  assert.deepStrictEqual(model.sections.map((s) => s.id), ["set", "readonly"]);
+});
+
+test("buildMetaPanelModel: an enumeration with items - the count in readonly, no duplicates", () => {
+  // The reported case: five values in yaml, and the panel called Элементы "(not set)" while
+  // repeating the read-only rows in both sections and the kind in a row of its own.
+  const enumYaml = [
+    "ВидЭлемента: Перечисление",
+    "ОбластьВидимости: ВПодсистеме",
+    "Ид: 9633168e-730d-47ca-836b-b432a8d7b153",
+    "Имя: ВариантПревью",
+    "Элементы:",
+    "    -",
+    "        Ид: 0daefecc-5430-4d35-b146-648afe7f9e75",
+    "        Имя: БезПриложений",
+    "    -",
+    "        Ид: 1a450a64-d8b5-49c5-bbe1-363e45d474a7",
+    "        Имя: СПриложениями",
+    "",
+  ].join("\n");
+  const schema = {
+    kind: "Перечисление",
+    props: {
+      Имя: { kind: "string" },
+      ОбластьВидимости: { kind: "enum", enum: "VisibilityScopeEnum" },
+      Импорт: { kind: "list", item: "NamespaceHolder" },
+      ВидЭлемента: { kind: "string" },
+      Ид: { kind: "string" },
+      Элементы: { kind: "list", item: "EnumerationItem" },
+    },
+    enums: { VisibilityScopeEnum: ["ВПодсистеме", "ВПроекте", "Глобально"] },
+  };
+  const model = buildMetaPanelModel(describeMetaSelection(enumYaml, { cursor: 0 })!, undefined, schema);
+  assert.deepStrictEqual(model.sections.map((s) => s.id), ["set", "all", "readonly"]);
+  const ro = Object.fromEntries(model.sections[2].rows.map((r) => [r.key, r]));
+  assert.strictEqual(ro["Элементы"].set, true);
+  assert.strictEqual(ro["Элементы"].value, "2"); // the size, not "(not set)"
+  assert.strictEqual(ro["Импорт"].set, false); // truly absent stays honestly unset
+  assert.deepStrictEqual(model.sections[2].rows.map((r) => r.key), ["Ид", "Импорт", "Элементы"]);
+  const keys = model.sections.flatMap((s) => s.rows.map((r) => r.key));
+  assert.ok(!keys.includes("ВидЭлемента"));
+  assert.deepStrictEqual(model.sections[0].rows.map((r) => r.key), ["ОбластьВидимости", "Имя"]);
 });
 
 test("metaKindOf/isRootNode: the schema applies to the object, not to a field", () => {

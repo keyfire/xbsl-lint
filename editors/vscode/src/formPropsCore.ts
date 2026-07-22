@@ -191,7 +191,7 @@ export interface PanelRow {
   hay: string; // lowercased "name + value" haystack for the panel filter
 }
 
-export type SectionId = "set" | "events" | "all";
+export type SectionId = "set" | "events" | "all" | "readonly";
 
 export interface PanelSection {
   id: SectionId;

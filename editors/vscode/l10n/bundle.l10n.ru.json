@@ -293,6 +293,7 @@
   "Set": "Заданные",
   "Events": "События",
   "All properties": "Все свойства",
+  "Read-only": "Только чтение",
   "Filter by name or value": "Фильтр по имени или значению",
   "Open in yaml": "Открыть в yaml",
   "Reset – remove the property from the yaml": "Сбросить – удалить свойство из yaml",
