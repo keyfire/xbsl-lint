@@ -21,6 +21,7 @@ from xbsl.lsp_nav import (
 )
 from xbsl.rules._syntax import (
     chain_type_at,
+    local_var_names,
     local_var_types,
     query_aliases,
     query_row_columns,
@@ -467,6 +468,64 @@ def test_local_var_types_only_above_cursor():
     src = engine.load_text("Модуль.xbsl", МОДУЛЬ)
     got = local_var_types(src, МОДУЛЬ.index("пер Список"))
     assert got == {"Ключи": "Массив", "Лимит": "Число"}
+
+
+@pytest.mark.needs_data
+def test_variable_named_query_keyword_is_a_variable():
+    # `Запрос` is the QUERY keyword only before `{`; as a variable name the declaration and
+    # the chain typing must read it like any identifier - otherwise `Запрос.Выполнить()`
+    # falls into the query-literal path and the neighbor variable gets the wrong type
+    code = (
+        "метод Т(Url: Строка): Строка\n"
+        "    пер Запрос = КлиентHttp.ЗапросPost(Url)\n"
+        '        .УстановитьЗаголовок("Accept", "application/json")\n'
+        "    пер Ответ = Запрос.Выполнить()\n"
+        "    возврат Ответ.Тело.ПрочитатьКакСтроку()\n"
+        ";\n"
+    )
+    src = engine.load_text("Модуль.xbsl", code)
+    catalog = dataset.load_json("stdlib.json")
+    members = {**(catalog.get("type_members") or {}), **(catalog.get("facet_members") or {})}
+    got = local_var_types(
+        src, code.index("возврат"),
+        returns=catalog.get("member_types") or {}, static_roots=members.keys(),
+    )
+    assert got.get("Запрос") == "ЗапросHttp"
+    assert got.get("Ответ") == "ОтветHttp"
+
+
+@pytest.mark.needs_data
+def test_local_var_names_cover_untyped_declarations():
+    # the name shadow: parameters, untyped declarations and loop variables are variables
+    # even when no type can be inferred - the docs hover must not read them as type names
+    code = (
+        "метод Т(Данные: Строка): Число\n"
+        "    пер Запрос = ЧейТоМетод()\n"
+        "    для Индекс = 1 по 5\n"
+        "        для Элемент в Список\n"
+        "            Сообщить(Элемент)\n"
+        "        ;\n"
+        "    ;\n"
+        "    возврат 0\n"
+        ";\n"
+    )
+    src = engine.load_text("Модуль.xbsl", code)
+    got = local_var_names(src, code.index("возврат"))
+    assert {"Данные", "Запрос", "Индекс", "Элемент"} <= got
+
+
+@pytest.mark.needs_data
+def test_query_literal_keeps_its_keyword_and_type():
+    # the real literal (`Запрос{...}`) is untouched by the retag and still types the variable
+    code = (
+        "метод Т()\n"
+        "    пер З = Запрос{ ВЫБРАТЬ Код ИЗ Товары }\n"
+        "    Сообщить(З)\n"
+        ";\n"
+    )
+    src = engine.load_text("Модуль.xbsl", code)
+    got = local_var_types(src, code.index("Сообщить"))
+    assert got.get("З") == "ТипизированныйЗапрос"
 
 
 def test_hover_object_method_component():

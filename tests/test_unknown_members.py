@@ -8,7 +8,7 @@ in the docs), project and parameterized types, Latin member spellings - all skip
 from __future__ import annotations
 
 from xbsl.diagnostics import Diagnostic
-from xbsl.engine import load_text, run_sources
+from xbsl.engine import load, load_text, run_sources
 
 
 def _lint(code: str) -> list[Diagnostic]:
@@ -167,6 +167,51 @@ def test_paired_yaml_name_shadows_the_type():
          "ВидЭлемента: КомпонентИнтерфейса\nИмя: Модуль\nРеквизиты:\n  - Имя: Email\n"),
     )
     assert diags == [], [d.message for d in diags]
+
+
+def _lint_static_files(module_path) -> list[Diagnostic]:
+    return [
+        d for d in run_sources([load(module_path)], select={"code/unknown-static-member"})
+        if d.rule_id == "code/unknown-static-member"
+    ]
+
+
+def test_pair_on_disk_shadows_in_a_single_file_run(tmp_path):
+    # the editor lints ONE saved module: the paired yaml is on disk but not among the
+    # sources, and the form-attribute shadow must still hold (the reduce sees no yaml facts)
+    (tmp_path / "Форма.yaml").write_text(
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Форма\nДанные:\n  - Имя: Email\n",
+        encoding="utf-8",
+    )
+    module = tmp_path / "Форма.xbsl"
+    module.write_text(
+        "метод Тест(): Булево\n    возврат Email.Длина() == 0\n;\n", encoding="utf-8",
+    )
+    assert _lint_static_files(module) == []
+
+
+def test_pair_on_disk_shadows_the_inferred_root(tmp_path):
+    # the shadow read from the disk pair also drops candidates carried by a chain root
+    (tmp_path / "Форма.yaml").write_text(
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Форма\nДанные:\n  - Имя: ДатаВремя\n",
+        encoding="utf-8",
+    )
+    module = tmp_path / "Форма.xbsl"
+    module.write_text(
+        "метод Тест()\n    знч Б = ДатаВремя.Сейчас()\n    Сообщить(Б.НетТакогоЧлена)\n;\n",
+        encoding="utf-8",
+    )
+    assert _lint_static_files(module) == []
+
+
+def test_single_file_run_without_a_pair_keeps_the_finding(tmp_path):
+    # the control: no neighbor on disk - the bare name still reads as a type and is judged
+    module = tmp_path / "Форма.xbsl"
+    module.write_text(
+        "метод Тест(): Булево\n    возврат Email.Длина() == 0\n;\n", encoding="utf-8",
+    )
+    diags = _lint_static_files(module)
+    assert len(diags) == 1 and "Email" in diags[0].message
 
 
 def test_project_object_name_shadows_the_type_everywhere():

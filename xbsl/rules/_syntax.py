@@ -20,7 +20,7 @@ on the corpus, so an ambiguous construct is better skipped than guessed.
 from __future__ import annotations
 
 import bisect
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from functools import lru_cache
 
@@ -267,14 +267,29 @@ def query_row_columns(source: SourceFile, offset: int) -> dict[str, list[str]]:
 
 
 def code_tokens(source: SourceFile) -> list[Token]:
-    """Code tokens: no comments, no EOF and no query block contents."""
+    """Code tokens: no comments, no EOF and no query block contents.
+
+    A QUERY keyword with no `{` after it is retagged into a plain identifier here: the
+    parser reads it as a name (query_literal falls back to Name), so a variable called
+    Запрос must look like a variable to the token-level utilities too - declarations,
+    signatures and the chain typing all judge by token kind. The raw `tokens()` cache
+    is left as lexed: query_ranges and the query-extraction rules match the keyword
+    together with its brace and are not affected.
+    """
     cached = source.cache.get("code_tokens")
     if cached is not None:
         return cached
-    out = [
-        t for t in tokens(source)
-        if t.kind not in ("COMMENT", "EOF") and not in_query(source, t.start)
-    ]
+    raw = [t for t in tokens(source) if t.kind not in ("COMMENT", "EOF")]
+    out: list[Token] = []
+    for i, t in enumerate(raw):
+        if (
+            t.kind == "KEYWORD"
+            and t.canonical == "QUERY"
+            and not (i + 1 < len(raw) and raw[i + 1].kind == "OP" and raw[i + 1].value == "{")
+        ):
+            t = replace(t, kind="IDENT", canonical=None)
+        if not in_query(source, t.start):
+            out.append(t)
     source.cache["code_tokens"] = out
     return out
 
@@ -771,6 +786,40 @@ def chain_type_at(
         return None
 
     return chain_type(toks, root_i, resolve_root, returns, stop_offset=stop)
+
+
+def local_var_names(source: SourceFile, offset: int) -> set[str]:
+    """Every name declared in the enclosing method above `offset` - the parameters, the
+    `пер`/`знч`/`конст`/`поймать`/`обз`/`использовать` declarations and the loop variables,
+    typed or not. The callers use it as a shadow: a declared name is a variable even when
+    its type cannot be inferred, so it must not be read as a stdlib type of the same name.
+    """
+    toks = code_tokens(source)
+    enclosing = None
+    for s in signatures(toks):
+        if s.keyword.start > offset:
+            break
+        enclosing = s
+    start = enclosing.keyword.start if enclosing else 0
+    out: set[str] = set()
+    if enclosing is not None:
+        out.update(p.name.value for p in enclosing.params)
+    for d in declarations(toks, keywords=DECL_KEYWORDS + ("USE",)):
+        if start <= d.keyword.start < offset:
+            out.update(t.value for t in d.names)
+    for i, t in enumerate(toks[:-2]):
+        if not (t.kind == "KEYWORD" and t.canonical == "FOR" and start <= t.start < offset):
+            continue
+        name, after = toks[i + 1], toks[i + 2]
+        if name.kind != "IDENT":
+            continue
+        # `в` between the variable and the collection is a plain word token, not a keyword.
+        is_in = (after.kind == "KEYWORD" and after.canonical == "IN") or (
+            after.kind == "IDENT" and after.value.lower() in ("в", "in")
+        )
+        if is_in or (after.kind == "OP" and after.value == "="):
+            out.add(name.value)
+    return out
 
 
 def local_var_types(

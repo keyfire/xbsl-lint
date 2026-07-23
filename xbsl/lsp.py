@@ -54,6 +54,7 @@ from xbsl.lsp_nav import (
 )
 from xbsl.rules._syntax import (
     chain_type_at,
+    local_var_names,
     local_var_types,
     query_aliases,
     query_ranges,
@@ -861,6 +862,11 @@ def _make_server() -> "LanguageServer":
         try:
             src = engine.load_text(path.name, doc.source)
             var_type = local_var_types(src, offset).get(word)
+            if var_type is None and word in local_var_names(src, offset):
+                # A declared variable whose type could not be inferred: the word must not
+                # be documented as a same-named stdlib type (`пер Запрос = ...` is not the
+                # query type) - candidates by the query are still offered.
+                return None, query
         except Exception:  # noqa: BLE001 - parsing must not break the request
             var_type = None
         return (var_type or word), query

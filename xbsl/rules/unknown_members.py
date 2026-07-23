@@ -404,6 +404,27 @@ def _module_shadow(module: P.Module) -> set[str]:
     return names
 
 
+def _pair_names_from_disk(source: SourceFile) -> set[str]:
+    """Names of the paired yaml read straight from the module's neighbor on disk.
+
+    A single-file check (`xbsl lint Форма.xbsl`, the editor linting one saved module)
+    reaches the reduce with no yaml facts at all, so the form-attribute shadow - "a form
+    attribute named Email is not the mail type" - would be lost with the pair. The read
+    happens only when the module has candidate findings, so a clean module costs nothing;
+    a whole-project run contributes the same names through the reduce anyway.
+    """
+    try:
+        pair = source.path.with_suffix(".yaml")
+        if not pair.is_file():
+            return set()
+        text = pair.read_text(encoding="utf-8-sig")
+    except (OSError, ValueError):
+        return set()
+    names = {m.group(2).strip() for m in _YAML_NAME_RE.finditer(text)}
+    names.discard("")
+    return names
+
+
 def _static_mapper(source: SourceFile) -> dict | None:
     """The map phase: candidate findings of a module, or the names a yaml contributes.
 
@@ -469,7 +490,13 @@ def _static_mapper(source: SourceFile) -> dict | None:
                 lm = linemap(source)
             line, col = lm.linecol(use.start)
             found.append((root, type_name, use.name, line, col))
-    return {"uses": found} if found else None
+    if not found:
+        return None
+    fact: dict = {"uses": found}
+    pair_names = _pair_names_from_disk(source)
+    if pair_names:
+        fact["pair_names"] = sorted(pair_names)
+    return fact
 
 
 @rule(
@@ -501,7 +528,9 @@ def unknown_static_member(facts: dict[str, dict]) -> Iterable[Diagnostic]:
         uses = fact.get("uses")
         if not uses:
             continue
-        shadow = global_shadow | paired.get(_pair_key(rel), set())
+        # pair_names duplicates the paired-yaml facts for runs that do not carry the yaml
+        # (a single-file check); in a whole-project run the union is a no-op.
+        shadow = global_shadow | paired.get(_pair_key(rel), set()) | set(fact.get("pair_names", ()))
         for root, type_name, member, line, col in uses:
             if root is not None and root in shadow:
                 continue
