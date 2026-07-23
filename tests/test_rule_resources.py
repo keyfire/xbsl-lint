@@ -30,7 +30,9 @@ def _project(tmp_path, module_text, resource_names=("Своя.svg",)):
     (root / "Основное" / "Ресурсы").mkdir(parents=True)
     (root / "Проект.yaml").write_text(_PROJECT_YAML, encoding="utf-8")
     for name in resource_names:
-        (root / "Основное" / "Ресурсы" / name).write_text("<svg/>", encoding="utf-8")
+        path = root / "Основное" / "Ресурсы" / name  # a name may carry a subfolder
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<svg/>", encoding="utf-8")
     (root / "Основное" / "М.xbsl").write_text(module_text, encoding="utf-8")
     return tmp_path
 
@@ -85,6 +87,28 @@ def test_uploaded_inbase_not_flagged(tmp_path):
     )
 
 
+def test_subfolder_key_not_flagged(tmp_path):
+    # a key is a path relative to Ресурсы - the subfolder form compiles (probed)
+    assert not _run(
+        tmp_path,
+        _method("Ресурс{Подкаталог/Вложенная.svg}.Ссылка"),
+        _BARE,
+        resource_names=("Подкаталог/Вложенная.svg",),
+    )
+
+
+def test_resources_prefixed_subfolder_advice_keeps_the_subfolder(tmp_path):
+    # the fix strips the Ресурсы segment ONLY - the subfolder stays in the key
+    d = _run(
+        tmp_path,
+        _method("Ресурс{Ресурсы/Подкаталог/Вложенная.svg}.Ссылка"),
+        _BARE,
+        resource_names=("Подкаталог/Вложенная.svg",),
+    )
+    assert len(d) == 1
+    assert "Ресурс{Подкаталог/Вложенная.svg}" in d[0].message
+
+
 # --- code/unknown-resource (project scope, needs the library) -----------------------------
 
 
@@ -119,6 +143,48 @@ def test_uploaded_inbase_out_of_static_reach(tmp_path, library):
         tmp_path,
         _method("Ресурс{inbase/0daefecc-5430-4d35-b146-648afe7f9e75.png}.Ссылка"),
         _UNKNOWN,
+    )
+
+
+def test_subfolder_key_known(tmp_path, library):
+    # the known set keeps relative paths - a subfolder ref to an existing file is silent
+    assert not _run(
+        tmp_path,
+        _method("Ресурс{Подкаталог/Вложенная.svg}.Ссылка"),
+        _UNKNOWN,
+        resource_names=("Подкаталог/Вложенная.svg",),
+    )
+
+
+def test_bare_name_of_a_subfoldered_file_flagged(tmp_path, library):
+    # probed: a bare name reaches only the Ресурсы root - for a file inside a subfolder
+    # it fails at apply, and the rule now says so ahead of the compiler
+    d = _run(
+        tmp_path,
+        _method("Ресурс{Вложенная.svg}.Ссылка"),
+        _UNKNOWN,
+        resource_names=("Подкаталог/Вложенная.svg",),
+    )
+    assert len(d) == 1 and d[0].rule_id == _UNKNOWN
+
+
+def test_missing_subfolder_flagged(tmp_path, library):
+    d = _run(
+        tmp_path,
+        _method("Ресурс{НетТакого/Вложенная.svg}.Ссылка"),
+        _UNKNOWN,
+        resource_names=("Подкаталог/Вложенная.svg",),
+    )
+    assert len(d) == 1 and d[0].rule_id == _UNKNOWN
+
+
+def test_backslash_spelling_skipped(tmp_path, library):
+    # the backslash form is unprobed - skipped rather than judged
+    assert not _run(
+        tmp_path,
+        _method("Ресурс{Подкаталог\\Вложенная.svg}.Ссылка"),
+        _UNKNOWN,
+        resource_names=("Подкаталог/Вложенная.svg",),
     )
 
 

@@ -127,7 +127,7 @@ sidebar:
 | 51 | `style/nullable-shorthand` | warning | вкл | файл | Неопределено в типе без сокращения '?' | [доки](https://1cmycloud.com/docs/help/topics/type-description-and-initialization/) |
 | 52 | `style/redundant-type` | warning | вкл | файл | Избыточная аннотация типа при инициализации | [доки](https://1cmycloud.com/docs/help/topics/type-description-and-initialization/) |
 | 53 | `style/optional-params-last` | warning | вкл | файл | Необязательный параметр перед обязательным | [доки](https://1cmycloud.com/docs/help/topics/method-declarations/) |
-| 54 | `code/resource-bare-name` | error | вкл | файл | `Ресурс{Ресурсы/Имя.svg}` – ресурс адресуется голым именем файла, путь с каталогом платформа не разрешает | [доки](https://1cmycloud.com/docs/help/topics/image-library/) |
+| 54 | `code/resource-bare-name` | error | вкл | файл | `Ресурс{Ресурсы/Имя.svg}` – ключ ресурса задается ОТНОСИТЕЛЬНО каталога Ресурсы; сам каталог в ключе ломает поиск | [доки](https://1cmycloud.com/docs/help/topics/image-library/) |
 
 ### Тир D – семантика над stdlib, формы и метамодель
 
