@@ -74,6 +74,17 @@ def test_mention_in_a_comment_not_flagged(tmp_path):
     assert not _run(tmp_path, text, _BARE)
 
 
+def test_uploaded_inbase_not_flagged(tmp_path):
+    # inbase/<uuid> addresses a resource uploaded into the application base (the web
+    # editor names them so) - the probe showed the compiler resolves the form by lookup,
+    # the slash is not a folder spelling
+    assert not _run(
+        tmp_path,
+        _method("Ресурс{inbase/0daefecc-5430-4d35-b146-648afe7f9e75.png}.Ссылка"),
+        _BARE,
+    )
+
+
 # --- code/unknown-resource (project scope, needs the library) -----------------------------
 
 
@@ -99,6 +110,16 @@ def test_qualified_library_name_not_flagged(tmp_path, library):
 def test_path_left_to_the_other_rule(tmp_path, library):
     # one mistake is not reported twice
     assert not _run(tmp_path, _method("Ресурс{Ресурсы/Своя.svg}.Ссылка"), _UNKNOWN)
+
+
+def test_uploaded_inbase_out_of_static_reach(tmp_path, library):
+    # whether the uploaded uuid exists is a fact of the application base - neither rule
+    # may guess; the compiler verifies it at apply
+    assert not _run(
+        tmp_path,
+        _method("Ресурс{inbase/0daefecc-5430-4d35-b146-648afe7f9e75.png}.Ссылка"),
+        _UNKNOWN,
+    )
 
 
 def test_without_the_library_silent(tmp_path, monkeypatch):

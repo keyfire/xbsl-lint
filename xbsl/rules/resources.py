@@ -15,6 +15,15 @@ control in the same project:
 
 Positions match the compiler's: both point at the first character inside the braces.
 
+The `inbase/` prefix is NOT a folder: it addresses a resource uploaded into the application
+base (the web editor names them by uuid - `Ресурс{inbase/<uuid>.png}` in deployed code).
+Probed on the local server next to the same controls: a DANGLING uuid fails with the very
+message a missing bare name gets ('Неизвестный ресурс: inbase/...', the position on the
+first character inside the braces) - a lookup that found nothing, not a rejected spelling -
+while the deployed code whose uuid exists in ITS base applies cleanly. Both rules leave the
+form alone: the spelling is legal, and whether the uuid exists is a fact of the application
+base no static check can see - the compiler verifies it at apply.
+
 The code/unknown-resource rule. A name that resolves to nothing is rejected the same way
 (`Неизвестный ресурс: 'НетТакого.svg'` on the probe), but "exists" means more than "lies in
 the project": the platform ships an image library of its own, and code may use it without any
@@ -81,6 +90,9 @@ i18n.register(MESSAGES)
 #: The folder name holding the resource files of a subsystem.
 _RESOURCE_DIR = "Ресурсы"
 
+#: The prefix of a resource uploaded into the application base (see the module docstring).
+_UPLOADED_PREFIX = "inbase/"
+
 
 def _resource_refs(toks: list[Token], text: str) -> Iterable[tuple[str, int, int]]:
     """(name inside the braces, line, column) for every `Ресурс{...}` of the module.
@@ -111,6 +123,8 @@ def resource_bare_name(source: SourceFile) -> Iterable[Diagnostic]:
     if source.kind != "xbsl" or "Ресурс{" not in source.text:
         return
     for name, line, col in _resource_refs(code_tokens(source), source.text):
+        if name.startswith(_UPLOADED_PREFIX):
+            continue  # a resource uploaded into the base - a lookup key, not a disk path
         base = name.replace("\\", "/").rsplit("/", 1)[-1]
         if base == name:
             continue
@@ -172,7 +186,10 @@ def unknown_resource(facts: dict[str, dict]) -> Iterable[Diagnostic]:
     for rel, fact in facts.items():
         for name, line, col in fact.get("refs", ()):
             if "/" in name or "\\" in name:
-                continue  # a path - code/resource-bare-name reports that one
+                # A folder path - code/resource-bare-name reports it; an uploaded-to-base
+                # reference (inbase/...) is legal, and its existence lives in the base,
+                # out of static reach either way.
+                continue
             bare = name.rsplit("::", 1)[-1].strip()  # Стд::Грузовик.svg -> Грузовик.svg
             if bare in known:
                 continue
