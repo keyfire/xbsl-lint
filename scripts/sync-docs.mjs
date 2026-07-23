@@ -56,7 +56,7 @@ const pages = [
     dir: "",
     title: "Changelog",
     description:
-      "Release history of the xbsl toolkit: the linter, the LSP and MCP servers, the documentation index and the metadata scaffolding.",
+      "What changed in the xbsl toolkit from release to release, grouped by day.",
     sidebarLabel: "Changelog",
     order: 8,
     note: enNote,
@@ -67,7 +67,7 @@ const pages = [
     dir: "",
     title: "История изменений",
     description:
-      "История релизов инструментария xbsl: линтер, серверы LSP и MCP, индекс документации и скаффолдинг метаданных.",
+      "Что менялось в инструментарии xbsl от версии к версии, с разбивкой по дням.",
     sidebarLabel: "История изменений",
     order: 8,
     note: ruNote,
