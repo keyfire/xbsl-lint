@@ -64,6 +64,8 @@
   "Dark": "Тёмная",
   "Auto": "Авто",
   "(auto)": "(авто)",
+  "True": "Истина",
+  "False": "Ложь",
   "Show in yaml": "Показать в yaml",
   "The yaml does not parse: {0}": "Yaml не разбирается: {0}",
   "No form content here (Наследует → Содержимое) – open a form yaml.": "Здесь нет содержимого формы (Наследует → Содержимое) – откройте yaml формы.",

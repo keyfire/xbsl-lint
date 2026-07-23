@@ -120,6 +120,8 @@ function labels(): Record<string, string> {
     search: vscode.l10n.t("Filter by name or value"),
     auto: vscode.l10n.t("Auto"),
     autoOption: vscode.l10n.t("(auto)"),
+    boolTrue: vscode.l10n.t("True"),
+    boolFalse: vscode.l10n.t("False"),
     toYaml: vscode.l10n.t("Show in yaml"),
     openInYaml: vscode.l10n.t("Open in yaml"),
     reset: vscode.l10n.t("Reset – remove the property from the yaml"),
@@ -322,8 +324,12 @@ ${cspMeta(nonce)}
     const box = el("div", "tri");
     const current = row.set ? row.value : null;
     for (const v of [null, "Истина", "Ложь"]) {
-      const b = el("button", null, v === null ? L.auto : v);
+      // The button label follows the UI locale; the value written to yaml is always the
+      // platform spelling (Истина/Ложь), so the non-Russian locale gets it as a tooltip.
+      const label = v === null ? L.auto : v === "Истина" ? L.boolTrue : L.boolFalse;
+      const b = el("button", null, label);
       if (v === null && row.defaultValue) { b.title = L.defaultPrefix + " " + row.defaultValue; }
+      else if (v !== null && label !== v) { b.title = v; }
       if ((v === null && current === null) || v === current) { b.classList.add("on"); }
       b.addEventListener("click", () => {
         if (v === null) { if (row.set) { post({ type: "reset", key: row.key }); } }
