@@ -17,6 +17,19 @@ pytest                      # tests (data-dependent ones are skipped without dat
 python -m xbsl <path>   # run over sources
 ```
 
+### Checking in the editor before a release
+
+The VS Code extension can show an engine change live without reinstalling the package:
+point the `xbsl.lsp.command` setting at `tools/lsp-dev.cmd`, and the wrapper starts the
+LSP server from this clone (PYTHONPATH outranks site-packages, so the clone wins from any
+working directory). Reload the window after changing the setting - the status bar then
+reports the clone's engine version; remove the setting and reload to return to the
+installed package. The interpreter needs the `[lsp]` and `[morph]` extras.
+
+CLI subcommands from the clone: `python -m xbsl` parses the check mode only (a subcommand
+is taken for a path and lints 0 files); use
+`python -c "from xbsl.cli import main; main()" list-rules`.
+
 ## How to add a rule
 
 1. Create a module under `xbsl/rules/` (or extend an existing one).
