@@ -128,7 +128,7 @@ are off by default (accumulated debt, `info`): enable them with `--select style`
 | 51 | `style/nullable-shorthand` | warning | on | file | Undefined in a type without the '?' shorthand | [docs](https://1cmycloud.com/docs/help/topics/type-description-and-initialization/) |
 | 52 | `style/redundant-type` | warning | on | file | Redundant type annotation on initialization | [docs](https://1cmycloud.com/docs/help/topics/type-description-and-initialization/) |
 | 53 | `style/optional-params-last` | warning | on | file | Optional parameter before a required one | [docs](https://1cmycloud.com/docs/help/topics/method-declarations/) |
-| 54 | `code/resource-bare-name` | error | on | file | `Resource{<folder>/<file>.svg}` - a resource is addressed by its bare file name, a path with a folder is not resolved | [docs](https://1cmycloud.com/docs/help/topics/image-library/) |
+| 54 | `code/resource-bare-name` | error | on | file | `Resource{Resources/<file>.svg}` - the key is a path RELATIVE to the Resources folder; spelling that folder out breaks the lookup | [docs](https://1cmycloud.com/docs/help/topics/image-library/) |
 
 ### Tier D - semantics over stdlib, forms and the metamodel
 
