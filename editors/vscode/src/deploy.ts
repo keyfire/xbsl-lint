@@ -46,6 +46,46 @@ async function pickFolder(): Promise<vscode.WorkspaceFolder | undefined> {
   return vscode.window.showWorkspaceFolderPick();
 }
 
+// APP_ID / ELEMENT_APP_ID assignment in a .env file - the sources elemctl itself reads.
+const ENV_APP_ID_RE = /^\s*(?:export\s+)?(?:ELEMENT_APP_ID|APP_ID)\s*=\s*\S/m;
+
+function envFileHasAppId(folder: vscode.WorkspaceFolder, s: DeploySettings): boolean {
+  const file = s.envFile
+    ? path.isAbsolute(s.envFile) ? s.envFile : path.join(folder.uri.fsPath, s.envFile)
+    : path.join(folder.uri.fsPath, ".env");
+  try {
+    return ENV_APP_ID_RE.test(fs.readFileSync(file, "utf8"));
+  } catch {
+    return false; // no file - no app id in it
+  }
+}
+
+// Without an app id elemctl stops with a bare "не задан app-id" long after the confirmation.
+// Ask up front instead: where to take the id from, and remember the answer in the folder
+// settings so the next deploy does not ask again.
+async function ensureAppId(folder: vscode.WorkspaceFolder, s: DeploySettings): Promise<boolean> {
+  if (s.appId || envFileHasAppId(folder, s) || process.env.ELEMENT_APP_ID || process.env.APP_ID) {
+    return true;
+  }
+  const value = await vscode.window.showInputBox({
+    title: vscode.l10n.t("Application id for the deploy"),
+    prompt: vscode.l10n.t(
+      "elemctl needs the target application id (APP_ID). Take it from `elemctl apps list` or from the application card in the platform console; it will be saved to the xbsl.deploy.appId setting."
+    ),
+    placeHolder: "0198c0de-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    ignoreFocusOut: true,
+    validateInput: (v) => (v.trim() ? undefined : vscode.l10n.t("The application id must not be empty.")),
+  });
+  if (value === undefined) {
+    return false; // canceled - the deploy is canceled with it
+  }
+  s.appId = value.trim();
+  await vscode.workspace
+    .getConfiguration("xbsl", folder.uri)
+    .update("deploy.appId", s.appId, vscode.ConfigurationTarget.WorkspaceFolder);
+  return true;
+}
+
 // Quick check that elemctl exists: only ENOENT leads to the install offer,
 // other problems will be shown by the task's own terminal.
 function elemctlMissing(bin: string, cwd: string): Promise<boolean> {
@@ -124,6 +164,9 @@ async function deploy(projectRootFor: (folder: vscode.WorkspaceFolder) => string
     if (pick === install) {
       runInstallTask("elemctl", pipInstallCommand("elemctl"));
     }
+    return;
+  }
+  if (!(await ensureAppId(folder, settings))) {
     return;
   }
   const args = buildDeployArgs(settings, folder, projectRootFor(folder));
