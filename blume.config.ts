@@ -11,9 +11,10 @@ export default defineConfig({
     "scaffolding for 1C:Element (XBSL) sources, plus a VS Code extension built on " +
     "the same engine.",
 
-  // All site content is in docs/. The extension page (docs/vscode.md + .ru.md) mirrors
-  // editors/vscode/README.md (the marketplace README); it is synced by
-  // scripts/sync-vscode-doc.mjs (npm run sync:docs).
+  // All site content is in docs/. Two pages are mirrors of sources kept outside docs/: the
+  // extension page (docs/vscode.md + .ru.md) mirrors editors/vscode/README.md (the marketplace
+  // README), and the changelog page (docs/changelog.md + .ru.md) mirrors CHANGELOG.md (the
+  // toolkit's release history). Both are synced by scripts/sync-docs.mjs (npm run sync:docs).
   content: {
     root: "docs",
     // BACKLOG is in .gitignore and lives only on the maintainer's disk - CI never has it,

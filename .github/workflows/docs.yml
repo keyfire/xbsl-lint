@@ -12,9 +12,12 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/docs.yml"
-      # Страница расширения на сайте — зеркало этого README (см. scripts/sync-vscode-doc.mjs).
+      # Зеркальные страницы сайта: расширение — из README, changelog — из CHANGELOG
+      # (см. scripts/sync-docs.mjs).
       - "editors/vscode/README.md"
       - "editors/vscode/README.ru.md"
+      - "CHANGELOG.md"
+      - "CHANGELOG.ru.md"
       - "scripts/**"
   workflow_dispatch:
 

@@ -152,3 +152,4 @@ Data-dependent tests are skipped automatically when the data has not been genera
 
 MIT – see [LICENSE](https://github.com/keyfire/xbsl/blob/main/LICENSE). Trademarks and data provenance – [NOTICE](https://github.com/keyfire/xbsl/blob/main/NOTICE).
 How to add a rule – [CONTRIBUTING.md](https://github.com/keyfire/xbsl/blob/main/CONTRIBUTING.md).
+Release history – [CHANGELOG.md](https://github.com/keyfire/xbsl/blob/main/CHANGELOG.md).

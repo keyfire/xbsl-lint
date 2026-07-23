@@ -151,3 +151,4 @@ pytest
 
 MIT – см. [LICENSE](https://github.com/keyfire/xbsl/blob/main/LICENSE). Товарные знаки и происхождение данных – [NOTICE](https://github.com/keyfire/xbsl/blob/main/NOTICE).
 Как добавить правило – [CONTRIBUTING.ru.md](https://github.com/keyfire/xbsl/blob/main/CONTRIBUTING.ru.md).
+История изменений – [CHANGELOG.ru.md](https://github.com/keyfire/xbsl/blob/main/CHANGELOG.ru.md).
