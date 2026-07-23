@@ -166,7 +166,7 @@ def type_members(name: str) -> dict:
 
 
 @mcp.tool()
-def ui_schema(component: str | None = None) -> dict:
+def ui_schema(component: str | None = None, brief: bool = False, property: str | None = None) -> dict:
     """The interface component ui schema (the visual designer's palette and typed properties).
 
     Without arguments - the catalog: every component with its package, an abstract flag
@@ -178,7 +178,16 @@ def ui_schema(component: str | None = None) -> dict:
     "enums" - the value lists of the enumerations referenced by the property unions; an
     unknown name yields close_matches. {"available": false} when the ui schema dataset
     is not generated (tools/extract_uischema.py).
+
+    The full schema of a big component costs thousands of tokens; when the question is
+    "does property X exist / what values does enum Y take", pass `brief=true` - one line
+    per property (the type union with enum values inline, nullable/slot markers, event
+    signatures). One property in full - `property="Имя"` (overrides `brief`).
     """
+    if component and property:
+        return uischema.component_property(component, property)
+    if component and brief:
+        return uischema.component_brief(component)
     if component:
         return uischema.component(component)
     return uischema.catalog()

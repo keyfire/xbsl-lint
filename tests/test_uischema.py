@@ -29,6 +29,7 @@ _SCHEMA = {
                 "Граница": {"types": ["Авто", "ВидГраницы", "Строка"]},
                 "ПриНажатии": {"event": "(КарточкаАкме, СобытиеПриНажатии)->ничто"},
                 "Содержимое": {"types": ["Компонент", "Строка"], "slot": True},
+                "Ссылка": {"types": ["Url"], "nullable": True},
             },
         },
         "Компонент": {
@@ -127,6 +128,39 @@ def test_component_unknown_gives_close_matches(ui_root):
     assert "КарточкаАкме" in got["close_matches"]
 
 
+def test_component_brief_is_one_line_per_property(ui_root):
+    got = uischema.component_brief("КарточкаАкме")
+    assert got["available"] is True
+    comp = got["component"]
+    assert comp["container"] is True and "enums" not in got
+    props = comp["props"]
+    assert props["ВидОтображения"] == "Авто | ВидВиджета{Карточка|Баннер}"
+    assert props["Граница"] == "Авто | ВидГраницы{Сплошная|Пунктирная} | Строка"
+    assert props["ПриНажатии"] == "событие (КарточкаАкме, СобытиеПриНажатии)->ничто"
+    assert props["Содержимое"] == "Компонент | Строка [slot]"
+    assert props["Ссылка"] == "Url?"
+
+
+def test_component_brief_unknown_and_degradation(ui_root):
+    miss = uischema.component_brief("КарточкаАкм")
+    assert miss["component"] is None and "КарточкаАкме" in miss["close_matches"]
+
+
+def test_component_property_full_record(ui_root):
+    got = uischema.component_property("КарточкаАкме", "Граница")
+    assert got["available"] is True and got["component"] == "КарточкаАкме"
+    assert got["property"]["name"] == "Граница"
+    assert got["property"]["types"] == ["Авто", "ВидГраницы", "Строка"]
+    assert got["enums"] == {"ВидГраницы": ["Сплошная", "Пунктирная"]}
+
+
+def test_component_property_unknown_gives_close_matches(ui_root):
+    miss = uischema.component_property("КарточкаАкме", "Гран")
+    assert miss["property"] is None and "Граница" in miss["close_matches"]
+    no_comp = uischema.component_property("Нет", "Граница")
+    assert no_comp["component"] is None
+
+
 def test_degradation_without_data(no_data):
     assert uischema.available() is False
     assert uischema.catalog() == {"available": False}
@@ -174,8 +208,19 @@ def test_mcp_catalog_and_component(mcp_module, ui_root):
     assert one["enums"]["ВидГраницы"] == ["Сплошная", "Пунктирная"]
 
 
+def test_mcp_brief_and_single_property(mcp_module, ui_root):
+    brief = mcp_module.ui_schema("КарточкаАкме", brief=True)
+    assert brief["component"]["props"]["Содержимое"] == "Компонент | Строка [slot]"
+    one = mcp_module.ui_schema("КарточкаАкме", property="Граница")
+    assert one["property"]["name"] == "Граница"
+    # property overrides brief - one full record, not a line
+    both = mcp_module.ui_schema("КарточкаАкме", brief=True, property="Граница")
+    assert both["property"]["types"] == ["Авто", "ВидГраницы", "Строка"]
+
+
 def test_mcp_degrades_without_data(mcp_module, no_data):
     assert mcp_module.ui_schema() == {"available": False}
+    assert mcp_module.ui_schema("КарточкаАкме", brief=True) == {"available": False}
 
 
 # --- LSP ---------------------------------------------------------------------------------

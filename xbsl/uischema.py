@@ -103,3 +103,84 @@ def component(name: str, version: str | None = None) -> dict:
     if enums:
         out["enums"] = enums
     return out
+
+
+def _brief_line(prop: dict, enums: dict) -> str:
+    """One line for one property: the type union with enum values inline, the
+    nullable/slot markers, or the event signature."""
+    if "event" in prop:
+        return f"событие {prop['event']}"
+    parts = []
+    for member in prop.get("types") or ():
+        text = str(member)
+        entry = enums.get(text)
+        if entry is not None:
+            values = entry.get("values") or prop.get("enum") or []
+            if values:
+                text += "{" + "|".join(str(v) for v in values) + "}"
+        parts.append(text)
+    line = " | ".join(parts) if parts else "?"
+    if prop.get("nullable"):
+        line += "?"
+    if prop.get("slot"):
+        line += " [slot]"
+    return line
+
+
+def component_brief(name: str, version: str | None = None) -> dict:
+    """The compact cut of component(): one line per property instead of the full records.
+
+    The line carries the type union with enum values inline, the nullable/slot markers
+    and the event signatures - a fraction of the full schema's size, enough for "does
+    the property exist / what values does it take". The full record of one property is
+    component_property()'s business.
+    """
+    schema = dataset.load_ui_schema(version)
+    if schema is None:
+        return {"available": False}
+    components = schema.get("components") or {}
+    rec = components.get(name)
+    if rec is None:
+        return {
+            "available": True,
+            "component": None,
+            "close_matches": difflib.get_close_matches(name, components, n=5, cutoff=0.6),
+        }
+    enums = schema.get("enums") or {}
+    head = {k: rec[k] for k in ("package", "abstract", "container", "doc") if k in rec}
+    props = {p: _brief_line(record, enums) for p, record in (rec.get("props") or {}).items()}
+    return {"available": True, "component": {"name": name, **head, "props": props}}
+
+
+def component_property(name: str, prop_name: str, version: str | None = None) -> dict:
+    """The full record of ONE property of a component, with the enums its union references.
+
+    {"available": True, "component": name, "property": {"name": ..., ...record...}} on a
+    hit (plus "enums" when the union references any); an unknown property answers with
+    close matches over the component's property names.
+    """
+    schema = dataset.load_ui_schema(version)
+    if schema is None:
+        return {"available": False}
+    components = schema.get("components") or {}
+    rec = components.get(name)
+    if rec is None:
+        return {
+            "available": True,
+            "component": None,
+            "close_matches": difflib.get_close_matches(name, components, n=5, cutoff=0.6),
+        }
+    props = rec.get("props") or {}
+    prop = props.get(prop_name)
+    if prop is None:
+        return {
+            "available": True,
+            "component": name,
+            "property": None,
+            "close_matches": difflib.get_close_matches(prop_name, props, n=5, cutoff=0.6),
+        }
+    out = {"available": True, "component": name, "property": {"name": prop_name, **prop}}
+    enums = _component_enums({"props": {prop_name: prop}}, schema.get("enums") or {})
+    if enums:
+        out["enums"] = enums
+    return out
