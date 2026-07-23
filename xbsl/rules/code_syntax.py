@@ -9,7 +9,11 @@ shapes the platform grammar rules out, never on ones it merely makes unusual. So
   from it) – so only a parameter with neither a type nor a default is reported;
 - loops (topics/for-in-loop, topics/for-loop): `для значение-элемента из коллекция` or
   `для счетчик = выражение [вниз] по выражение [шаг N]`. A `для` header with neither `из`
-  nor `=` after the name cannot compile.
+  nor `=` after the name cannot compile;
+- string escapes (topics/escape-sequence): the valid set is `\н \в \т \\ \" \% \$` and
+  `\ю` with a decimal character code. The platform is bilingual and the deployed corpus
+  proves the Latin twins (`\n` lives in shipped code), so `n r t u` pass as well; anything
+  else (`\'`, regex-style `\d`) is rejected by the compiler with "Invalid escape sequence".
 
 `попытка` deliberately has no rule: per topics/exceptions both `поймать` and `вконце` are
 optional, so a bare `попытка ... ;` is not an error.
@@ -22,6 +26,7 @@ from collections.abc import Iterable
 from xbsl import i18n
 from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
+from xbsl.lexer import _skip_interpolation, linemap
 from xbsl.rules._syntax import WORD_KINDS, code_tokens, signatures
 
 MESSAGES = {
@@ -44,6 +49,18 @@ MESSAGES = {
               "('для {name} = 1 по 10'), а не '{found}'.",
         "en": "'{name}' must be followed by 'из' (iterate a collection) or '=' with a counter "
               "('для {name} = 1 по 10'), not '{found}'.",
+    },
+    "code/invalid-string-escape.title": {
+        "ru": "Недопустимая управляющая последовательность в строке",
+        "en": "Invalid escape sequence in a string literal",
+    },
+    "code/invalid-string-escape.found": {
+        "ru": "Недопустимая управляющая последовательность '{seq}' – компилятор отвергает "
+              "такой литерал; валидны \\н \\в \\т \\\\ \\\" \\% \\$ и \\ю с десятичным кодом "
+              "(латинские написания n r t u тоже работают).",
+        "en": "Invalid escape sequence '{seq}' - the compiler rejects such a literal; valid "
+              "are \\н \\в \\т \\\\ \\\" \\% \\$ and \\ю with a decimal code (the Latin "
+              "spellings n r t u work as well).",
     },
 }
 i18n.register(MESSAGES)
@@ -97,3 +114,49 @@ def loop_header(source: SourceFile) -> Iterable[Diagnostic]:
             source.rel, name.line, name.col, "code/loop-header", Severity.ERROR,
             i18n.t("code/loop-header.expected", name=name.value, found=nxt.value),
         )
+
+
+# The escape alphabet of topics/escape-sequence plus the corpus-proven Latin twins; the
+# case-insensitive match errs toward silence (an uppercase escape is not proven invalid).
+_ESCAPE_LETTERS = frozenset('нвтnrt\\"%$')
+_ESCAPE_UNICODE = frozenset("юu")
+_DIGITS = frozenset("0123456789")
+
+
+@rule("code/invalid-string-escape", "code/invalid-string-escape.title", "C", severity=Severity.ERROR)
+def invalid_string_escape(source: SourceFile) -> Iterable[Diagnostic]:
+    """A `\\X` outside the escape alphabet does not compile.
+
+    Interpolation spans (`%{...}` / `${...}`) hold code with literals of their own and are
+    skipped along the same boundary the lexer uses; pattern literals ('...') live by the
+    regex syntax and are not judged here.
+    """
+    if source.kind != "xbsl":
+        return
+    lm = None
+    for t in code_tokens(source):
+        if t.kind != "STRING":
+            continue
+        text = t.value
+        i, n = 1, len(text)  # inside the opening quote
+        while i < n:
+            c = text[i]
+            if c == "\\":
+                nxt = text[i + 1].lower() if i + 1 < n else ""
+                ok = nxt in _ESCAPE_LETTERS or (
+                    nxt in _ESCAPE_UNICODE and i + 2 < n and text[i + 2] in _DIGITS
+                )
+                if not ok:
+                    if lm is None:
+                        lm = linemap(source)
+                    line, col = lm.linecol(t.start + i)
+                    yield Diagnostic(
+                        source.rel, line, col, "code/invalid-string-escape", Severity.ERROR,
+                        i18n.t("code/invalid-string-escape.found", seq=text[i:i + 2]),
+                    )
+                i += 2
+                continue
+            if c in "%$" and i + 1 < n and text[i + 1] == "{":
+                i = _skip_interpolation(text, i + 2)
+                continue
+            i += 1

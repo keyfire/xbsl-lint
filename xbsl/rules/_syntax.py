@@ -813,11 +813,9 @@ def local_var_names(source: SourceFile, offset: int) -> set[str]:
         name, after = toks[i + 1], toks[i + 2]
         if name.kind != "IDENT":
             continue
-        # `в` between the variable and the collection is a plain word token, not a keyword.
-        is_in = (after.kind == "KEYWORD" and after.canonical == "IN") or (
-            after.kind == "IDENT" and after.value.lower() in ("в", "in")
-        )
-        if is_in or (after.kind == "OP" and after.value == "="):
+        if (after.kind == "KEYWORD" and after.canonical == "IN") or (
+            after.kind == "OP" and after.value == "="
+        ):
             out.add(name.value)
     return out
 

@@ -48,6 +48,42 @@ def test_constructor_params_checked_too():
     assert len(diags) == 1
 
 
+# --- string escapes -------------------------------------------------------------------------
+
+
+def test_invalid_escape_is_reported():
+    # the combat case: apostrophes escaped the CSS way (\') - the compiler rejects the literal
+    code = "метод Т(): Строка\n    возврат \"стиль: \\'кавычки\\'\"\n;\n"
+    diags = _diags(code, "code/invalid-string-escape")
+    assert len(diags) == 2
+    assert "\\'" in diags[0].message and diags[0].severity.value == "error"
+
+
+def test_valid_escapes_are_quiet():
+    code = (
+        'метод Т(): Строка\n'
+        '    пер А = "C:\\\\кат\\\\ф \\"имя\\" \\н\\в\\т \\% \\$ \\ю1080 \\n\\r\\t \\u1080"\n'
+        "    возврат А\n;\n"
+    )
+    assert _diags(code, "code/invalid-string-escape") == []
+
+
+def test_interpolation_span_is_skipped():
+    # a pattern literal inside an interpolation carries regex escapes - not this rule's field
+    code = "метод Т(С: Строка): Строка\n    возврат \"число: ${С.Совпадает('\\d+')}\"\n;\n"
+    assert _diags(code, "code/invalid-string-escape") == []
+
+
+def test_unicode_escape_requires_digits():
+    diags = _diags('метод Т(): Строка\n    возврат "\\юня"\n;\n', "code/invalid-string-escape")
+    assert len(diags) == 1
+
+
+def test_pattern_literal_is_not_judged():
+    code = "метод Т(С: Строка): Булево\n    возврат С.Совпадает('\\d+')\n;\n"
+    assert _diags(code, "code/invalid-string-escape") == []
+
+
 # --- loop header --------------------------------------------------------------------------
 
 
