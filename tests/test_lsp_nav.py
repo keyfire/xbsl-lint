@@ -514,6 +514,20 @@ def test_local_var_names_cover_untyped_declarations():
     assert {"Данные", "Запрос", "Индекс", "Элемент"} <= got
 
 
+def test_pair_yaml_names_read_from_disk(tmp_path):
+    # the hover shadow: names of the paired yaml are variables of the form, not stdlib types
+    (tmp_path / "Форма.yaml").write_text(
+        "ВидЭлемента: КомпонентИнтерфейса\nИмя: Форма\nДанные:\n  - Имя: Email\n"
+        "  - Имя: Телефон # контакт\n",
+        encoding="utf-8",
+    )
+    from xbsl.rules._syntax import pair_yaml_names
+
+    names = pair_yaml_names(tmp_path / "Форма.xbsl")
+    assert {"Email", "Телефон", "Форма"} <= names
+    assert pair_yaml_names(tmp_path / "Другой.xbsl") == set()
+
+
 @pytest.mark.needs_data
 def test_query_literal_keeps_its_keyword_and_type():
     # the real literal (`Запрос{...}`) is untouched by the retag and still types the variable

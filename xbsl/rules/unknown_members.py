@@ -32,6 +32,7 @@ from xbsl.diagnostics import Diagnostic, Severity
 from xbsl.engine import SourceFile, rule
 from xbsl.lexer import linemap
 from xbsl.parser import parse
+from xbsl.rules._syntax import YAML_NAME_RE, pair_yaml_names
 from xbsl.rules.semantics import _object_name_fast
 from xbsl.rules.undefined_names import _IMPLICIT
 
@@ -317,11 +318,8 @@ def _hierarchy_roots() -> frozenset[str]:
         )
     return _roots_cache
 
-# `Имя: X` anywhere in a yaml - an object name, a form attribute, a component, a column. Any of
-# them becomes a bare name in the paired module and would shadow a same-named stdlib type.
-_YAML_NAME_RE = re.compile(
-    r"^[ \t]*(?:-[ \t]*)?(?:Имя|Name):[ \t]*(['\"]?)([^\r\n#]*?)\1[ \t]*(?:#.*)?$", re.M,
-)
+# The `Имя: X` scan and the disk-pair read live in _syntax (the hover shares them).
+_YAML_NAME_RE = YAML_NAME_RE
 
 _member_types_cache: dict[str, dict[str, str]] | None = None
 
@@ -413,16 +411,7 @@ def _pair_names_from_disk(source: SourceFile) -> set[str]:
     happens only when the module has candidate findings, so a clean module costs nothing;
     a whole-project run contributes the same names through the reduce anyway.
     """
-    try:
-        pair = source.path.with_suffix(".yaml")
-        if not pair.is_file():
-            return set()
-        text = pair.read_text(encoding="utf-8-sig")
-    except (OSError, ValueError):
-        return set()
-    names = {m.group(2).strip() for m in _YAML_NAME_RE.finditer(text)}
-    names.discard("")
-    return names
+    return pair_yaml_names(source.path)
 
 
 def _static_mapper(source: SourceFile) -> dict | None:

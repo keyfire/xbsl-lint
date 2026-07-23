@@ -20,7 +20,9 @@ on the corpus, so an ambiguous construct is better skipped than guessed.
 from __future__ import annotations
 
 import bisect
+import re
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 from functools import lru_cache
 
@@ -264,6 +266,32 @@ def query_row_columns(source: SourceFile, offset: int) -> dict[str, list[str]]:
         if columns:
             out[name.value] = columns
     return out
+
+
+# `Имя: X` anywhere in a yaml - an object name, a form attribute, a component, a column. Any
+# of them becomes a bare name in the paired module and would shadow a same-named stdlib type.
+YAML_NAME_RE = re.compile(
+    r"^[ \t]*(?:-[ \t]*)?(?:Имя|Name):[ \t]*(['\"]?)([^\r\n#]*?)\1[ \t]*(?:#.*)?$", re.M,
+)
+
+
+def pair_yaml_names(module_path) -> set[str]:
+    """Names declared by the module's paired yaml, read straight from the disk neighbor.
+
+    Serves the shadow "a form attribute named Email is not the mail type" to surfaces that
+    see one file at a time: the unknown-static-member mapper in a single-file run and the
+    hover of the LSP. Missing neighbor - an empty set.
+    """
+    try:
+        pair = Path(module_path).with_suffix(".yaml")
+        if not pair.is_file():
+            return set()
+        text = pair.read_text(encoding="utf-8-sig")
+    except (OSError, ValueError):
+        return set()
+    names = {m.group(2).strip() for m in YAML_NAME_RE.finditer(text)}
+    names.discard("")
+    return names
 
 
 def code_tokens(source: SourceFile) -> list[Token]:

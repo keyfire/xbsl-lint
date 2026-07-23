@@ -56,6 +56,7 @@ from xbsl.rules._syntax import (
     chain_type_at,
     local_var_names,
     local_var_types,
+    pair_yaml_names,
     query_aliases,
     query_ranges,
     query_row_columns,
@@ -862,10 +863,12 @@ def _make_server() -> "LanguageServer":
         try:
             src = engine.load_text(path.name, doc.source)
             var_type = local_var_types(src, offset).get(word)
-            if var_type is None and word in local_var_names(src, offset):
-                # A declared variable whose type could not be inferred: the word must not
-                # be documented as a same-named stdlib type (`пер Запрос = ...` is not the
-                # query type) - candidates by the query are still offered.
+            if var_type is None and (
+                word in local_var_names(src, offset) or word in pair_yaml_names(path)
+            ):
+                # A declared variable with an uninferred type, or a name of the paired yaml
+                # (a form data attribute, a component): the word must not be documented as
+                # a same-named stdlib type - candidates by the query are still offered.
                 return None, query
         except Exception:  # noqa: BLE001 - parsing must not break the request
             var_type = None
