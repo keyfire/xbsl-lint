@@ -332,16 +332,17 @@ test("buildMetaPanelModel: the schema adds the applicable properties below the s
   assert.strictEqual(new Set(seen).size, seen.length);
 });
 
-// What the engine answers for the Код standard attribute (a class of its own in the metamodel).
+// What the engine answers for the Код standard attribute (a class of its own in the metamodel;
+// the closed data-type constraint arrives resolved into options).
 const CODE_ATTR_SCHEMA = {
   kind: "Справочник",
   props: {
-    Тип: { kind: "enum", enum: "CodeType", default: "Строка" },
+    Тип: { kind: "type", options: ["Строка", "Число"], default: "Стд::Строка" },
     Длина: { kind: "number", default: "9" },
     Уникальность: { kind: "boolean", default: "true" },
     Автонумерация: { kind: "boolean", default: "true" },
   },
-  enums: { CodeType: ["Строка", "Число"] },
+  enums: {},
 };
 
 test("buildMetaPanelModel: a synthetic standard attribute with a schema shows the real set", () => {
@@ -360,7 +361,25 @@ test("buildMetaPanelModel: a synthetic standard attribute with a schema shows th
   assert.ok(model.sections[1].rows.every((r) => !r.set));
   assert.strictEqual(all["Автонумерация"].editor.control, "tristate");
   assert.strictEqual(all["Длина"].defaultValue, "9");
+  // A closed type constraint is a dropdown of exactly the allowed types, not the open
+  // combobox over every type of the project.
+  assert.strictEqual(all["Тип"].editor.control, "enum");
   assert.deepStrictEqual((all["Тип"].editor as { options: string[] }).options, ["Строка", "Число"]);
+});
+
+test("schemaRowEditor: an unconstrained data type keeps the open project combobox", () => {
+  const model = buildMetaPanelModel(
+    describeMetaSelection(CATALOG, { std: { kind: "Справочник", name: "Код" } })!,
+    ["Товары.Ссылка?"],
+    {
+      kind: "Справочник",
+      props: { Тип: { kind: "type" } },
+      enums: {},
+    }
+  );
+  const typ = model.sections[1].rows.find((r) => r.key === "Тип")!;
+  assert.strictEqual(typ.editor.control, "combo");
+  assert.deepStrictEqual((typ.editor as { options: string[] }).options, ["Товары.Ссылка?"]);
 });
 
 test("buildMetaPanelModel: a collection present in yaml is set, its size is the value", () => {

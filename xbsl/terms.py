@@ -17,6 +17,7 @@ from xbsl import dataset
 SECTIONS = ("types", "facets", "properties", "enums")
 
 _cache: dict[str, dict[str, str]] | None = None
+_reverse: dict[str, dict[str, str]] | None = None
 
 
 def _terms() -> dict[str, dict[str, str]]:
@@ -36,8 +37,9 @@ def _reset() -> None:
     Without this the process would keep answering from the previously pinned dataset - a
     pinned root with no terms.json still handed out the English spellings of the old one.
     """
-    global _cache
+    global _cache, _reverse
     _cache = None
+    _reverse = None
 
 
 dataset.register_reset(_reset)
@@ -46,6 +48,17 @@ dataset.register_reset(_reset)
 def english(name: str, section: str) -> str | None:
     """The English spelling of a name in the given role, when the platform declares one."""
     return _terms().get(section, {}).get(name)
+
+
+def russian(name: str, section: str) -> str | None:
+    """The Russian spelling for an English name in the given role (the reverse of english)."""
+    global _reverse
+    if _reverse is None:
+        _reverse = {
+            section_name: {en: ru for ru, en in pairs.items()}
+            for section_name, pairs in _terms().items()
+        }
+    return _reverse.get(section, {}).get(name)
 
 
 def forms(name: str, section: str) -> tuple[str, ...]:

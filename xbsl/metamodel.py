@@ -19,12 +19,54 @@ type, which the panel renders as plain text editors.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 
 from xbsl import dataset, terms
 
 #: Kinds of a property value, as told to an editor (see tools/extract_metamodel.py).
 SCALAR_KINDS = ("boolean", "number", "string", "enum", "type")
+
+#: A closed data-type constraint of a `kind: type` property (`@PossibleTypes`):
+#: Std::Type<Std::String|Std::Number> - the value may name only the listed types.
+_TYPE_CONSTRAINT_RE = re.compile(r"^(?:Std|Стд)::(?:Type|Тип)<(.+)>$")
+
+
+def type_options(record: dict) -> list[str] | None:
+    """Russian spellings of a closed data-type constraint, or None for an open one.
+
+    The Код of a Справочник declares `Std::Type<Std::String|Std::Number>` - the panel must
+    offer exactly Строка and Число, not every type of the project. A member that cannot be
+    resolved to a platform name keeps the list open (offering everything beats forbidding
+    something legal), and a nested generic would not match the constraint shape at all.
+    """
+    m = _TYPE_CONSTRAINT_RE.match(str(record.get("types") or ""))
+    if not m:
+        return None
+    out: list[str] = []
+    for member in m.group(1).split("|"):
+        member = member.strip().split("::")[-1]
+        nullable = member.endswith("?")
+        if nullable:
+            member = member[:-1]
+        if not member:
+            return None
+        russian = terms.russian(member, "types") or (
+            member if terms.english(member, "types") else None
+        )
+        if russian is None:
+            return None
+        out.append(russian + "?" if nullable else russian)
+    return out or None
+
+
+def _with_type_options(props: dict[str, dict]) -> dict[str, dict]:
+    """Copies of the records with a closed constraint resolved into `options`."""
+    out: dict[str, dict] = {}
+    for key, record in props.items():
+        options = type_options(record) if record.get("kind") == "type" else None
+        out[key] = {**record, "options": options} if options else record
+    return out
 
 
 @lru_cache(maxsize=1)
@@ -141,7 +183,7 @@ def properties(kind: str) -> dict[str, dict]:
     for key in common_keys():
         props.setdefault(key, {"kind": "string"})
     order = sorted(props.items(), key=lambda kv: (-int(kv[1].get("priority") or 0), kv[0]))
-    return dict(order)
+    return _with_type_options(dict(order))
 
 
 @lru_cache(maxsize=None)
@@ -154,7 +196,7 @@ def properties_of_class(name: str) -> dict[str, dict]:
     """
     props = dict(_class_properties(name))
     order = sorted(props.items(), key=lambda kv: (-int(kv[1].get("priority") or 0), kv[0]))
-    return dict(order)
+    return _with_type_options(dict(order))
 
 
 @lru_cache(maxsize=None)

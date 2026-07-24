@@ -234,6 +234,7 @@ export interface MetaSchemaProp {
   impl?: string;
   alias?: string[];
   types?: string;
+  options?: string[]; // a closed data-type constraint (@PossibleTypes), resolved by the engine
 }
 
 export interface MetaSchema {
@@ -279,7 +280,12 @@ function schemaRowEditor(
     case "enum":
       return { control: "enum", options: (prop.enum && schema.enums[prop.enum]) || [] };
     case "type":
-      return { control: "combo", options: typeCandidates ?? [] };
+      // A closed constraint (the Код of a Справочник takes Строка or Число and nothing
+      // else) is a dropdown of exactly those; an unconstrained type keeps the open
+      // combobox over the project's candidates.
+      return prop.options?.length
+        ? { control: "enum", options: prop.options }
+        : { control: "combo", options: typeCandidates ?? [] };
     case "string":
       return { control: "text", multiline: false };
     default:

@@ -38,7 +38,15 @@ _MM = {
             "implName": "AcmeRegularAttribute",
         },
         "AcmeCodeAttribute": {
-            "props": {"Длина": {"kind": "number"}, "Автонумерация": {"kind": "boolean"}},
+            "props": {
+                "Длина": {"kind": "number"},
+                "Автонумерация": {"kind": "boolean"},
+                # a closed data-type constraint (@PossibleTypes): the panel gets options
+                "Тип": {"kind": "type", "types": "Std::Type<Std::String|Std::Number>"},
+                # an unresolvable member keeps the list open - offering everything beats
+                # forbidding something legal
+                "ЧужойТип": {"kind": "type", "types": "Std::Type<Std::Nope>"},
+            },
             "ext": ["IAcmeAttribute"],
             "presents": "Код",
         },
@@ -84,6 +92,11 @@ def _root(tmp_path, data):
     ver_dir = tmp_path / _VER
     ver_dir.mkdir()
     (ver_dir / "metamodel.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    # the term pairs a closed type constraint resolves through (Std::String -> Строка)
+    (ver_dir / "terms.json").write_text(
+        json.dumps({"types": {"Строка": "String", "Число": "Number"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
     (tmp_path / "index.json").write_text(
         json.dumps({"available": [_VER], "default": _VER}), encoding="utf-8"
     )
@@ -148,6 +161,25 @@ def test_enum_values_and_class_lookup(mm_root):
     assert metamodel.enum_values("Нет") == ()
     assert metamodel.has_class("AcmeStringLimits")
     assert metamodel.class_property_names("AcmeCatalogDescriptor") >= {"Иерархический", "Поставщик"}
+
+
+def test_closed_type_constraint_resolves_into_options(mm_root):
+    # the Код of a Справочник takes Строка or Число and nothing else - the panel must not
+    # offer every type of the project
+    props = metamodel.properties_of_class("AcmeCodeAttribute")
+    assert props["Тип"]["options"] == ["Строка", "Число"]
+    # an unresolvable member and an unconstrained type keep the list open
+    assert "options" not in props["ЧужойТип"]
+    reg = metamodel.properties_of_class("AcmeRegularAttributeDescriptor")
+    assert "options" not in reg["Тип"]
+
+
+@pytest.mark.needs_data
+def test_live_code_attribute_type_is_closed():
+    # the guard over the generated data: the real metamodel constrains the Код this way
+    dataset.set_data_root(None)
+    props = metamodel.properties_of_class("CodeAttributeDescriptor")
+    assert props["Тип"]["options"] == ["Строка", "Число"]
 
 
 def test_item_class_of_a_collection_uses_the_default_implementation(mm_root):
